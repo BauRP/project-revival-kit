@@ -1,30 +1,68 @@
+// ============================================================================
+//  Dependency-free SSR error page.
+//  ---------------------------------------------------------------------------
+//  This module MUST NOT import any application code. It is rendered exactly in
+//  the situations where the app itself failed to initialise (module-init throw,
+//  h3-swallowed request error, request-middleware failure), so any import here
+//  could fail for the very same reason and leave the user with a blank frame.
+// ============================================================================
+
 export function renderErrorPage(): string {
-  return `<!doctype html>
+  return `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>This page didn't load</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Trivo Chat — temporarily unavailable</title>
     <style>
-      body { font: 15px/1.5 system-ui, -apple-system, sans-serif; background: #fafafa; color: #111; display: grid; place-items: center; min-height: 100vh; margin: 0; padding: 1.5rem; }
-      .card { max-width: 28rem; width: 100%; text-align: center; padding: 2rem; }
-      h1 { font-size: 1.25rem; margin: 0 0 0.5rem; }
-      p { color: #4b5563; margin: 0 0 1.5rem; }
-      .actions { display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
-      a, button { padding: 0.5rem 1rem; border-radius: 0.375rem; font: inherit; cursor: pointer; text-decoration: none; border: 1px solid transparent; }
-      .primary { background: #111; color: #fff; }
-      .secondary { background: #fff; color: #111; border-color: #d1d5db; }
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: #08090d;
+        color: #e8ecf5;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      .card {
+        width: 100%;
+        max-width: 420px;
+        padding: 32px 24px;
+        border-radius: 20px;
+        text-align: center;
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+      h1 { margin: 0 0 8px; font-size: 20px; font-weight: 700; }
+      p { margin: 0 0 24px; font-size: 14px; line-height: 1.5; color: rgba(232, 236, 245, 0.7); }
+      .row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+      button, a.btn {
+        appearance: none;
+        cursor: pointer;
+        border-radius: 12px;
+        padding: 12px 20px;
+        font-size: 14px;
+        font-weight: 600;
+        text-decoration: none;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(255, 255, 255, 0.06);
+        color: #e8ecf5;
+      }
+      button.primary { background: #4f7cff; border-color: #4f7cff; color: #fff; }
     </style>
   </head>
   <body>
-    <div class="card">
-      <h1>This page didn't load</h1>
-      <p>Something went wrong on our end. You can try refreshing or head back home.</p>
-      <div class="actions">
-        <button class="primary" onclick="location.reload()">Try again</button>
-        <a class="secondary" href="/">Go home</a>
+    <main class="card">
+      <h1>Something went wrong</h1>
+      <p>The app could not be started on the server. Your local messages and keys are untouched — they never leave this device.</p>
+      <div class="row">
+        <button class="primary" onclick="location.reload()">Refresh</button>
+        <a class="btn" href="/">Go home</a>
       </div>
-    </div>
+    </main>
   </body>
 </html>`;
 }

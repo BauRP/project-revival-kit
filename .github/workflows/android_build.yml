@@ -1,0 +1,107 @@
+name: Build Messenger APK
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21 (Zulu)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install Dependencies
+        run: |
+          npm install --legacy-peer-deps
+
+      - name: Build Web Assets & Diagnose
+        run: |
+          echo "Запускаю строгую сборку Vite..."
+          npm run build
+          
+          echo "=== НАЧАЛО ДИАГНОСТИКИ И ИСПРАВЛЕНИЯ ==="
+          echo "1. Ищем, где сгенерировался index.html:"
+          find . -name "index.html" -not -path "*/node_modules/*" -not -path "*/android/*" -not -path "*/.git/*"
+          
+          echo "2. Гарантируем, что файлы скопированы в mobile_dist:"
+          if [ ! -f "mobile_dist/index.html" ]; then
+            echo "ВНИМАНИЕ: index.html не найден в mobile_dist! Копирую вручную..."
+            if [ -d "dist/client" ] && [ -f "dist/client/index.html" ]; then
+              cp -R dist/client/* mobile_dist/
+              echo "Успешно скопировано из dist/client/"
+            elif [ -d "dist" ] && [ -f "dist/index.html" ]; then
+              cp -R dist/* mobile_dist/
+              echo "Успешно скопировано из dist/"
+            else
+              echo "КРИТИЧЕСКАЯ ОШИБКА: веб-интерфейс (index.html) не собрался вообще!"
+              exit 1
+            fi
+          fi
+          
+          echo "3. Проверяем содержимое папки mobile_dist:"
+          ls -la mobile_dist/
+          echo "=== КОНЕЦ ДИАГНОСТИКИ ==="
+
+      - name: Bootstrap Gradle Wrapper JAR
+        run: |
+          mkdir -p android/gradle/wrapper
+          if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
+            curl -sSLo android/gradle/wrapper/gradle-wrapper.jar \
+              https://raw.githubusercontent.com/gradle/gradle/v8.9.0/gradle/wrapper/gradle-wrapper.jar
+          fi
+          if [ ! -f android/gradlew ]; then
+            curl -sSLo android/gradlew \
+              https://raw.githubusercontent.com/gradle/gradle/v8.9.0/gradlew
+            chmod +x android/gradlew
+          fi
+
+      - name: Sync & Copy Capacitor
+        run: |
+          npx cap sync android
+
+      - name: Cleanup Gradle Cache & Trash
+        run: |
+          echo "Удаляю старый кэш и мусорные дистрибутивы..."
+          rm -rf ~/.gradle/caches/
+          rm -rf ~/.gradle/wrapper/dists/
+          cd android
+          chmod +x gradlew
+          ./gradlew clean
+
+      - name: Generate Debug Keystore & Get SHA1
+        run: |
+          echo "Генерирую debug.keystore и извлекаю SHA1..."
+          mkdir -p ~/.android
+          if [ ! -f ~/.android/debug.keystore ]; then
+            keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep SHA1
+
+      - name: Build Android APK
+        run: |
+          cd android
+          chmod +x gradlew
+          rm -rf app/build
+          ./gradlew assembleDebug --no-daemon --refresh-dependencies --stacktrace
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Trivo-Chat-Elite-APK
+          path: |
+            android/app/build/outputs/apk/**/*.apk
+          retention-days: 7

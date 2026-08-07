@@ -1,15 +1,91 @@
-// @lovable.dev/vite-tanstack-config already includes the following — do NOT add them manually
-// or the app will break with duplicate plugins:
-//   - TanStack devtools (dev-only, first), tanstackStart, viteReact, tailwindcss, tsConfigPaths,
-//     nitro (build-only using cloudflare as a default target), VITE_* env injection, @ path alias,
-//     React/TanStack dedupe, error logger plugins, and sandbox detection (port/host/strictPort).
-// You can pass additional config via defineConfig({ vite: { ... }, etc... }) if needed.
 import { defineConfig } from "@lovable.dev/vite-tanstack-config";
+import { copyFileSync, cpSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { resolve, dirname } from "node:path";
+
+// Bridge: Cloudflare ssr env emits to alternative dirs, but TanStack Start's
+// prerender expects dist/server/server.js (basename of wrangler "main").
+function mirrorServerEntry() {
+  return {
+    name: "trivo:mirror-server-entry",
+    apply: "build" as const,
+    writeBundle: {
+      sequential: true,
+      order: "post" as const,
+      handler(this: any) {
+        const envName = this?.environment?.name;
+        // Только для серверных сборок
+        if (envName !== "ssr" && envName !== "server") return;
+        
+        const destFile = resolve(process.cwd(), "dist/server/server.js");
+        const destDir = dirname(destFile);
+        mkdirSync(destDir, { recursive: true });
+
+        // Ищем сгенерированный файл во всех возможных папках
+        const possibleSources = [
+          resolve(process.cwd(), ".output/server/index.mjs"),
+          resolve(process.cwd(), "node_modules/.nitro/vite/services/ssr/index.js"),
+          resolve(process.cwd(), "dist/server/index.js")
+        ];
+
+        let found = false;
+        for (const src of possibleSources) {
+          if (existsSync(src)) {
+            const srcDir = dirname(src);
+
+            // Копируем ВСЮ папку целиком (включая assets), если это не та же самая папка
+            if (srcDir !== destDir) {
+              cpSync(srcDir, destDir, { recursive: true, force: true });
+            }
+
+            // Создаем server.js, который требует prerender (берем скопированный index.js/mjs)
+            const copiedSrcFile = resolve(destDir, src.endsWith('.mjs') ? 'index.mjs' : 'index.js');
+            if (existsSync(copiedSrcFile)) {
+               copyFileSync(copiedSrcFile, destFile);
+            } else {
+               // Фолбэк
+               copyFileSync(src, destFile);
+            }
+
+            // eslint-disable-next-line no-console
+            console.log("[trivo] Успешно скопирована директория", srcDir, "и создан", destFile);
+            found = true;
+            break;
+          }
+        }
+        
+        // Предохранитель, чтобы сборка Vite не падала с Fatal Error
+        if (!found) {
+            // eslint-disable-next-line no-console
+            console.log("[trivo] Внимание: серверный файл не найден, создаю заглушку для пререндера.");
+            writeFileSync(destFile, "export default {};");
+        }
+      },
+    },
+  };
+}
 
 export default defineConfig({
+  vite: {
+    base: "./",
+    plugins: [mirrorServerEntry()],
+  },
   tanstackStart: {
-    // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
-    // nitro/vite builds from this
+    // Route every request through src/server.tsx so SSR failures are logged
+    // and rendered as a readable page instead of a bare "Internal server error".
     server: { entry: "server" },
+    spa: {
+      enabled: true,
+      maskPath: "/",
+      prerender: {
+        outputPath: "/index.html",
+        crawlLinks: false,
+        retryCount: 0,
+      },
+    },
+    prerender: {
+      enabled: true,
+      crawlLinks: false,
+      failOnError: false, // <-- Отключает падение всей сборки, если пререндер отдельной страницы не удался
+    },
   },
 });

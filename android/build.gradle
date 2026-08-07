@@ -1,0 +1,32 @@
+// Top-level build file — Trivo Chat Elite
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url "https://mobile-sdk.yandex.ru/maven" }
+    }
+    dependencies {
+        // Android Gradle Plugin
+        classpath 'com.android.tools.build:gradle:8.7.2'
+        // google-services classpath purged — Firebase is no longer used.
+        // ИСПРАВЛЕНИЕ: Жестко указываем версию здесь, так как блок buildscript загружается ПЕРЕД variables.gradle
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0"
+    }
+}
+
+apply from: "variables.gradle"
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url "https://mobile-sdk.yandex.ru/maven" }
+        maven { url 'https://www.jitpack.io' }
+        // Guardian Project — tor-android (real tor daemon) + jtorctl control lib
+        maven { url 'https://raw.githubusercontent.com/guardianproject/gpmaven/master' }
+    }
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.buildDir
+}
