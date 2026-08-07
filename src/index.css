@@ -3,11 +3,10 @@
 @layer base {
   :root,
   .dark-theme {
-    --ad-banner-height: 0px;
     --safe-top: env(safe-area-inset-top, 0px);
     --bottom-nav-height: 60px;
     --bottom-nav-offset: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
-    --app-top-offset: calc(var(--safe-top) + var(--ad-banner-height, 0px));
+    --app-top-offset: var(--safe-top);
     --background: 0 0% 0%;
     --foreground: 0 0% 96%;
 
