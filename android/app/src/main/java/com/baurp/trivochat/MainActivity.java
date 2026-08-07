@@ -90,7 +90,7 @@ public class MainActivity extends BridgeActivity {
     /**
      * Last-resort native recovery surface for failures that happen before
      * React and its ErrorBoundary exist. This deliberately uses only Android
-     * framework widgets, so it remains available if Capacitor, an ads SDK, or
+     * framework widgets, so it remains available if Capacitor, an optional native plugin, or
      * the packaged web assets fail during BridgeActivity initialization.
      */
     private void renderNativeDiagnostic(Throwable fatal) {
