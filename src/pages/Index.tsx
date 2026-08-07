@@ -19,7 +19,7 @@ import { startPresence, setInvisibleMode } from "@/lib/presence";
 import { performStartupHandshake, listenForFriendRequests, acceptFriendRequest, purgeExpiredBufferedMessagesForAllUsers } from "@/lib/sync/peer-sync";
 import { initMockPeer } from "@/lib/mock-peer";
 import { isDuplicateMessage } from "@/lib/gun-setup";
-import { AD_CONFIG, getAppTopOffset, getBottomNavOffset } from "@/lib/ad-config";
+import { LAYOUT_CONFIG, getAppTopOffset, getBottomNavOffset } from "@/lib/layout-metrics";
 import { toast } from "sonner";
 import { useBiometricAuth } from "@/hooks/useBiometricAuth";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
@@ -229,14 +229,14 @@ const Index = () => {
     </div>
   ) : null;
 
-  // The ad banner was removed: the shell now claims the full viewport height and
+  // The app is ad-free: the shell claims the full viewport height and
   // only reserves the OS safe-area inset at the top.
   const rootStyle = {
     backgroundImage: "var(--gradient-bg)",
     paddingTop: "env(safe-area-inset-top, 0px)",
     height: "100dvh",
     ["--bottom-nav-offset" as string]: getBottomNavOffset(),
-    ["--bottom-nav-height" as string]: `${AD_CONFIG.BOTTOM_NAV_HEIGHT}px`,
+    ["--bottom-nav-height" as string]: `${LAYOUT_CONFIG.BOTTOM_NAV_HEIGHT}px`,
     ["--app-top-offset" as string]: getAppTopOffset(),
   } as React.CSSProperties;
 

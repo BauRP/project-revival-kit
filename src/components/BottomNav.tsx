@@ -2,7 +2,7 @@ import { MessageCircle, UserPlus, Users, User, Shield } from "lucide-react";
 import { motion } from "framer-motion";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { TranslationKey } from "@/i18n/translations";
-import { AD_CONFIG } from "@/lib/ad-config";
+import { LAYOUT_CONFIG } from "@/lib/layout-metrics";
 
 type Tab = "chats" | "add-friend" | "friends" | "security" | "profile";
 
@@ -43,7 +43,7 @@ const BottomNav = ({ activeTab, onTabChange }: BottomNavProps) => {
       <div
         className="glass-panel px-2 rounded-none rounded-t-2xl neon-border border-b-0 overflow-hidden"
         style={{
-          height: AD_CONFIG.BOTTOM_NAV_HEIGHT,
+          height: LAYOUT_CONFIG.BOTTOM_NAV_HEIGHT,
           paddingTop: 0,
           paddingBottom: 0,
         }}
