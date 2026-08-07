@@ -99,12 +99,6 @@ jobs:
           rm -rf app/build
           ./gradlew assembleDebug --no-daemon --refresh-dependencies --stacktrace
 
-      - name: Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Messenger-APK
-          path: android/app/build/outputs/apk/**/*.apk
-
       - name: Generate Summary & Download Link
         run: |
           # Ищем сгенерированный файл APK
@@ -133,12 +127,17 @@ jobs:
             DOWNLOAD_URL=$(curl -s -T "$APK_PATH" https://bashupload.com | grep -o 'https://bashupload.com/[^" ]*' | head -n 1)
           fi
 
-          # Вариант 4 (Безотказный резерв): Прямая ссылка на скачивание артефакта с GitHub через nightly.link
+          # Вариант 4: File.io
           if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" != http* ]]; then
-            DOWNLOAD_URL="https://nightly.link/${{ github.repository }}/actions/runs/${{ github.run_id }}/Messenger-APK.zip"
+            DOWNLOAD_URL=$(curl -s -F "file=@$APK_PATH" https://file.io | grep -o '"link":"[^"]*' | cut -d'"' -f4)
           fi
           set -e
 
-          echo "## 📱 Готовый файл APK для Messenger:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "[🚀 НАЖМИ СЮДА, ЧТОБЫ СКАЧАТЬ APK]($DOWNLOAD_URL)" >> $GITHUB_STEP_SUMMARY
+          if [[ "$DOWNLOAD_URL" == http* ]]; then
+            echo "## 📱 Готовый файл APK для Messenger:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "[🚀 НАЖМИ СЮДА, ЧТОБЫ СКАЧАТЬ APK]($DOWNLOAD_URL)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "КРИТИЧЕСКАЯ ОШИБКА: Не удалось загрузить APK ни на один облачный сервер."
+            exit 1
+          fi
