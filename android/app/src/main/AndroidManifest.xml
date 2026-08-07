@@ -23,6 +23,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission android:name="android.permission.ACCESS_MEDIA_LOCATION" />
 
     <!-- Legacy storage access (Android 12 and below only). Declared with an
          explicit maxSdkVersion so Android 13+ never prompts for them and the
@@ -36,10 +37,6 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="29" />
 
-
-    <!-- Google AdMob — Advertising ID (Android 13+) -->
-    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
-
     <application
         android:name="android.app.Application"
         android:allowBackup="false"
@@ -48,6 +45,7 @@
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
+        android:requestLegacyExternalStorage="true"
         android:supportsRtl="true"
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false"
@@ -85,30 +83,6 @@
                 android:resource="@xml/file_paths" />
         </provider>
 
-        <!-- Google AdMob App ID -->
-        <meta-data
-            android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="${admobAppId}"
-            tools:replace="android:value" />
-        <meta-data
-            android:name="com.google.android.gms.ads.flag.OPTIMIZE_INITIALIZATION"
-            android:value="true" />
-        <meta-data
-            android:name="com.google.android.gms.ads.flag.OPTIMIZE_AD_LOADING"
-            android:value="true" />
-
-        <!-- Yandex Mobile Ads App ID -->
-        <meta-data
-            android:name="com.yandex.mobile.ads.APP_ID"
-            android:value="${yandexAppId}"
-            tools:replace="android:value" />
-
-        <!-- Unified AdServices config (resolves Yandex/AdMob duplicate-property conflict) -->
-        <property
-            android:name="android.adservices.AD_SERVICES_CONFIG"
-            android:resource="@xml/gma_ad_services_config"
-            tools:replace="android:resource" />
-
     </application>
 
     <queries>
@@ -118,6 +92,17 @@
         </intent>
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.GET_CONTENT" />
+            <data android:mimeType="*/*" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.VIDEO_CAPTURE" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
         </intent>
     </queries>
 </manifest>
