@@ -229,8 +229,8 @@
 
   /* === MASTER SAFE-AREA FORMULA ===
      Web preview uses --safe-top fallback (24px). Real devices use env() inset.
-     --ad-height is set by Index.tsx: "50px" when AdMob banner is visible, else "0px".
-     Smooth transition lets the app "breathe" when ads/network toggle. */
+     The app is ad-free, so the only vertical reservation is the OS inset.
+     Smooth transition lets the app "breathe" when the network state toggles. */
   .header-safe-zone {
     /* The app shell already reserves env(safe-area-inset-top); this only adds
        a small breathing gap so titles sit high without a visual void. */
@@ -241,18 +241,6 @@
   .safe-top-offset {
     top: var(--app-top-offset);
     transition: top 0.2s ease-in-out;
-  }
-  /* Block 4: Strict 320x50 standard banner. The container width is set
-     inline (320px) — the !important reset is removed so the ad doesn't
-     stretch full-bleed and so it can't overlap or capture taps for the
-     header buttons positioned beside it. */
-  .ad-banner-container {
-    margin-left: auto !important;
-    margin-right: auto !important;
-    padding-left: 0 !important;
-    padding-right: 0 !important;
-    overflow: hidden !important;
-    contain: layout size style !important;
   }
   .safe-pb {
     padding-bottom: env(safe-area-inset-bottom, 0px);
