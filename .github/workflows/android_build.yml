@@ -99,43 +99,14 @@ jobs:
           rm -rf app/build
           ./gradlew assembleDebug --no-daemon --refresh-dependencies --stacktrace
 
-      - name: Upload APK & Generate Download Link
+      - name: Upload APK to GitHub Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Messenger-APK
+          path: android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+
+      - name: Publish Success Message
         run: |
-          APK_PATH="android/app/build/outputs/apk/debug/app-debug.apk"
-          
-          if [ ! -f "$APK_PATH" ]; then
-            echo "КРИТИЧЕСКАЯ ОШИБКА: APK не найден!"
-            exit 1
-          fi
-
-          echo "Отправка APK на независимый сервер..."
-          
-          set +e
-
-          # Сервер 1: Catbox (очень стабильный)
-          DOWNLOAD_URL=$(curl -s -F "reqtype=fileupload" -F "fileToUpload=@$APK_PATH" https://catbox.moe/user/api.php)
-
-          # Сервер 2: Litterbox (резерв на 24 часа)
-          if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" != http* ]]; then
-            DOWNLOAD_URL=$(curl -s -F "reqtype=fileupload" -F "time=24h" -F "fileToUpload=@$APK_PATH" https://litterbox.catbox.moe/resources/internals/api.php)
-          fi
-
-          # Сервер 3: File.io (резерв 2)
-          if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" != http* ]]; then
-            DOWNLOAD_URL=$(curl -s -F "file=@$APK_PATH" https://file.io | grep -o '"link":"[^"]*' | cut -d'"' -f4)
-          fi
-
-          set -e
-
-          if [[ "$DOWNLOAD_URL" == http* ]]; then
-            echo "=================================================="
-            echo "УСПЕШНО! ССЫЛКА НА APK: $DOWNLOAD_URL"
-            echo "=================================================="
-
-            echo "## 📱 Готовый файл APK для теста:" >> $GITHUB_STEP_SUMMARY
-            echo "[🚀 НАЖМИ СЮДА, ЧТОБЫ СКАЧАТЬ APK]($DOWNLOAD_URL)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "Ошибка: Ни один файлообменник не смог принять файл."
-            echo "Ответ сервера: $DOWNLOAD_URL"
-            exit 1
-          fi
+          echo "## 🎉 Сборка Messenger завершена успешно!" >> $GITHUB_STEP_SUMMARY
+          echo "Чтобы скачать APK, прокрути эту страницу в самый низ до раздела **Artifacts** и нажми на **Messenger-APK**." >> $GITHUB_STEP_SUMMARY
