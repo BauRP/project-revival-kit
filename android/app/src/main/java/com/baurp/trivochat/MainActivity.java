@@ -22,9 +22,9 @@ import java.io.StringWriter;
  * Defensive contract:
  *  - Plugin registration happens BEFORE super.onCreate() (Capacitor 8 rule) but
  *    every single registration is individually wrapped in a Throwable guard.
- *    A missing optional SDK (e.g. the Yandex Mobile Ads classes stripped by R8
- *    or absent from a build flavour) raises NoClassDefFoundError here, which
- *    would otherwise abort onCreate and surface as
+ *    A missing optional SDK (e.g. Tor transport classes stripped by R8 or absent
+ *    from a build flavour) raises NoClassDefFoundError here, which would
+ *    otherwise abort onCreate and surface as
  *    "Trivo Chat Elite keeps stopping" before a single pixel is drawn.
  *  - DOM storage / database storage are explicitly enabled on the WebView so
  *    localStorage and IndexedDB are usable; the JS layer additionally falls
@@ -41,12 +41,11 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         /*
          * Resolve optional plugin classes by name INSIDE the guard. Passing
-         * YandexAdsPlugin.class as an argument resolves the class before the
-         * old helper's try block is entered; a missing/transitively broken ads
-         * SDK could therefore throw NoClassDefFoundError and terminate the
-         * process before BridgeActivity drew its first frame.
+         * a class literal as an argument would resolve the class before the
+         * helper's try block is entered; a missing/transitively broken SDK
+         * could therefore throw NoClassDefFoundError and terminate the process
+         * before BridgeActivity drew its first frame.
          */
-        registerPluginSafely("com.baurp.trivochat.YandexAdsPlugin", "YandexAds");
         registerPluginSafely("com.baurp.trivochat.TorTransportPlugin", "TorTransport");
 
         try {
