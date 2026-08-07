@@ -3,7 +3,6 @@ buildscript {
     repositories {
         google()
         mavenCentral()
-        maven { url "https://mobile-sdk.yandex.ru/maven" }
     }
     dependencies {
         // Android Gradle Plugin
@@ -20,7 +19,6 @@ allprojects {
     repositories {
         google()
         mavenCentral()
-        maven { url "https://mobile-sdk.yandex.ru/maven" }
         maven { url 'https://www.jitpack.io' }
         // Guardian Project — tor-android (real tor daemon) + jtorctl control lib
         maven { url 'https://raw.githubusercontent.com/guardianproject/gpmaven/master' }
