@@ -99,14 +99,46 @@ jobs:
           rm -rf app/build
           ./gradlew assembleDebug --no-daemon --refresh-dependencies --stacktrace
 
-      - name: Upload APK to GitHub Artifacts
+      - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Messenger-APK
           path: android/app/build/outputs/apk/**/*.apk
-          if-no-files-found: error
 
-      - name: Publish Success Message
+      - name: Generate Summary & Download Link
         run: |
-          echo "## 🎉 Сборка Messenger завершена успешно!" >> $GITHUB_STEP_SUMMARY
-          echo "Чтобы скачать APK, прокрути эту страницу в самый низ до раздела **Artifacts** и нажми на **Messenger-APK**." >> $GITHUB_STEP_SUMMARY
+          # Ищем сгенерированный файл APK
+          APK_PATH=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
+
+          if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
+            echo "КРИТИЧЕСКАЯ ОШИБКА: APK не найден!"
+            exit 1
+          fi
+
+          echo "Найден APK по адресу: $APK_PATH"
+
+          set +e
+          DOWNLOAD_URL=""
+
+          # Вариант 1: Catbox
+          DOWNLOAD_URL=$(curl -s -F "reqtype=fileupload" -F "fileToUpload=@$APK_PATH" https://catbox.moe/user/api.php)
+
+          # Вариант 2: Litterbox
+          if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" != http* ]]; then
+            DOWNLOAD_URL=$(curl -s -F "reqtype=fileupload" -F "time=24h" -F "fileToUpload=@$APK_PATH" https://litterbox.catbox.moe/resources/internals/api.php)
+          fi
+
+          # Вариант 3: Bashupload
+          if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" != http* ]]; then
+            DOWNLOAD_URL=$(curl -s -T "$APK_PATH" https://bashupload.com | grep -o 'https://bashupload.com/[^" ]*' | head -n 1)
+          fi
+
+          # Вариант 4 (Безотказный резерв): Прямая ссылка на скачивание артефакта с GitHub через nightly.link
+          if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" != http* ]]; then
+            DOWNLOAD_URL="https://nightly.link/${{ github.repository }}/actions/runs/${{ github.run_id }}/Messenger-APK.zip"
+          fi
+          set -e
+
+          echo "## 📱 Готовый файл APK для Messenger:" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "[🚀 НАЖМИ СЮДА, ЧТОБЫ СКАЧАТЬ APK]($DOWNLOAD_URL)" >> $GITHUB_STEP_SUMMARY
