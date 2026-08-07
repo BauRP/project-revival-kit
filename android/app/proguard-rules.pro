@@ -49,20 +49,9 @@
 -keep class org.webrtc.** { *; }
 -keep class com.cloudwebrtc.** { *; }
 
-# --- Yandex Mobile Ads ---------------------------------------
--keep class com.yandex.mobile.ads.** { *; }
--keep class com.yandex.metrica.** { *; }
--dontwarn com.yandex.**
-
-# --- Google AdMob / Play Services ----------------------------
--keep class com.google.android.gms.ads.** { *; }
--keep class com.google.android.gms.common.** { *; }
--keep class com.google.android.gms.measurement.** { *; }
--dontwarn com.google.android.gms.**
-
-# --- Firebase ------------------------------------------------
-# Firebase SDKs have been removed from the project — no rules required.
-
+# --- Advertising / Analytics SDKs -----------------------------
+# Removed: the application is completely ad-free and Firebase is unused,
+# so no ad-network keep rules are required.
 
 # --- Encryption / BouncyCastle / TweetNaCl -------------------
 -keep class org.bouncycastle.** { *; }
