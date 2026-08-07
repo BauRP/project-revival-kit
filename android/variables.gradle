@@ -28,15 +28,7 @@ ext {
     // Cordova compatibility
     cordovaAndroidVersion = '10.1.1'
 
-    // Google Mobile Ads
-    playServicesAdsVersion = '23.3.0'
-    playServicesAdsIdentifierVersion = '18.0.1'
-    playServicesAppSetVersion = '16.0.2'
-    playServicesBaseVersion = '18.5.0'
-
-    // Yandex Mobile Ads
-    yandexMobileAdsVersion = '7.2.0'
-
-    // Firebase removed — Trivo Chat Elite runs on the independent Node.js
-    // backend. AdMob versions above remain active.
+    // Advertising SDKs removed — Trivo Chat Elite is completely ad-free and
+    // Firebase is unused; the app talks only to its own Node.js backend and
+    // the P2P / Tor transports.
 }
