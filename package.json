@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && rm -rf mobile_dist && mkdir -p mobile_dist && (cp -R .output/public/* mobile_dist/ 2>/dev/null || cp -R dist/client/* mobile_dist/ 2>/dev/null || cp -R dist/* mobile_dist/ 2>/dev/null)",
+    "build": "vite build && rm -rf dist && mkdir -p dist && (cp -R .output/public/* dist/ 2>/dev/null || cp -R dist/client/* dist/ 2>/dev/null || true)",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "capacitor:sync": "npx cap sync android",
