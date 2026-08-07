@@ -38,6 +38,7 @@ jobs:
           find . -name "index.html" -not -path "*/node_modules/*" -not -path "*/android/*" -not -path "*/.git/*"
           
           echo "2. Гарантируем, что файлы скопированы в mobile_dist:"
+          mkdir -p mobile_dist
           if [ ! -f "mobile_dist/index.html" ]; then
             echo "ВНИМАНИЕ: index.html не найден в mobile_dist! Копирую вручную..."
             if [ -d "dist/client" ] && [ -f "dist/client/index.html" ]; then
