@@ -1,106 +1,142 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import {
-  Outlet,
-  Link,
-  createRootRouteWithContext,
-  useRouter,
-  HeadContent,
-  Scripts,
-} from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { Outlet, createRootRoute, HeadContent, Scripts, useRouter } from "@tanstack/react-router";
+
+// Earliest possible execution: installs the storage fallback and the global
+// window.onerror / unhandledrejection traps before any app module evaluates.
+import "@/lib/boot-guard";
 
 import appCss from "../styles.css?url";
-import { reportLovableError } from "../lib/lovable-error-reporting";
+import legacyCss from "../index.css?url";
 
-function NotFoundComponent() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
-        <h1 className="text-7xl font-bold text-foreground">404</h1>
-        <h2 className="mt-4 text-xl font-semibold text-foreground">Page not found</h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          The page you're looking for doesn't exist or has been moved.
-        </p>
-        <div className="mt-6">
-          <Link
-            to="/"
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            Go home
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
 
-function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
-  console.error(error);
-  const router = useRouter();
-  useEffect(() => {
-    reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
-
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="max-w-md text-center">
-        <h1 className="text-xl font-semibold tracking-tight text-foreground">
-          This page didn't load
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Something went wrong on our end. You can try refreshing or head back home.
-        </p>
-        <div className="mt-6 flex flex-wrap justify-center gap-2">
-          <button
-            onClick={() => {
-              router.invalidate();
-              reset();
-            }}
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-          >
-            Try again
-          </button>
-          <a
-            href="/"
-            className="inline-flex items-center justify-center rounded-md border border-input bg-background px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-          >
-            Go home
-          </a>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()({
+export const Route = createRootRoute({
+  ssr: false,
   head: () => ({
     meta: [
       { charSet: "utf-8" },
-      { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
+      {
+        name: "viewport",
+        content:
+          "width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover",
+      },
+      { title: "Trivo Chat" },
+      { name: "description", content: "Защищенный мессенджер нового поколения" },
       { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
       { property: "og:type", content: "website" },
+      { property: "og:title", content: "Trivo Chat" },
+      { property: "og:description", content: "Защищенный мессенджер нового поколения" },
       { name: "twitter:card", content: "summary_large_image" },
-      { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:title", content: "Trivo Chat" },
+      { name: "twitter:description", content: "Защищенный мессенджер нового поколения" },
     ],
     links: [
+      { rel: "icon", type: "image/x-icon", href: "/favicon.ico" },
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
         rel: "stylesheet",
-        href: appCss,
+        href: "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap",
       },
-      { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
+      { rel: "stylesheet", href: appCss },
+      { rel: "stylesheet", href: legacyCss },
     ],
   }),
   shellComponent: RootShell,
   component: RootComponent,
-  notFoundComponent: NotFoundComponent,
-  errorComponent: ErrorComponent,
+  errorComponent: RootErrorComponent,
+  notFoundComponent: () => null,
 });
 
-function RootShell({ children }: { children: ReactNode }) {
+/**
+ * Router-level error boundary. Catches every throw from loaders and from the
+ * React tree (including a failed lazy chunk for the legacy app shell) before
+ * it can reach h3 and become an opaque 500.
+ */
+function RootErrorComponent({ error }: { error: Error }) {
+  console.error("[trivo] route error boundary:", error);
+  const router = useRouter();
+
+  return (
+    <div
+      style={{
+        minHeight: "100dvh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 24,
+        background: "#08090d",
+        color: "#e8ecf5",
+        fontFamily:
+          '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+      }}
+    >
+      <div
+        style={{
+          width: "100%",
+          maxWidth: 420,
+          padding: "32px 24px",
+          borderRadius: 20,
+          textAlign: "center",
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.12)",
+        }}
+      >
+        <h1 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 700 }}>
+          Something went wrong
+        </h1>
+        <p
+          style={{
+            margin: "0 0 24px",
+            fontSize: 14,
+            lineHeight: 1.5,
+            color: "rgba(232,236,245,0.7)",
+          }}
+        >
+          {error?.message || "An unexpected error occurred."}
+        </p>
+        <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            onClick={() => {
+              void router.invalidate();
+            }}
+            style={{
+              cursor: "pointer",
+              borderRadius: 12,
+              padding: "12px 20px",
+              fontSize: 14,
+              fontWeight: 600,
+              border: "1px solid #4f7cff",
+              background: "#4f7cff",
+              color: "#fff",
+            }}
+          >
+            Try again
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window !== "undefined") window.location.href = "/";
+            }}
+            style={{
+              cursor: "pointer",
+              borderRadius: 12,
+              padding: "12px 20px",
+              fontSize: 14,
+              fontWeight: 600,
+              border: "1px solid rgba(255,255,255,0.16)",
+              background: "rgba(255,255,255,0.06)",
+              color: "#e8ecf5",
+            }}
+          >
+            Go home
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RootShell({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
       <head>
@@ -115,12 +151,5 @@ function RootShell({ children }: { children: ReactNode }) {
 }
 
 function RootComponent() {
-  const { queryClient } = Route.useRouteContext();
-
-  return (
-    <QueryClientProvider client={queryClient}>
-      {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
-      <Outlet />
-    </QueryClientProvider>
-  );
+  return <Outlet />;
 }

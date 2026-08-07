@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Network Security — Trivo Chat Elite
+  HTTPS-only by default. Cleartext is permitted ONLY for local P2P /
+  loopback / GunDB relays required by the encrypted messenger transport.
+-->
+<network-security-config>
+
+    <!-- Default: HTTPS-only with HSTS for production -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!--
+      Emulator host alias. Android emulators must use 10.0.2.2 to reach the
+      development machine; 127.0.0.1 points back into the emulator itself.
+      Production traffic remains HTTPS-only. Tor's native SOCKS/listener
+      loopback does not traverse WebView network-security policy.
+    -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="true">10.0.2.2</domain>
+    </domain-config>
+
+    <!-- Trusted backend domains — HTTPS-pinned -->
+    <domain-config cleartextTrafficPermitted="false">
+        <!-- Independent Trivo Node.js backend (HTTP + WSS) -->
+        <domain includeSubdomains="true">ngrok-free.dev</domain>
+        <domain includeSubdomains="true">skinhead-crop-vagabond.ngrok-free.dev</domain>
+    </domain-config>
+
+</network-security-config>

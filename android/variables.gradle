@@ -1,0 +1,34 @@
+// Trivo Chat Elite — Synchronized version controller
+// All Android module versions live here for single-source-of-truth.
+ext {
+    // SDK / Tooling
+    // Android 11 (API 30) is the hard floor; target the latest stable platform.
+    minSdkVersion = 30
+    compileSdkVersion = 36
+    targetSdkVersion = 36
+    buildToolsVersion = '36.0.0'
+    ndkVersion = '26.1.10909125'
+
+    // Kotlin / AGP
+    kotlin_version = '2.1.0'
+    androidxActivityVersion = '1.9.2'
+    androidxAppCompatVersion = '1.7.0'
+    androidxCoordinatorLayoutVersion = '1.2.0'
+    androidxCoreVersion = '1.13.1'
+    androidxFragmentVersion = '1.8.2'
+    androidxBrowserVersion = '1.8.0'
+    androidxMaterialVersion = '1.12.0'
+    androidxWebkitVersion = '1.11.0'
+
+    // Test
+    junitVersion = '4.13.2'
+    androidxJunitVersion = '1.2.1'
+    androidxEspressoCoreVersion = '3.6.1'
+
+    // Cordova compatibility
+    cordovaAndroidVersion = '10.1.1'
+
+    // Advertising SDKs removed — Trivo Chat Elite is completely ad-free and
+    // Firebase is unused; the app talks only to its own Node.js backend and
+    // the P2P / Tor transports.
+}
