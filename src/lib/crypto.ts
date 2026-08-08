@@ -15,16 +15,13 @@ export interface IdentityKeys {
 }
 
 /**
- * Generate or load local Ed25519 + X25519 identity.
+ * Synchronous keypair generation. Used ONLY as the worker fallback path
+ * (very old WebViews without Worker support).
  */
-export async function getOrCreateIdentity(): Promise<IdentityKeys> {
-  const existing = await dbGet<IdentityKeys>("identity", "keys");
-  if (existing) return existing;
-
+export function generateIdentityKeysSync(): IdentityKeys {
   const signingKP = nacl.sign.keyPair();
   const exchangeKP = nacl.box.keyPair();
-
-  const identity: IdentityKeys = {
+  return {
     signing: {
       publicKey: encodeBase64(signingKP.publicKey),
       secretKey: encodeBase64(signingKP.secretKey),
@@ -35,6 +32,25 @@ export async function getOrCreateIdentity(): Promise<IdentityKeys> {
     },
     createdAt: Date.now(),
   };
+}
+
+/**
+ * Generate or load the local Ed25519 + X25519 identity.
+ * Generation is delegated to the crypto Web Worker so the UI thread stays free
+ * during first launch; the dynamic import avoids a module cycle.
+ */
+export async function getOrCreateIdentity(): Promise<IdentityKeys> {
+  const existing = await dbGet<IdentityKeys>("identity", "keys");
+  if (existing) return existing;
+
+  let identity: IdentityKeys;
+  try {
+    const { generateIdentityKeysAsync } = await import("./crypto-async");
+    identity = await generateIdentityKeysAsync();
+  } catch (error) {
+    console.warn("[trivo] worker keygen unavailable, generating inline:", error);
+    identity = generateIdentityKeysSync();
+  }
 
   await dbPut("identity", "keys", identity);
   return identity;
