@@ -44,8 +44,6 @@
 -dontwarn com.getcapacitor.**
 
 
-# --- GunDB / P2P signaling -----------------------------------
--keep class io.gun.** { *; }
 -keep class org.webrtc.** { *; }
 -keep class com.cloudwebrtc.** { *; }
 

@@ -1,5 +1,6 @@
 // Decentralized Base58 Identity System
 import nacl from "tweetnacl";
+import { decodeBase64 } from "tweetnacl-util";
 import bs58 from "bs58";
 import { dbGet, dbPut } from "./storage";
 
@@ -30,10 +31,10 @@ export function generateSecureUserId(length = 12): string {
  */
 export function publicKeyToBase58Id(publicKey: string): string {
   try {
-    // Безопасный перевод Base64 ключа в байты без использования устаревшего atob
-    const binaryString = Buffer.from(publicKey, 'base64');
-    const bytes = new Uint8Array(binaryString);
-    
+    // `Buffer` does not exist inside the Android WebView — decoding must use a
+    // pure-JS base64 implementation, otherwise this throws on every launch.
+    const bytes = decodeBase64(publicKey);
+
     // Создаем короткий, но уникальный хеш (20 байт)
     const hash = nacl.hash(bytes).slice(0, 20);
     return bs58.encode(hash);

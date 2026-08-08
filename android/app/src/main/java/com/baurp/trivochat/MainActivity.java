@@ -1,6 +1,7 @@
 package com.baurp.trivochat;
 
 import android.os.Bundle;
+import android.os.Looper;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.ViewGroup;
@@ -40,6 +41,15 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         /*
+         * Process-wide last-resort trap. Any exception escaping a background
+         * thread (Tor bootstrap worker, SOCKS dialer, notification builder)
+         * would otherwise reach the default handler and kill the process with
+         * "App has stopped". Logging it and keeping the WebView alive lets the
+         * JS layer show a diagnostic instead of a native abort.
+         */
+        installUncaughtExceptionHandler();
+
+        /*
          * Resolve optional plugin classes by name INSIDE the guard. Passing
          * a class literal as an argument would resolve the class before the
          * helper's try block is entered; a missing/transitively broken SDK
@@ -69,6 +79,32 @@ public class MainActivity extends BridgeActivity {
             registerPlugin(pluginClass);
         } catch (Throwable t) {
             Log.e(TAG, "Optional plugin '" + label + "' not registered", t);
+        }
+    }
+
+    /**
+     * Installs a default uncaught-exception handler that logs the failure and
+     * only delegates to the platform handler for the main thread (where the
+     * process genuinely cannot continue). Background-thread crashes — the Tor
+     * bootstrap and SOCKS workers run there — no longer terminate the app.
+     */
+    private void installUncaughtExceptionHandler() {
+        try {
+            final Thread.UncaughtExceptionHandler previous =
+                    Thread.getDefaultUncaughtExceptionHandler();
+            Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+                try {
+                    Log.e(TAG, "Uncaught exception on thread '" + thread.getName() + "'", throwable);
+                } catch (Throwable ignored) {
+                    // logging must never re-enter the handler
+                }
+                boolean isMain = thread == Looper.getMainLooper().getThread();
+                if (isMain && previous != null) {
+                    previous.uncaughtException(thread, throwable);
+                }
+            });
+        } catch (Throwable t) {
+            Log.e(TAG, "Unable to install uncaught exception handler", t);
         }
     }
 

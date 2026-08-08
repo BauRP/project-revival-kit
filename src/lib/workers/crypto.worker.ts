@@ -17,7 +17,8 @@ export type CryptoJobKind =
   | "encrypt"
   | "decrypt"
   | "parse"
-  | "stringify";
+  | "stringify"
+  | "keygen";
 
 export interface CryptoJob {
   id: number;
@@ -34,6 +35,25 @@ export interface CryptoJobResult {
 
 function run(kind: CryptoJobKind, p: Record<string, unknown>): unknown {
   switch (kind) {
+    case "keygen": {
+      // Ed25519 + X25519 keypair generation. This is the single heaviest
+      // cryptographic operation of the whole boot sequence, so it MUST never
+      // execute on the UI thread (it is what stalls WebView creation on
+      // Android and surfaces as "App has stopped" / ANR on first launch).
+      const signingKP = nacl.sign.keyPair();
+      const exchangeKP = nacl.box.keyPair();
+      return {
+        signing: {
+          publicKey: encodeBase64(signingKP.publicKey),
+          secretKey: encodeBase64(signingKP.secretKey),
+        },
+        exchange: {
+          publicKey: encodeBase64(exchangeKP.publicKey),
+          secretKey: encodeBase64(exchangeKP.secretKey),
+        },
+        createdAt: Date.now(),
+      };
+    }
     case "sign": {
       const sig = nacl.sign.detached(
         decodeUTF8(String(p.data)),

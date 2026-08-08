@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Network Security — Trivo Chat Elite
-  HTTPS-only by default. Cleartext is permitted ONLY for local P2P /
-  loopback / GunDB relays required by the encrypted messenger transport.
+  HTTPS-only by default. Cleartext is permitted ONLY on the loopback interface,
+  which is where the Tor SOCKS proxy and the local onion listener live.
 -->
 <network-security-config>
 
@@ -14,20 +14,16 @@
     </base-config>
 
     <!--
-      Emulator host alias. Android emulators must use 10.0.2.2 to reach the
-      development machine; 127.0.0.1 points back into the emulator itself.
-      Production traffic remains HTTPS-only. Tor's native SOCKS/listener
-      loopback does not traverse WebView network-security policy.
+      Loopback exception: the Tor daemon exposes its SOCKS5 port and the local
+      onion service listener on 127.0.0.1. Those sockets are plain TCP by
+      design (the transport itself is onion-encrypted), so cleartext must be
+      permitted for localhost only — never for any public host.
+      10.0.2.2 is the emulator's alias for the developer machine's loopback.
     -->
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="true">10.0.2.2</domain>
-    </domain-config>
-
-    <!-- Trusted backend domains — HTTPS-pinned -->
-    <domain-config cleartextTrafficPermitted="false">
-        <!-- Independent Trivo Node.js backend (HTTP + WSS) -->
-        <domain includeSubdomains="true">ngrok-free.dev</domain>
-        <domain includeSubdomains="true">skinhead-crop-vagabond.ngrok-free.dev</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
     </domain-config>
 
 </network-security-config>
