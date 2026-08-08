@@ -1,6 +1,7 @@
 package com.baurp.trivochat;
 
 import android.os.Bundle;
+import android.os.Looper;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.ViewGroup;
@@ -104,21 +105,6 @@ public class MainActivity extends BridgeActivity {
             });
         } catch (Throwable t) {
             Log.e(TAG, "Unable to install uncaught exception handler", t);
-        }
-    }
-
-    private void unusedLegacyRegistration(String className, String label) {
-        try {
-            Class<?> rawClass = Class.forName(className, false, getClassLoader());
-            if (!Plugin.class.isAssignableFrom(rawClass)) {
-                Log.e(TAG, "Optional plugin '" + label + "' does not extend Capacitor Plugin");
-                return;
-            }
-            @SuppressWarnings("unchecked")
-            Class<? extends Plugin> pluginClass = (Class<? extends Plugin>) rawClass;
-            registerPlugin(pluginClass);
-        } catch (Throwable t) {
-            Log.e(TAG, "Optional plugin '" + label + "' not registered", t);
         }
     }
 
