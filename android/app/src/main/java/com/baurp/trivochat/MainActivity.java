@@ -40,6 +40,15 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         /*
+         * Process-wide last-resort trap. Any exception escaping a background
+         * thread (Tor bootstrap worker, SOCKS dialer, notification builder)
+         * would otherwise reach the default handler and kill the process with
+         * "App has stopped". Logging it and keeping the WebView alive lets the
+         * JS layer show a diagnostic instead of a native abort.
+         */
+        installUncaughtExceptionHandler();
+
+        /*
          * Resolve optional plugin classes by name INSIDE the guard. Passing
          * a class literal as an argument would resolve the class before the
          * helper's try block is entered; a missing/transitively broken SDK
