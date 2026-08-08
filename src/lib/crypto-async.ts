@@ -13,6 +13,8 @@ import {
   verifySignature,
   encryptMessage,
   decryptMessage,
+  generateIdentityKeysSync,
+  type IdentityKeys,
 } from "./crypto";
 import type { CryptoJobKind, CryptoJobResult } from "./workers/crypto.worker";
 
@@ -116,6 +118,14 @@ function dispatch<T>(
 
 export function signDataAsync(data: string, secretKey: string): Promise<string> {
   return dispatch("sign", { data, secretKey }, () => signData(data, secretKey));
+}
+
+/**
+ * Generate a fresh Ed25519 + X25519 identity in the crypto worker so the very
+ * first render is never blocked by keypair generation.
+ */
+export function generateIdentityKeysAsync(): Promise<IdentityKeys> {
+  return dispatch<IdentityKeys>("keygen", {}, () => generateIdentityKeysSync());
 }
 
 export function verifySignatureAsync(
