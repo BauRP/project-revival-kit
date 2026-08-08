@@ -81,6 +81,47 @@ public class MainActivity extends BridgeActivity {
         }
     }
 
+    /**
+     * Installs a default uncaught-exception handler that logs the failure and
+     * only delegates to the platform handler for the main thread (where the
+     * process genuinely cannot continue). Background-thread crashes — the Tor
+     * bootstrap and SOCKS workers run there — no longer terminate the app.
+     */
+    private void installUncaughtExceptionHandler() {
+        try {
+            final Thread.UncaughtExceptionHandler previous =
+                    Thread.getDefaultUncaughtExceptionHandler();
+            Thread.setDefaultUncaughtExceptionHandler((thread, throwable) -> {
+                try {
+                    Log.e(TAG, "Uncaught exception on thread '" + thread.getName() + "'", throwable);
+                } catch (Throwable ignored) {
+                    // logging must never re-enter the handler
+                }
+                boolean isMain = thread == Looper.getMainLooper().getThread();
+                if (isMain && previous != null) {
+                    previous.uncaughtException(thread, throwable);
+                }
+            });
+        } catch (Throwable t) {
+            Log.e(TAG, "Unable to install uncaught exception handler", t);
+        }
+    }
+
+    private void unusedLegacyRegistration(String className, String label) {
+        try {
+            Class<?> rawClass = Class.forName(className, false, getClassLoader());
+            if (!Plugin.class.isAssignableFrom(rawClass)) {
+                Log.e(TAG, "Optional plugin '" + label + "' does not extend Capacitor Plugin");
+                return;
+            }
+            @SuppressWarnings("unchecked")
+            Class<? extends Plugin> pluginClass = (Class<? extends Plugin>) rawClass;
+            registerPlugin(pluginClass);
+        } catch (Throwable t) {
+            Log.e(TAG, "Optional plugin '" + label + "' not registered", t);
+        }
+    }
+
     private void configureWebView() {
         try {
             WebView webView = getBridge() != null ? getBridge().getWebView() : null;
