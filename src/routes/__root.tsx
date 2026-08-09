@@ -93,6 +93,23 @@ function RootErrorComponent({ error }: { error: Error }) {
         >
           {error?.message || "An unexpected error occurred."}
         </p>
+        <pre
+          style={{
+            maxHeight: 260,
+            overflow: "auto",
+            margin: "0 0 24px",
+            padding: 12,
+            borderRadius: 8,
+            textAlign: "left",
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-word",
+            background: "rgba(0,0,0,0.35)",
+            color: "rgba(232,236,245,0.8)",
+            fontSize: 11,
+          }}
+        >
+          {error?.stack || "No stack trace available."}
+        </pre>
         <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
           <button
             type="button"

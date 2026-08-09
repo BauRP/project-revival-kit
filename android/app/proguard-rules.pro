@@ -1,6 +1,6 @@
 # ============================================================
 # Trivo Chat Elite — R8 / ProGuard shield
-# Preserves bridge, P2P, encryption, and ad-network entry points
+# Preserves bridge, Tor transport, and encryption entry points
 # ============================================================
 
 # --- App core -------------------------------------------------
@@ -46,10 +46,6 @@
 
 -keep class org.webrtc.** { *; }
 -keep class com.cloudwebrtc.** { *; }
-
-# --- Advertising / Analytics SDKs -----------------------------
-# Removed: the application is completely ad-free and Firebase is unused,
-# so no ad-network keep rules are required.
 
 # --- Encryption / BouncyCastle / TweetNaCl -------------------
 -keep class org.bouncycastle.** { *; }

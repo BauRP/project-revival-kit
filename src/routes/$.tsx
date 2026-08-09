@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ClientOnly } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
 import ErrorBoundary from "@/components/ErrorBoundary";
+import BootSplash from "@/components/BootSplash";
 
 const LegacyApp = lazy(() => import("@/App"));
 
@@ -11,9 +12,9 @@ export const Route = createFileRoute("/$")({
 
 function SplatRoute() {
   return (
-    <ClientOnly fallback={<div style={{ minHeight: "100vh", background: "#000" }} />}>
+    <ClientOnly fallback={<BootSplash />}>
       <ErrorBoundary>
-        <Suspense fallback={<div style={{ minHeight: "100vh", background: "#000" }} />}>
+        <Suspense fallback={<BootSplash />}>
           <LegacyApp />
         </Suspense>
       </ErrorBoundary>

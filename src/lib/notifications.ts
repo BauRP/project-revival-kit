@@ -1,10 +1,10 @@
-import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Translation } from "@capacitor-mlkit/translation";
 import { detectLanguage, getTranslationSettings, translateWithBundledDictionary } from "@/lib/translation-config";
+import { isNative } from "@/lib/platform";
 
 export async function notifyIncomingMessage(title: string, body: string): Promise<void> {
-  if (!Capacitor.isNativePlatform()) {
+  if (!isNative()) {
     if ("Notification" in window && Notification.permission === "granted") {
       new Notification(title, { body });
     }
@@ -69,7 +69,7 @@ async function runTranslation(text: string, sourceLanguage: string, targetLangua
   if (bundled) return bundled;
 
   // Fallback 2: on-device ML Kit (native only).
-  if (!Capacitor.isNativePlatform()) return null;
+  if (!isNative()) return null;
   try {
     const { text: translated } = await Translation.translate({
       text,

@@ -1,11 +1,10 @@
-// Real-time presence system via GunDB
+// Local presence state mirrored from Tor peer events.
 //
 // State Isolation Policy:
 //  - "Invisible Mode" (stealthMode) is enforced HERE on presence broadcasting.
 //  - When invisible, the user's heartbeat / online status is NOT published —
 //    peers will see them as "offline".
-//  - This MUST NOT be coupled to ad rendering. Ads remain visible regardless.
-import gun from "./local-peer-cache";
+import localPeerCache from "./local-peer-cache";
 
 type PresenceStatus = "online" | "away" | "offline";
 type PresenceCallback = (userId: string, status: PresenceStatus) => void;
@@ -26,7 +25,7 @@ export function setInvisibleMode(enabled: boolean, userId?: string) {
   if (enabled && !wasInvisible) {
     // Going invisible: tell peers we're offline immediately.
     try {
-      gun.get("trivo-presence").get(userId).put({
+      localPeerCache.get("trivo-presence").get(userId).put({
         status: "offline",
         lastSeen: Date.now(),
       });
@@ -64,10 +63,10 @@ export function startPresence(userId: string) {
 
 function publishHeartbeat(userId: string) {
   // Invisible Mode: skip presence broadcast so other users see us offline.
-  // Does NOT affect ads, P2P messaging, or any other subsystem.
+  // Does not affect Tor messaging or any other subsystem.
   if (invisibleMode) return;
   try {
-    gun.get("trivo-presence").get(userId).put({
+    localPeerCache.get("trivo-presence").get(userId).put({
       status: document.hidden ? "away" : "online",
       lastSeen: Date.now(),
     });
@@ -78,7 +77,7 @@ function publishStatus(userId: string, status: PresenceStatus) {
   // Respect Invisible Mode: never advertise online/away while invisible.
   if (invisibleMode && status !== "offline") return;
   try {
-    gun.get("trivo-presence").get(userId).put({
+    localPeerCache.get("trivo-presence").get(userId).put({
       status,
       lastSeen: Date.now(),
     });
@@ -88,7 +87,7 @@ function publishStatus(userId: string, status: PresenceStatus) {
 export function subscribeToPresence(userId: string): () => void {
   try {
     // Босс: добавили очистку, чтобы не было дублей подписок
-    gun.get("trivo-presence").get(userId).on((data: any) => {
+    localPeerCache.get("trivo-presence").get(userId).on((data: any) => {
       if (!data || !data.lastSeen) return;
       
       const elapsed = Date.now() - data.lastSeen;
@@ -110,7 +109,7 @@ export function subscribeToPresence(userId: string): () => void {
 
   return () => {
     try {
-      gun.get("trivo-presence").get(userId).off();
+      localPeerCache.get("trivo-presence").get(userId).off();
     } catch {}
   };
 }
