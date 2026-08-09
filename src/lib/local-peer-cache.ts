@@ -169,7 +169,7 @@ export function sendNoisePacket(): void {
 
 function makeNode(path: string[], mapped = false): CacheNode {
   let unsubscribe: (() => void) | null = null;
-  const node: GunNode = {
+  const node: CacheNode = {
     get: (key: string) => makeNode([...path, String(key)], mapped),
     put: (value: any) => {
       const channelId = path.slice(0, -1).join("/") || path[0] || "root";
