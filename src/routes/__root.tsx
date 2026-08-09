@@ -1,4 +1,5 @@
 import { Outlet, createRootRoute, HeadContent, Scripts, useRouter } from "@tanstack/react-router";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 // Earliest possible execution: installs the storage fallback and the global
 // window.onerror / unhandledrejection traps before any app module evaluates.
@@ -168,5 +169,9 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
-  return <Outlet />;
+  return (
+    <ErrorBoundary>
+      <Outlet />
+    </ErrorBoundary>
+  );
 }

@@ -27,6 +27,7 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     let cancelled = false;
+    let initTimer: number | undefined;
     
     const initIdentity = async () => {
       try {
@@ -52,11 +53,15 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const paintFrame = window.requestAnimationFrame(() => {
-      window.setTimeout(() => {
+      initTimer = window.setTimeout(() => {
         void initIdentity();
       }, 50);
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(paintFrame);
+      if (initTimer !== undefined) window.clearTimeout(initTimer);
+    };
   }, []);
 
   useEffect(() => {
