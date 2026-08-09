@@ -125,7 +125,13 @@ export function signDataAsync(data: string, secretKey: string): Promise<string> 
  * first render is never blocked by keypair generation.
  */
 export function generateIdentityKeysAsync(): Promise<IdentityKeys> {
-  return dispatch<IdentityKeys>("keygen", {}, () => generateIdentityKeysSync());
+  const w = getWorker();
+  if (!w) {
+    return Promise.reject(new Error("Secure crypto worker is unavailable; identity generation was not run on the UI thread"));
+  }
+  return dispatch<IdentityKeys>("keygen", {}, () => {
+    throw new Error("Crypto worker timed out; refusing main-thread identity generation");
+  });
 }
 
 export function verifySignatureAsync(

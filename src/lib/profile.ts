@@ -8,7 +8,7 @@
 //  - Remote profiles are cached in memory and mirrored into the contacts meta
 //    (ChatMeta.friendAvatar) so every list view renders the latest avatar.
 
-import gun from "./gun-setup";
+import gun from "./local-peer-cache";
 import { dbGet, dbPut } from "./storage";
 import { getChatMeta, saveChatMeta } from "./p2p";
 

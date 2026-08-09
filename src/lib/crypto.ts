@@ -15,8 +15,7 @@ export interface IdentityKeys {
 }
 
 /**
- * Synchronous keypair generation. Used ONLY as the worker fallback path
- * (very old WebViews without Worker support).
+ * Synchronous keypair generation for explicit non-boot call sites only.
  */
 export function generateIdentityKeysSync(): IdentityKeys {
   const signingKP = nacl.sign.keyPair();
@@ -43,14 +42,8 @@ export async function getOrCreateIdentity(): Promise<IdentityKeys> {
   const existing = await dbGet<IdentityKeys>("identity", "keys");
   if (existing) return existing;
 
-  let identity: IdentityKeys;
-  try {
-    const { generateIdentityKeysAsync } = await import("./crypto-async");
-    identity = await generateIdentityKeysAsync();
-  } catch (error) {
-    console.warn("[trivo] worker keygen unavailable, generating inline:", error);
-    identity = generateIdentityKeysSync();
-  }
+  const { generateIdentityKeysAsync } = await import("./crypto-async");
+  const identity = await generateIdentityKeysAsync();
 
   await dbPut("identity", "keys", identity);
   return identity;

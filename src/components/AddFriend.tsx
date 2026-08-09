@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useIdentity } from "@/contexts/IdentityContext";
 import { toast } from "sonner";
-import gun from "@/lib/gun-setup";
+import gun from "@/lib/local-peer-cache";
 import { saveChatMeta } from "@/lib/p2p";
 import { isValidUserId } from "@/lib/identity";
 import { isUserBlocked, unblockUser } from "@/lib/report";

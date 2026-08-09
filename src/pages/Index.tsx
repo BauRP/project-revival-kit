@@ -18,7 +18,7 @@ import { executePanic, createPanicLongPress } from "@/lib/panic";
 import { startPresence, setInvisibleMode } from "@/lib/presence";
 import { performStartupHandshake, listenForFriendRequests, acceptFriendRequest, purgeExpiredBufferedMessagesForAllUsers } from "@/lib/sync/peer-sync";
 import { initMockPeer } from "@/lib/mock-peer";
-import { isDuplicateMessage } from "@/lib/gun-setup";
+import { isDuplicateMessage } from "@/lib/local-peer-cache";
 import { LAYOUT_CONFIG, getAppTopOffset, getBottomNavOffset } from "@/lib/layout-metrics";
 import { toast } from "sonner";
 import { useBiometricAuth } from "@/hooks/useBiometricAuth";

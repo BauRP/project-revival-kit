@@ -5,7 +5,7 @@
 //  - When invisible, the user's heartbeat / online status is NOT published —
 //    peers will see them as "offline".
 //  - This MUST NOT be coupled to ad rendering. Ads remain visible regardless.
-import gun from "./gun-setup";
+import gun from "./local-peer-cache";
 
 type PresenceStatus = "online" | "away" | "offline";
 type PresenceCallback = (userId: string, status: PresenceStatus) => void;
