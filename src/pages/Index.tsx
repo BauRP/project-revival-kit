@@ -126,7 +126,7 @@ const Index = () => {
               }
             })
             .catch((err) => console.warn("[trivo] startup handshake failed:", err));
-        }, 0);
+        }, 250);
       });
     });
 

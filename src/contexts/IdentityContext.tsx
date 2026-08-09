@@ -51,7 +51,11 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    initIdentity();
+    const paintFrame = window.requestAnimationFrame(() => {
+      window.setTimeout(() => {
+        void initIdentity();
+      }, 50);
+    });
     return () => { cancelled = true; };
   }, []);
 
