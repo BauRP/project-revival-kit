@@ -256,4 +256,3 @@ class ConnectionManager {
 }
 
 export const connectionManager = new ConnectionManager();
-if (typeof window !== "undefined") connectionManager.start();

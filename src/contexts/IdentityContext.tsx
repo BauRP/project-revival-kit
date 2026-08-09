@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
 import { getOrCreateIdentity, getKeyFingerprint, type IdentityKeys } from "@/lib/crypto";
 import { getOrCreateUserId } from "@/lib/identity";
-import { publishPublicKeys } from "@/lib/gun-setup";
+import { publishPublicKeys } from "@/lib/local-peer-cache";
 import { nukeAllData } from "@/lib/storage";
 import { safeStorage } from "@/lib/safe-storage";
 
@@ -27,6 +27,7 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     let cancelled = false;
+    let initTimer: number | undefined;
     
     const initIdentity = async () => {
       try {
@@ -38,8 +39,7 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
         setUserId(nextUserId);
         setIsLoading(false);
 
-        // The Gun-compatible store is local and synchronous; no network warm-up
-        // delay is required. Publishing immediately avoids a startup race.
+        // Cache public keys locally after identity generation completes.
         try {
           publishPublicKeys(nextUserId, keys.signing.publicKey, keys.exchange.publicKey);
         } catch (error) {
@@ -52,8 +52,16 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    initIdentity();
-    return () => { cancelled = true; };
+    const paintFrame = window.requestAnimationFrame(() => {
+      initTimer = window.setTimeout(() => {
+        void initIdentity();
+      }, 50);
+    });
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(paintFrame);
+      if (initTimer !== undefined) window.clearTimeout(initTimer);
+    };
   }, []);
 
   useEffect(() => {

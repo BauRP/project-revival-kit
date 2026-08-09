@@ -8,7 +8,7 @@
 //  - Remote profiles are cached in memory and mirrored into the contacts meta
 //    (ChatMeta.friendAvatar) so every list view renders the latest avatar.
 
-import gun from "./gun-setup";
+import localPeerCache from "./local-peer-cache";
 import { dbGet, dbPut } from "./storage";
 import { getChatMeta, saveChatMeta } from "./p2p";
 
@@ -110,7 +110,7 @@ export async function saveMyProfile(
 function publishProfile(profile: UserProfile): void {
   if (!profile.userId) return;
   try {
-    gun.get(CHANNEL).get(profile.userId).put({
+    localPeerCache.get(CHANNEL).get(profile.userId).put({
       userId: profile.userId,
       name: profile.name,
       avatar: profile.avatar,
@@ -188,9 +188,9 @@ export function subscribeToProfile(userId: string): () => void {
     return () => releaseProfile(userId);
   }
 
-  let node: ReturnType<typeof gun.get> | null = null;
+  let node: ReturnType<typeof localPeerCache.get> | null = null;
   try {
-    node = gun.get(CHANNEL).get(userId);
+    node = localPeerCache.get(CHANNEL).get(userId);
     // Hydrate from whatever is already cached locally, then stream updates.
     node.once((data: unknown) => {
       void handleIncoming(userId, data);

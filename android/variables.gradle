@@ -28,7 +28,4 @@ ext {
     // Cordova compatibility
     cordovaAndroidVersion = '10.1.1'
 
-    // Advertising SDKs removed — Trivo Chat Elite is completely ad-free and
-    // Firebase is unused; the app talks only to its own Node.js backend and
-    // the P2P / Tor transports.
 }

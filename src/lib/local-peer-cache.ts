@@ -1,22 +1,22 @@
-// Local Gun-compatible shim used by legacy call sites.
-// It keeps the public API stable while avoiding centralized realtime SDKs.
+// Local-only peer metadata cache. This is storage, not a network transport;
+// all peer communication is performed by the Tor onion engine.
 
-type GunCallback = (data: any, key: string) => void;
+type CacheCallback = (data: any, key: string) => void;
 
-type GunNode = {
-  get: (key: string) => GunNode;
-  put: (value: any) => GunNode;
-  once: (cb: (data: any, key?: string) => void) => GunNode;
-  on: (cb: GunCallback) => GunNode;
-  map: () => GunNode;
-  off: () => GunNode;
+type CacheNode = {
+  get: (key: string) => CacheNode;
+  put: (value: any) => CacheNode;
+  once: (cb: (data: any, key?: string) => void) => CacheNode;
+  on: (cb: CacheCallback) => CacheNode;
+  map: () => CacheNode;
+  off: () => CacheNode;
 };
 
 const seenMessageUUIDs = new Set<string>();
 const MAX_SEEN_UUIDS = 10000;
-const LOCAL_GUN_PREFIX = "trivo:local-gun:";
+const LOCAL_CACHE_PREFIX = "trivo:local-cache:";
 const KEYS_PREFIX = "trivo:keys:";
-const listeners = new Map<string, Set<GunCallback>>();
+const listeners = new Map<string, Set<CacheCallback>>();
 // NOTE: both the client id and the BroadcastChannel are created lazily.
 // Module-scope randomness / channel construction is a "disallowed operation in
 // global scope" on the Cloudflare Worker that serves the preview, which makes
@@ -40,7 +40,7 @@ function getBroadcast(): BroadcastChannel | null {
     return null;
   }
   try {
-    broadcastChannel = new BroadcastChannel("trivo-local-gun");
+    broadcastChannel = new BroadcastChannel("trivo-local-cache");
     broadcastChannel.onmessage = (
       event: MessageEvent<{ origin?: string; channelId?: string; key?: string; data?: any }>,
     ) => {
@@ -80,7 +80,7 @@ export function generateUUIDv4(): string {
 }
 
 function storageKey(channelId: string): string {
-  return `${LOCAL_GUN_PREFIX}${channelId}`;
+  return `${LOCAL_CACHE_PREFIX}${channelId}`;
 }
 
 function readEntries(channelId: string): Record<string, any> {
@@ -137,7 +137,7 @@ export async function lookupPublicKeys(userId: string): Promise<{ signingKey: st
   return null;
 }
 
-export function sendGunMessage(channelId: string, messagePayload: Record<string, unknown>): void {
+export function writePeerCache(channelId: string, messagePayload: Record<string, unknown>): void {
   const key = String(messagePayload.id || generateUUIDv4());
   const data = { ...messagePayload, id: key, timestamp: Number(messagePayload.timestamp || Date.now()) };
   writeEntry(channelId, key, data);
@@ -149,8 +149,8 @@ export function sendGunMessage(channelId: string, messagePayload: Record<string,
   }
 }
 
-export function subscribeToChannel(channelId: string, callback: GunCallback): () => void {
-  const set = listeners.get(channelId) || new Set<GunCallback>();
+export function subscribeToChannel(channelId: string, callback: CacheCallback): () => void {
+  const set = listeners.get(channelId) || new Set<CacheCallback>();
   set.add(callback);
   listeners.set(channelId, set);
 
@@ -167,15 +167,15 @@ export function sendNoisePacket(): void {
   // Intentionally local no-op: cover traffic must not require centralized networking.
 }
 
-function makeNode(path: string[], mapped = false): GunNode {
+function makeNode(path: string[], mapped = false): CacheNode {
   let unsubscribe: (() => void) | null = null;
-  const node: GunNode = {
+  const node: CacheNode = {
     get: (key: string) => makeNode([...path, String(key)], mapped),
     put: (value: any) => {
       const channelId = path.slice(0, -1).join("/") || path[0] || "root";
       const key = path[path.length - 1] || generateUUIDv4();
       const data = typeof value === "object" && value ? { ...value, id: key } : { value, id: key };
-      sendGunMessage(channelId, data);
+      writePeerCache(channelId, data);
       return node;
     },
     once: (cb) => {
@@ -207,11 +207,11 @@ function makeNode(path: string[], mapped = false): GunNode {
   return node;
 }
 
-const gun = {
+const localPeerCache = {
   get: (key: string) => makeNode([String(key)]),
-  opt: (_opts: any) => gun,
+  opt: (_opts: any) => localPeerCache,
   back: (_key: string) => ({}),
   _: { opt: { peers: {} } },
 };
 
-export default gun;
+export default localPeerCache;

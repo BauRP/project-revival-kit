@@ -12,7 +12,8 @@
 //  until the user runs the Android build.
 // ============================================================================
 
-import { Capacitor, registerPlugin, type PluginListenerHandle } from "@capacitor/core";
+import { registerPlugin, type PluginListenerHandle } from "@capacitor/core";
+import { hasNativePlugin, isNative, platform } from "@/lib/platform";
 
 export interface TorStatus {
   running: boolean;
@@ -71,15 +72,7 @@ export interface TorTransportPlugin {
 export const TorTransport = registerPlugin<TorTransportPlugin>("TorTransport");
 
 export function isTorNativeAvailable(): boolean {
-  try {
-    return (
-      Capacitor.isNativePlatform() &&
-      Capacitor.getPlatform() === "android" &&
-      Capacitor.isPluginAvailable("TorTransport")
-    );
-  } catch {
-    return false;
-  }
+  return isNative() && platform() === "android" && hasNativePlugin("TorTransport");
 }
 
 export const TOR_UNAVAILABLE_STATUS: TorStatus = {

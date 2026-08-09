@@ -1,6 +1,6 @@
 // Stealth features: Network Noise (Vuvuzela) & Message Fragmentation
 
-import { sendNoisePacket } from "./gun-setup";
+import { sendNoisePacket } from "./local-peer-cache";
 
 let noiseInterval: ReturnType<typeof setInterval> | null = null;
 

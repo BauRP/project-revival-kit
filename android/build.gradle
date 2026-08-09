@@ -7,7 +7,6 @@ buildscript {
     dependencies {
         // Android Gradle Plugin
         classpath 'com.android.tools.build:gradle:8.7.2'
-        // google-services classpath purged — Firebase is no longer used.
         // ИСПРАВЛЕНИЕ: Жестко указываем версию здесь, так как блок buildscript загружается ПЕРЕД variables.gradle
         classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.0"
     }

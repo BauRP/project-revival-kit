@@ -15,7 +15,7 @@ import { subscribeToPresence, getPresenceStatus } from "@/lib/presence";
 import { rtcOnConnectionChange, rtcIsConnectedTo } from "@/lib/onion-engine";
 import { getContactLastSeen, setContactLastSeen } from "@/lib/dexie-db";
 import { toast } from "@/hooks/use-toast";
-import { generateUUIDv4, isDuplicateMessage } from "@/lib/gun-setup";
+import { generateUUIDv4, isDuplicateMessage } from "@/lib/local-peer-cache";
 import { simulateSecurityScan, stripExifMetadata, getBlockedFileMessage } from "@/lib/security-scan";
 import {
   sendP2PMessage,

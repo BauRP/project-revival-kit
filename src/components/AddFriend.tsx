@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useIdentity } from "@/contexts/IdentityContext";
 import { toast } from "sonner";
-import gun from "@/lib/gun-setup";
+import localPeerCache from "@/lib/local-peer-cache";
 import { saveChatMeta } from "@/lib/p2p";
 import { isValidUserId } from "@/lib/identity";
 import { isUserBlocked, unblockUser } from "@/lib/report";
@@ -70,12 +70,12 @@ const AddFriend = () => {
 
     const peerStatus = getPresenceStatus(friendId);
 
-    // Bi-directional Gun handshake
-    gun.get("trivo-friends").get(userId).get(friendId).put({
+    // Local relationship cache; the signed request itself travels over Tor.
+    localPeerCache.get("trivo-friends").get(userId).get(friendId).put({
       addedAt: Date.now(),
       status: peerStatus === "online" ? "confirmed" : "pending",
     });
-    gun.get("trivo-friends").get(friendId).get(userId).put({
+    localPeerCache.get("trivo-friends").get(friendId).get(userId).put({
       addedAt: Date.now(),
       status: peerStatus === "online" ? "confirmed" : "pending",
     });

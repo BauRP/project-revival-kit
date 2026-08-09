@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Download, Languages } from "lucide-react";
-import { Capacitor } from "@capacitor/core";
 import { Language, Translation } from "@capacitor-mlkit/translation";
+import { isNative } from "@/lib/platform";
 import { getLanguageName, getTranslationSettings, saveTranslationSettings, TRANSLATION_LANGUAGE_OPTIONS } from "@/lib/translation-config";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Switch } from "./ui/switch";
@@ -34,7 +34,7 @@ const TranslationSettingsPanel = ({ onBack }: TranslationSettingsPanelProps) => 
   };
 
   const handleDownloadModels = async () => {
-    if (!Capacitor.isNativePlatform()) {
+    if (!isNative()) {
       toast.info("Offline model download is available in the mobile app build.");
       return;
     }

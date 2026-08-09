@@ -7,9 +7,9 @@
 
 import nacl from "tweetnacl";
 import { decodeBase64, encodeBase64, decodeUTF8, encodeUTF8 } from "tweetnacl-util";
-import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { exportDexieDump, importDexieDump, type DexieDump } from "./dexie-db";
+import { isNative } from "./platform";
 
 const FILE_NAME_DEFAULT = "TrivoBackup.tvc";
 const MAGIC = "TRIVO-BACKUP-V1";
@@ -68,7 +68,7 @@ export async function exportBackup(
   const envelope = encryptDump(dump, password);
   const json = JSON.stringify(envelope);
 
-  if (Capacitor.isNativePlatform()) {
+  if (isNative()) {
     const res = await Filesystem.writeFile({
       path: filename,
       data: json,
@@ -102,7 +102,7 @@ export async function importBackup(
 ): Promise<void> {
   let json: string;
 
-  if (Capacitor.isNativePlatform()) {
+  if (isNative()) {
     const res = await Filesystem.readFile({
       path: filename,
       directory: Directory.Documents,

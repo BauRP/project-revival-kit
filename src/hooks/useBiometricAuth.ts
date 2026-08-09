@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Capacitor } from "@capacitor/core";
 import { App, type AppState } from "@capacitor/app";
 import { whenBridgeReady, runNative } from "@/lib/native-bridge";
 import { safeStorage } from "@/lib/safe-storage";
+import { isNative } from "@/lib/platform";
 
 const BIOMETRIC_KEY = "trivo-biometric";
 
@@ -28,7 +28,7 @@ export function useBiometricAuth() {
       await checkAvailability();
       // Cold-start lock: when biometrics is enabled the user MUST authenticate
       // before any messenger UI is visible.
-      if (biometricEnabled() && Capacitor.isNativePlatform()) {
+      if (biometricEnabled() && isNative()) {
         setIsLocked(true);
         await authenticate();
       }
@@ -73,7 +73,7 @@ export function useBiometricAuth() {
 
 
   const checkAvailability = async () => {
-    if (!Capacitor.isNativePlatform()) {
+    if (!isNative()) {
       setIsAvailable(false);
       return;
     }
@@ -87,7 +87,7 @@ export function useBiometricAuth() {
   };
 
   const authenticate = useCallback(async (): Promise<boolean> => {
-    if (!Capacitor.isNativePlatform()) {
+    if (!isNative()) {
       setIsLocked(false);
       return true;
     }
