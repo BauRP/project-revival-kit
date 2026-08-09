@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { ClientOnly } from "@tanstack/react-router";
 import { lazy, Suspense } from "react";
-import ErrorBoundary from "@/components/ErrorBoundary";
 import BootSplash from "@/components/BootSplash";
 
 // Hybrid mount: the original Vite SPA App lives entirely on the client.
@@ -29,11 +28,9 @@ export const Route = createFileRoute("/")({
 function HomeRoute() {
   return (
     <ClientOnly fallback={<BootSplash />}>
-      <ErrorBoundary>
-        <Suspense fallback={<BootSplash />}>
-          <LegacyApp key={LEGACY_APP_VERSION} />
-        </Suspense>
-      </ErrorBoundary>
+      <Suspense fallback={<BootSplash />}>
+        <LegacyApp key={LEGACY_APP_VERSION} />
+      </Suspense>
     </ClientOnly>
   );
 }
