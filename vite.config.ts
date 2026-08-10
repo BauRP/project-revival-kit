@@ -70,6 +70,10 @@ export default defineConfig({
     plugins: [mirrorServerEntry()],
   },
   tanstackStart: {
+    // `vite.base = "./"` (needed so the Capacitor APK loads assets relatively)
+    // otherwise derives a router basepath of "." and moves the server-function
+    // endpoint to "/./_serverFn/", so every RPC falls through to SSR and 500s.
+    router: { basepath: "/" },
     // Route every request through src/server.tsx so SSR failures are logged
     // and rendered as a readable page instead of a bare "Internal server error".
     server: { entry: "server" },
