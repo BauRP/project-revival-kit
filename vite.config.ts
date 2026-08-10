@@ -64,9 +64,16 @@ function mirrorServerEntry() {
   };
 }
 
+// `base: "./"` is required only for the Capacitor APK, whose WebView loads the
+// bundle from file://. On the web/dev/SSR build a relative base makes TanStack
+// Start derive a router basepath of "." and move the server-function endpoint to
+// "/./_serverFn/", so every RPC (translation, transcription) falls through to the
+// SSR router and returns 500. Keep "/" everywhere except the native build.
+const isCapacitorBuild = process.env["CAP_BUILD"] === "1";
+
 export default defineConfig({
   vite: {
-    base: "./",
+    base: isCapacitorBuild ? "./" : "/",
     plugins: [mirrorServerEntry()],
   },
   tanstackStart: {
