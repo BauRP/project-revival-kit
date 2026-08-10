@@ -9,7 +9,7 @@
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "capacitor:sync": "npx cap sync android",
-    "build:android": "npm run build && npx cap sync android && cd android && ./gradlew clean",
+    "build:android": "CAP_BUILD=1 npm run build && npx cap sync android && cd android && ./gradlew clean",
     "lint": "eslint .",
     "format": "prettier --write ."
   },
