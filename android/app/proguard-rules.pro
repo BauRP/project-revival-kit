@@ -71,3 +71,16 @@
 -dontwarn org.codehaus.mojo.**
 -dontwarn java.beans.**
 -dontwarn javax.naming.**
+
+# --- Tor Android (Guardian Project) ---------------------------
+-keep class info.guardianproject.** { *; }
+-keep class org.torproject.jni.** { *; }
+-dontwarn info.guardianproject.**
+-dontwarn org.torproject.jni.**
+
+# --- jtorctl (Tor Control Connection) -------------------------
+-keep class net.freehaven.tor.control.** { *; }
+-dontwarn net.freehaven.tor.control.**
+
+# --- AndroidX LocalBroadcastManager --------------------------
+-keep class androidx.localbroadcastmanager.content.LocalBroadcastManager { *; }
