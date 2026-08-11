@@ -9,7 +9,9 @@
 
 # --- Capacitor bridge ----------------------------------------
 -keep class com.getcapacitor.** { *; }
+-keep interface com.getcapacitor.** { *; }
 -keep @com.getcapacitor.annotation.CapacitorPlugin public class * { *; }
+-keepattributes RuntimeVisibleAnnotations,RuntimeInvisibleAnnotations,AnnotationDefault
 -keepclassmembers class * {
   @com.getcapacitor.PluginMethod <methods>;
 }
@@ -46,6 +48,16 @@
 
 -keep class org.webrtc.** { *; }
 -keep class com.cloudwebrtc.** { *; }
+
+# --- Tor daemon / control bridge / JNI ------------------------
+-keep class org.torproject.** { *; }
+-keep class net.freehaven.tor.control.** { *; }
+-keep class info.guardianproject.** { *; }
+-keepclasseswithmembernames,includedescriptorclasses class * {
+    native <methods>;
+}
+-dontwarn org.torproject.**
+-dontwarn net.freehaven.tor.control.**
 
 # --- Encryption / BouncyCastle / TweetNaCl -------------------
 -keep class org.bouncycastle.** { *; }
