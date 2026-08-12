@@ -734,7 +734,21 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   const replyAsSupportBot = async (userText: string) => {
     const botLang: "ru" | "en" | undefined =
       language === "ru" ? "ru" : language === "en" ? "en" : undefined;
-    const reply = supportBot.getReply(userText, botLang);
+    // The NLP.js pipeline runs inside a Web Worker; show the typing state
+    // while the promise resolves so the UI stays responsive.
+    setBotTyping(true);
+    let reply: string;
+    try {
+      reply = await supportBot.getReply(userText, botLang);
+    } catch (e) {
+      console.warn("[ChatRoom] support bot NLP failed", e);
+      reply =
+        botLang === "ru"
+          ? "⚠️ Локальный ассистент временно недоступен. Попробуйте ещё раз."
+          : "⚠️ The local assistant is temporarily unavailable. Please try again.";
+    } finally {
+      setBotTyping(false);
+    }
     const botMsg = {
       id: generateUUIDv4(),
       from: chatId,
