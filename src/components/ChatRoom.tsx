@@ -1010,6 +1010,16 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     ));
   };
 
+  // Pre-train the offline NLP model in the background as soon as the built-in
+  // assistant chat opens, so the first answer is instant.
+  useEffect(() => {
+    if (!isTrivoSupport(chatId)) return;
+    const timer = window.setTimeout(() => {
+      void supportBot.warmup();
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [chatId]);
+
   const lastSeenLabel = lastSeen
     ? `${t("lastSeenAt")} ${new Date(lastSeen).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
     : null;
