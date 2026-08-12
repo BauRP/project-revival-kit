@@ -100,7 +100,6 @@ repositories {
 
 dependencies {
     // ── Tor Hidden Service transport ──
-    // ИСПРАВЛЕНО: Версия изменена на 0.4.5.7, так как 0.4.8.6 отсутствует в репозитории GPMaven.
     implementation 'info.guardianproject:tor-android:0.4.5.7'
     implementation 'info.guardianproject:jtorctl:0.4.5.7'
     implementation 'androidx.localbroadcastmanager:localbroadcastmanager:1.1.0'
@@ -113,7 +112,6 @@ dependencies {
     implementation "androidx.webkit:webkit:$androidxWebkitVersion"
     implementation "com.google.android.material:material:$androidxMaterialVersion"
 
-    // КРИТИЧЕСКИ ВАЖНО: Связующее звено для ядра Capacitor
     implementation project(':capacitor-android')
     implementation project(':capacitor-cordova-android-plugins')
 

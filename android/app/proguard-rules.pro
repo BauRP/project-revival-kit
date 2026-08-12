@@ -9,7 +9,9 @@
 
 # --- Capacitor bridge ----------------------------------------
 -keep class com.getcapacitor.** { *; }
+-keep interface com.getcapacitor.** { *; }
 -keep @com.getcapacitor.annotation.CapacitorPlugin public class * { *; }
+-keepattributes RuntimeVisibleAnnotations,RuntimeInvisibleAnnotations,AnnotationDefault
 -keepclassmembers class * {
   @com.getcapacitor.PluginMethod <methods>;
 }
@@ -47,6 +49,16 @@
 -keep class org.webrtc.** { *; }
 -keep class com.cloudwebrtc.** { *; }
 
+# --- Tor daemon / control bridge / JNI ------------------------
+-keep class org.torproject.** { *; }
+-keep class net.freehaven.tor.control.** { *; }
+-keep class info.guardianproject.** { *; }
+-keepclasseswithmembernames,includedescriptorclasses class * {
+    native <methods>;
+}
+-dontwarn org.torproject.**
+-dontwarn net.freehaven.tor.control.**
+
 # --- Encryption / BouncyCastle / TweetNaCl -------------------
 -keep class org.bouncycastle.** { *; }
 -keep class com.iwebpp.crypto.** { *; }
@@ -71,3 +83,16 @@
 -dontwarn org.codehaus.mojo.**
 -dontwarn java.beans.**
 -dontwarn javax.naming.**
+
+# --- Tor Android (Guardian Project) ---------------------------
+-keep class info.guardianproject.** { *; }
+-keep class org.torproject.jni.** { *; }
+-dontwarn info.guardianproject.**
+-dontwarn org.torproject.jni.**
+
+# --- jtorctl (Tor Control Connection) -------------------------
+-keep class net.freehaven.tor.control.** { *; }
+-dontwarn net.freehaven.tor.control.**
+
+# --- AndroidX LocalBroadcastManager --------------------------
+-keep class androidx.localbroadcastmanager.content.LocalBroadcastManager { *; }

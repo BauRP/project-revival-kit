@@ -1,5 +1,6 @@
 package com.baurp.trivochat;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.Gravity;
@@ -54,6 +55,20 @@ public class MainActivity extends BridgeActivity {
         } catch (Throwable fatal) {
             Log.e(TAG, "Fatal native launch failure", fatal);
             renderNativeDiagnostic(fatal);
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        if (getBridge() == null) {
+            Log.w(TAG, "Ignoring new intent because the Capacitor bridge is unavailable");
+            setIntent(intent);
+            return;
+        }
+        try {
+            super.onNewIntent(intent);
+        } catch (Throwable intentFailure) {
+            Log.e(TAG, "Unable to deliver intent to Capacitor", intentFailure);
         }
     }
 
