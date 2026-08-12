@@ -1013,13 +1013,22 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   const lastSeenLabel = lastSeen
     ? `${t("lastSeenAt")} ${new Date(lastSeen).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
     : null;
-  const statusLabel =
-    peerStatus === "online"
+  const typingLabel =
+    language === "ru"
+      ? `${SUPPORT_BOT_NAME} печатает…`
+      : language === "kk"
+      ? `${SUPPORT_BOT_NAME} жазып отыр…`
+      : `${SUPPORT_BOT_NAME} is typing…`;
+  const statusLabel = botTyping
+    ? typingLabel
+    : peerStatus === "online"
       ? t("online")
       : peerStatus === "away"
       ? t("away")
       : lastSeenLabel || t("offline");
-  const statusColor = peerStatus === "online" ? "text-primary" : peerStatus === "away" ? "text-yellow-500" : "text-muted-foreground";
+  const statusColor = botTyping
+    ? "text-[#00FFFF]"
+    : peerStatus === "online" ? "text-primary" : peerStatus === "away" ? "text-yellow-500" : "text-muted-foreground";
   const selectedMessages = filteredMessages.filter((message) => selectedIds.includes(message.id));
   const allowCopy =
     selectedMessages.length > 0 &&
