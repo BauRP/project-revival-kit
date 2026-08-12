@@ -159,6 +159,8 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   const uploadCancelRef = useRef<(() => void) | null>(null);
   const uploadCancelledRef = useRef(false);
   const [peerStatus, setPeerStatus] = useState<"online" | "away" | "offline">("offline");
+  // Trivo Support (Bot): true while the offline NLP.js worker composes a reply.
+  const [botTyping, setBotTyping] = useState(false);
   const [scanOverlay, setScanOverlay] = useState(false);
   const [pendingDownload, setPendingDownload] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -734,7 +736,21 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   const replyAsSupportBot = async (userText: string) => {
     const botLang: "ru" | "en" | undefined =
       language === "ru" ? "ru" : language === "en" ? "en" : undefined;
-    const reply = supportBot.getReply(userText, botLang);
+    // The NLP.js pipeline runs inside a Web Worker; show the typing state
+    // while the promise resolves so the UI stays responsive.
+    setBotTyping(true);
+    let reply: string;
+    try {
+      reply = await supportBot.getReply(userText, botLang);
+    } catch (e) {
+      console.warn("[ChatRoom] support bot NLP failed", e);
+      reply =
+        botLang === "ru"
+          ? "⚠️ Локальный ассистент временно недоступен. Попробуйте ещё раз."
+          : "⚠️ The local assistant is temporarily unavailable. Please try again.";
+    } finally {
+      setBotTyping(false);
+    }
     const botMsg = {
       id: generateUUIDv4(),
       from: chatId,
@@ -994,16 +1010,35 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     ));
   };
 
+  // Pre-train the offline NLP model in the background as soon as the built-in
+  // assistant chat opens, so the first answer is instant.
+  useEffect(() => {
+    if (!isTrivoSupport(chatId)) return;
+    const timer = window.setTimeout(() => {
+      void supportBot.warmup();
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [chatId]);
+
   const lastSeenLabel = lastSeen
     ? `${t("lastSeenAt")} ${new Date(lastSeen).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
     : null;
-  const statusLabel =
-    peerStatus === "online"
+  const typingLabel =
+    language === "ru"
+      ? `${SUPPORT_BOT_NAME} печатает…`
+      : language === "kk"
+      ? `${SUPPORT_BOT_NAME} жазып отыр…`
+      : `${SUPPORT_BOT_NAME} is typing…`;
+  const statusLabel = botTyping
+    ? typingLabel
+    : peerStatus === "online"
       ? t("online")
       : peerStatus === "away"
       ? t("away")
       : lastSeenLabel || t("offline");
-  const statusColor = peerStatus === "online" ? "text-primary" : peerStatus === "away" ? "text-yellow-500" : "text-muted-foreground";
+  const statusColor = botTyping
+    ? "text-[#00FFFF]"
+    : peerStatus === "online" ? "text-primary" : peerStatus === "away" ? "text-yellow-500" : "text-muted-foreground";
   const selectedMessages = filteredMessages.filter((message) => selectedIds.includes(message.id));
   const allowCopy =
     selectedMessages.length > 0 &&
@@ -1631,6 +1666,21 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           </motion.div>
         )})}
         </AnimatePresence>
+        {botTyping && (
+          <div className="flex justify-start">
+            <div
+              className="flex items-center gap-2 rounded-2xl rounded-bl-md px-3 py-2 bg-secondary/60 border border-[#00FFFF]/25"
+              aria-live="polite"
+            >
+              <span className="text-[11px] text-[#00FFFF]">{typingLabel}</span>
+              <span className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00FFFF] animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00FFFF] animate-bounce" style={{ animationDelay: "120ms" }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00FFFF] animate-bounce" style={{ animationDelay: "240ms" }} />
+              </span>
+            </div>
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
 
