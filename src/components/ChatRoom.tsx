@@ -159,6 +159,8 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   const uploadCancelRef = useRef<(() => void) | null>(null);
   const uploadCancelledRef = useRef(false);
   const [peerStatus, setPeerStatus] = useState<"online" | "away" | "offline">("offline");
+  // Trivo Support (Bot): true while the offline NLP.js worker composes a reply.
+  const [botTyping, setBotTyping] = useState(false);
   const [scanOverlay, setScanOverlay] = useState(false);
   const [pendingDownload, setPendingDownload] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
