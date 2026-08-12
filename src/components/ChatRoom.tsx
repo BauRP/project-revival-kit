@@ -1656,6 +1656,21 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           </motion.div>
         )})}
         </AnimatePresence>
+        {botTyping && (
+          <div className="flex justify-start">
+            <div
+              className="flex items-center gap-2 rounded-2xl rounded-bl-md px-3 py-2 bg-secondary/60 border border-[#00FFFF]/25"
+              aria-live="polite"
+            >
+              <span className="text-[11px] text-[#00FFFF]">{typingLabel}</span>
+              <span className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00FFFF] animate-bounce" style={{ animationDelay: "0ms" }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00FFFF] animate-bounce" style={{ animationDelay: "120ms" }} />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#00FFFF] animate-bounce" style={{ animationDelay: "240ms" }} />
+              </span>
+            </div>
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
 
