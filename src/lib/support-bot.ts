@@ -1,127 +1,109 @@
-import { botKnowledgeBase, SupportIntent } from './support-data';
+/**
+ * Trivo Support (Bot) — public API.
+ *
+ * The heavy lifting (NLP.js training + neural classification) runs inside a
+ * dedicated Web Worker so the chat UI never blocks. If workers are not
+ * available in the current runtime (very old WebViews, SSR), the same engine
+ * is imported lazily and executed in place — behaviour is identical, only the
+ * thread differs.
+ *
+ * Everything is on-device: no network requests, ever.
+ */
+export type BotLang = "ru" | "en";
+
+type WorkerResponse =
+  | { id: number; ok: true; reply: string }
+  | { id: number; ok: false; error: string };
 
 export class SupportBot {
-  
-  /**
-   * Очистка текста от лишних символов
-   */
-  private normalizeText(text: string): string {
-    if (!text) return "";
-    return text.toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()?]/g, "").trim();
-  }
+  private worker: Worker | null = null;
+  private workerFailed = false;
+  private seq = 0;
+  private pending = new Map<
+    number,
+    { resolve: (reply: string) => void; reject: (err: Error) => void }
+  >();
 
-  /**
-   * Умное автоопределение языка по наличию кириллицы
-   */
-  private detectLanguage(text: string): 'ru' | 'en' {
-    const cyrillicPattern = /[\u0400-\u04FF]/;
-    return cyrillicPattern.test(text) ? 'ru' : 'en';
-  }
-
-  /**
-   * Алгоритм Левенштейна: вычисляет дистанцию между словами.
-   * Позволяет боту понимать слова даже с опечатками (например, "парол" вместо "пароль").
-   */
-  private getLevenshteinDistance(a: string, b: string): number {
-    const matrix = [];
-    for (let i = 0; i <= b.length; i++) {
-      matrix[i] = [i];
+  private getWorker(): Worker | null {
+    if (this.workerFailed) return null;
+    if (this.worker) return this.worker;
+    if (typeof window === "undefined" || typeof Worker === "undefined") {
+      this.workerFailed = true;
+      return null;
     }
-    for (let j = 0; j <= a.length; j++) {
-      matrix[0][j] = j;
-    }
-    for (let i = 1; i <= b.length; i++) {
-      for (let j = 1; j <= a.length; j++) {
-        if (b.charAt(i - 1) == a.charAt(j - 1)) {
-          matrix[i][j] = matrix[i - 1][j - 1];
-        } else {
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j - 1] + 1, // замена
-            Math.min(matrix[i][j - 1] + 1, matrix[i - 1][j] + 1) // вставка/удаление
-          );
+    try {
+      const worker = new Worker(new URL("./workers/nlp.worker.ts", import.meta.url), {
+        type: "module",
+      });
+      worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
+        const data = event.data;
+        const entry = this.pending.get(data?.id);
+        if (!entry) return;
+        this.pending.delete(data.id);
+        if (data.ok) entry.resolve(data.reply);
+        else entry.reject(new Error(data.error));
+      };
+      worker.onerror = (event) => {
+        this.workerFailed = true;
+        const err = new Error(event.message || "NLP worker crashed");
+        for (const [, entry] of this.pending) entry.reject(err);
+        this.pending.clear();
+        try {
+          worker.terminate();
+        } catch {
+          /* noop */
         }
-      }
+        this.worker = null;
+      };
+      this.worker = worker;
+      return worker;
+    } catch (err) {
+      console.warn("[support-bot] worker unavailable, running inline", err);
+      this.workerFailed = true;
+      return null;
     }
-    return matrix[b.length][a.length];
+  }
+
+  private post(message: { type: "warmup" } | { type: "reply"; text: string; lang?: BotLang }): Promise<string> | null {
+    const worker = this.getWorker();
+    if (!worker) return null;
+    const id = ++this.seq;
+    return new Promise<string>((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      worker.postMessage({ id, ...message });
+    });
   }
 
   /**
-   * Расчет веса совпадения (Scoring System 2.0)
+   * Optional: pre-trains the on-device model in the background so the very
+   * first user question answers instantly.
    */
-  private calculateScore(cleanMessage: string, words: string[], intent: SupportIntent): number {
-    let score = 0;
-
-    for (const keyword of intent.keywords) {
-      // 1. Проверка на точную команду (например, /help)
-      if (keyword.startsWith('/') && cleanMessage === keyword) {
-        return 100; // Моментальное 100% совпадение для команд
+  public async warmup(): Promise<void> {
+    try {
+      const viaWorker = this.post({ type: "warmup" });
+      if (viaWorker) {
+        await viaWorker;
+        return;
       }
-
-      // 2. Полное совпадение ключевой фразы
-      if (cleanMessage.includes(keyword)) {
-        score += 10;
-        continue;
-      }
-
-      // 3. Поиск по отдельным словам с защитой от опечаток
-      for (const word of words) {
-        if (word.length < 3) continue; // Игнорируем предлоги
-
-        // Если слово содержит корень ключевого слова
-        if (keyword.includes(word) || word.includes(keyword)) {
-          score += 3;
-        } 
-        // Проверка на опечатки (допускается 1-2 ошибки в зависимости от длины слова)
-        else {
-          const distance = this.getLevenshteinDistance(word, keyword);
-          const allowedTypos = keyword.length > 5 ? 2 : 1;
-          
-          if (distance <= allowedTypos) {
-            score += 2; // Даем баллы, если это опечатка
-          }
-        }
-      }
+      const engine = await import("./support-nlp-engine");
+      await engine.warmup();
+    } catch (err) {
+      console.warn("[support-bot] warmup failed", err);
     }
-    return score;
   }
 
   /**
-   * Главный метод обработки сообщений
+   * Main entry point. Asynchronous: the NLP pipeline runs off the main thread.
    */
-  public getReply(userMessage: string, requestedLang?: 'ru' | 'en'): string {
-    const rawMessage = userMessage.trim();
-    const cleanMessage = this.normalizeText(rawMessage);
-    
-    // Автоопределение языка, если он не передан жестко
-    const lang = requestedLang || this.detectLanguage(rawMessage);
-    
-    if (!cleanMessage && !rawMessage.startsWith('/')) {
-      return lang === 'ru' 
-        ? "🤖 Приветствую! Я системный ассистент Trivo. Напишите ваш вопрос или отправьте /help для списка команд." 
-        : "🤖 Greetings! I am the Trivo system assistant. Type your question or send /help for commands.";
+  public async getReply(userMessage: string, requestedLang?: BotLang): Promise<string> {
+    try {
+      const viaWorker = this.post({ type: "reply", text: userMessage, lang: requestedLang });
+      if (viaWorker) return await viaWorker;
+    } catch (err) {
+      console.warn("[support-bot] worker reply failed, falling back inline", err);
     }
-    
-    const words = cleanMessage.split(/\s+/);
-    let bestMatch: SupportIntent | null = null;
-    let highestScore = 0;
-
-    for (const intent of botKnowledgeBase) {
-      const score = this.calculateScore(cleanMessage, words, intent);
-      if (score > highestScore) {
-        highestScore = score;
-        bestMatch = intent;
-      }
-    }
-
-    // Порог срабатывания: минимум 2 балла, чтобы избежать случайных ответов
-    if (bestMatch && highestScore >= 2) {
-      return lang === 'ru' ? bestMatch.replyRu : bestMatch.replyEn;
-    }
-
-    // Элитный fallback-ответ с меню (форматирование в стиле Telegram-ботов)
-    return lang === 'ru' 
-      ? "К сожалению, я не нашел точного ответа. 😔\n\n💡 **Попробуйте спросить иначе или используйте команды:**\n/help — Главное меню\n/security — О шифровании\n/tor — Статус сети\n/friends — Как искать контакты"
-      : "I couldn't find an exact answer. 😔\n\n💡 **Try rephrasing or use commands:**\n/help — Main Menu\n/security — About Encryption\n/tor — Network Status\n/friends — Finding Contacts";
+    const engine = await import("./support-nlp-engine");
+    return engine.resolveReply(userMessage, requestedLang);
   }
 }
 
