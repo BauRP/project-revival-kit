@@ -2,9 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Tor transport permissions. No ads, analytics, cloud database, location,
-         contacts, media-library, camera, or microphone permission is requested
-         during application startup. -->
+    <!-- Tor transport and user-invoked camera, voice, media, and nearby-device
+         capabilities. Runtime permissions are requested only when used. -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />

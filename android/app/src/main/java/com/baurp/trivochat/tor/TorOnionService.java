@@ -297,22 +297,38 @@ public class TorOnionService extends Service {
     private final ServiceConnection torConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder binder) {
-            torBound = true;
-            running = true;
-            if (binder instanceof TorService.LocalBinder) {
-                torServiceInstance = ((TorService.LocalBinder) binder).getService();
+            try {
+                torBound = true;
+                running = true;
+                if (binder instanceof TorService.LocalBinder) {
+                    torServiceInstance = ((TorService.LocalBinder) binder).getService();
+                }
+                updateNotification("Bootstrapping Tor circuits…");
+                publishStatus();
+            } catch (Throwable connectionFailure) {
+                torBound = false;
+                running = false;
+                torServiceInstance = null;
+                lastError = "tor service connection failed: "
+                        + connectionFailure.getClass().getSimpleName()
+                        + ": "
+                        + String.valueOf(connectionFailure.getMessage());
+                Log.e(TAG, lastError, connectionFailure);
+                publishStatus();
             }
-            updateNotification("Bootstrapping Tor circuits…");
-            publishStatus();
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
-            torBound = false;
-            running = false;
-            bootstrapped = false;
-            torServiceInstance = null;
-            publishStatus();
+            try {
+                torBound = false;
+                running = false;
+                bootstrapped = false;
+                torServiceInstance = null;
+                publishStatus();
+            } catch (Throwable disconnectionFailure) {
+                Log.e(TAG, "tor service disconnect handling failed", disconnectionFailure);
+            }
         }
     };
 
@@ -381,9 +397,12 @@ public class TorOnionService extends Service {
         try {
             Intent intent = new Intent(this, TorService.class);
             bindService(intent, torConnection, BIND_AUTO_CREATE);
-        } catch (Exception e) {
-            lastError = "tor bind failed: " + e.getMessage();
-            Log.e(TAG, lastError);
+        } catch (Throwable bindFailure) {
+            lastError = "tor bind failed: "
+                    + bindFailure.getClass().getSimpleName()
+                    + ": "
+                    + String.valueOf(bindFailure.getMessage());
+            Log.e(TAG, lastError, bindFailure);
             publishStatus();
         }
     }
