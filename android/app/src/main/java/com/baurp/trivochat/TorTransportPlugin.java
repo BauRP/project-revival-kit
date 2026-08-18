@@ -2,6 +2,7 @@ package com.baurp.trivochat;
 
 import android.content.Intent;
 import android.os.Build;
+import android.util.Log;
 
 import com.baurp.trivochat.tor.TorOnionService;
 import com.getcapacitor.JSArray;
@@ -21,6 +22,8 @@ import java.util.concurrent.Executors;
  */
 @CapacitorPlugin(name = "TorTransport")
 public class TorTransportPlugin extends Plugin {
+
+    private static final String TAG = "TorTransportPlugin";
 
     private final ExecutorService io = Executors.newCachedThreadPool();
 
@@ -79,8 +82,28 @@ public class TorTransportPlugin extends Plugin {
                 getContext().startService(intent);
             }
         } catch (Throwable startFailure) {
-            call.reject("Unable to start Tor foreground service", startFailure.getMessage());
-            return;
+            // Android 12+ (and strictly enforced on API 34/36) throws
+            // ForegroundServiceStartNotAllowedException when the process is not in a
+            // valid state to promote a service to the foreground (e.g. cold-started
+            // from the background). Degrade to a background start instead of failing.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    && startFailure instanceof android.app.ForegroundServiceStartNotAllowedException) {
+                Log.w(TAG, "Foreground start not allowed, retrying as background service",
+                        startFailure);
+                try {
+                    getContext().startService(intent);
+                } catch (Throwable backgroundFailure) {
+                    Log.e(TAG, "Background Tor service start failed", backgroundFailure);
+                    call.reject(
+                            "Tor transport cannot start while the app is in the background",
+                            backgroundFailure.getMessage());
+                    return;
+                }
+            } else {
+                Log.e(TAG, "Unable to start Tor foreground service", startFailure);
+                call.reject("Unable to start Tor foreground service", startFailure.getMessage());
+                return;
+            }
         }
 
         io.execute(() -> {
