@@ -7,7 +7,7 @@ import "@/lib/boot-guard";
 
 import appCss from "../styles.css?url";
 import legacyCss from "../index.css?url";
-
+import { goHome } from "@/lib/home-navigation";
 
 export const Route = createRootRoute({
   ssr: false,
@@ -30,7 +30,7 @@ export const Route = createRootRoute({
       { name: "twitter:description", content: "Защищенный мессенджер нового поколения" },
     ],
     links: [
-      { rel: "icon", type: "image/x-icon", href: "/favicon.ico" },
+      { rel: "icon", type: "image/x-icon", href: "./favicon.ico" },
       { rel: "preconnect", href: "https://fonts.googleapis.com" },
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       {
@@ -133,7 +133,7 @@ function RootErrorComponent({ error }: { error: Error }) {
           <button
             type="button"
             onClick={() => {
-              if (typeof window !== "undefined") window.location.href = "/";
+              goHome();
             }}
             style={{
               cursor: "pointer",

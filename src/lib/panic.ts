@@ -1,5 +1,6 @@
 import { nukeAllData } from "./storage";
 import { destroyPeer } from "./p2p";
+import { goHome } from "./home-navigation";
 
 let panicActive = false;
 
@@ -10,9 +11,9 @@ export async function executePanic(): Promise<void> {
   try {
     destroyPeer();
     await nukeAllData();
-    window.location.replace("/");
+    goHome();
   } catch {
-    window.location.replace("/");
+    goHome();
   }
 }
 
