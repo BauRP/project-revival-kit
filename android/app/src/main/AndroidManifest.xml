@@ -27,8 +27,7 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="true"
         android:networkSecurityConfig="@xml/network_security_config"
-        tools:targetApi="35"
-        tools:replace="android:networkSecurityConfig,android:usesCleartextTraffic,android:theme">
+        tools:targetApi="36">
 
         <activity
             android:name="com.baurp.trivochat.MainActivity"

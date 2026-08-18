@@ -394,6 +394,16 @@ public class TorOnionService extends Service {
 
     private void bindTor() {
         if (torBound) return;
+        // Deferred JNI load: never resolve TorService (whose static block calls
+        // System.loadLibrary("tor")) before an explicit start request, and never
+        // outside a Throwable guard.
+        if (!TorNativeSupport.ensureLoaded()) {
+            lastError = TorNativeSupport.failureReason();
+            Log.e(TAG, "Refusing to bind tor: " + lastError);
+            updateNotification("Tor transport unavailable");
+            publishStatus();
+            return;
+        }
         try {
             Intent intent = new Intent(this, TorService.class);
             bindService(intent, torConnection, BIND_AUTO_CREATE);

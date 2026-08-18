@@ -23,7 +23,7 @@ android {
         // x86_64 lets the Java shell install but leaves Tor's JNI runtime unable
         // to load when the transport starts on an x86_64 emulator.
         ndk {
-            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86'
         }
 
         aaptOptions {
@@ -36,7 +36,7 @@ android {
             enable true
             reset()
             // Keep a universal artifact for QA while also emitting per-ABI APKs.
-            include 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+            include 'arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86'
             universalApk true
         }
     }

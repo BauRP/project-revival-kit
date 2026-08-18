@@ -60,7 +60,7 @@ export function renderErrorPage(): string {
       <p>The app could not be started on the server. Your local messages and keys are untouched — they never leave this device.</p>
       <div class="row">
         <button class="primary" onclick="location.reload()">Refresh</button>
-        <a class="btn" href="/">Go home</a>
+        <button class="btn" onclick="location.replace(location.pathname)">Go home</button>
       </div>
     </main>
   </body>

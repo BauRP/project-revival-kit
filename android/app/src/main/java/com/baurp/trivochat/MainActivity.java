@@ -38,8 +38,47 @@ public class MainActivity extends BridgeActivity {
 
     private static final String TAG = "TrivoMain";
 
+    /** Installed once; keeps background-thread crashes out of the process killer. */
+    private static void installGlobalExceptionHandler() {
+        try {
+            final Thread.UncaughtExceptionHandler previous =
+                    Thread.getDefaultUncaughtExceptionHandler();
+            if (previous instanceof TrivoExceptionHandler) return;
+            Thread.setDefaultUncaughtExceptionHandler(new TrivoExceptionHandler(previous));
+            Log.i(TAG, "Global uncaught exception handler installed");
+        } catch (Throwable t) {
+            Log.e(TAG, "Unable to install global exception handler", t);
+        }
+    }
+
+    private static final class TrivoExceptionHandler implements Thread.UncaughtExceptionHandler {
+        private final Thread.UncaughtExceptionHandler delegate;
+
+        TrivoExceptionHandler(Thread.UncaughtExceptionHandler delegate) {
+            this.delegate = delegate;
+        }
+
+        @Override
+        public void uncaughtException(Thread thread, Throwable throwable) {
+            Log.e(TAG, "Uncaught exception on thread '" + thread.getName() + "'", throwable);
+            boolean isMainThread = android.os.Looper.getMainLooper() != null
+                    && android.os.Looper.getMainLooper().getThread() == thread;
+            if (isMainThread && delegate != null) {
+                // Main-thread failures must still reach the platform handler so
+                // ANR/crash reporting stays intact.
+                delegate.uncaughtException(thread, throwable);
+                return;
+            }
+            // Background failures (Tor workers, executors) are logged and swallowed
+            // so the WebView keeps running and can surface a diagnostic screen.
+            Log.e(TAG, "Background thread failure contained; app continues");
+        }
+    }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        installGlobalExceptionHandler();
+        Log.i(TAG, "onCreate: registering optional native plugins");
         /*
          * Resolve optional plugin classes by name INSIDE the guard. Passing
          * a class literal as an argument would resolve the class before the
@@ -48,10 +87,13 @@ public class MainActivity extends BridgeActivity {
          * before BridgeActivity drew its first frame.
          */
         registerPluginSafely("com.baurp.trivochat.TorTransportPlugin", "TorTransport");
+        Log.i(TAG, "onCreate: plugin registration finished, entering BridgeActivity.onCreate()");
 
         try {
             super.onCreate(savedInstanceState);
+            Log.i(TAG, "onCreate: BridgeActivity.onCreate() completed, hardening WebView");
             configureWebView();
+            Log.i(TAG, "onCreate: native shell ready");
         } catch (Throwable fatal) {
             Log.e(TAG, "Fatal native launch failure", fatal);
             renderNativeDiagnostic(fatal);
@@ -82,6 +124,7 @@ public class MainActivity extends BridgeActivity {
             @SuppressWarnings("unchecked")
             Class<? extends Plugin> pluginClass = (Class<? extends Plugin>) rawClass;
             registerPlugin(pluginClass);
+            Log.i(TAG, "Optional plugin '" + label + "' registered");
         } catch (Throwable t) {
             Log.e(TAG, "Optional plugin '" + label + "' not registered", t);
         }

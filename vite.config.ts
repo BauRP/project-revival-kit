@@ -77,6 +77,10 @@ export default defineConfig({
     plugins: [mirrorServerEntry()],
   },
   tanstackStart: {
+    // The APK is a file:// SPA: keep the router basepath relative there so the
+    // serialised manifest never emits "/./assets/..." hybrids. On web the
+    // basepath must stay "/" or every server-function RPC 500s.
+    router: { basepath: isCapacitorBuild ? "./" : "/" },
     // Route every request through src/server.tsx so SSR failures are logged
     // and rendered as a readable page instead of a bare "Internal server error".
     server: { entry: "server" },
