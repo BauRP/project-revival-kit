@@ -10,20 +10,20 @@
 ## 2. Технологический стек
 
 ### Frontend & UI Shell
-* **Язык и Фреймворк:** React 18, TypeScript, Vite.
+* **Язык и Фреймворк:** React 19, TypeScript, Vite 7, TanStack Router/Start.
 * **Стилизация:** Tailwind CSS, Shadcn UI / Radix UI компоненты.
 * **Иконки:** Lucide React.
 * **Состояние и Контексты:** React Context API (`IdentityContext`, `LanguageContext`, `ThemeContext`).
 
 ### Мобильная платформа & Native Layer (Android)
-* **Среда гибридной сборки:** Capacitor.
+* **Среда гибридной сборки:** Capacitor 8.5.0 (`capacitor.config.ts`).
 * **Нативный язык:** Java (Android SDK).
 * **Кастомные нативные плагины:**
   * `TorTransportPlugin.java` — управление анонимным Onion-трафиком и SOCKS5 прокси внутри сети Tor (`TorOnionService`, `Socks5Client`, `OnionFrameQueue`).
-  * `YandexAdsPlugin.java` — нативный мост для интеграции рекламной сети.
+  * `tor/TorNativeSupport.java` — отложенная и защищённая загрузка `libtor.so`.
 
 ### P2P, Сеть и Хранение
-* **Децентрализованная БД:** GunDB / P2P вебсокет-узлы.
+* **Хранение и обмен:** только локальная Dexie/IndexedDB + P2P-доставка кадров через Tor onion service (никаких внешних БД и узлов).
 * **Сетевой менеджер:** `connection-manager.ts` (контроль соединений, фолбэки, восстановление связи).
 * **Локальное хранилище:** IndexedDB / LocalStorage с шифрованием данных.
 
@@ -44,11 +44,11 @@ trivo-sync-elite-main/
 │   └── app/src/main/java/com/baurp/trivochat/
 │       ├── MainActivity.java           # Точка входа в нативное приложение
 │       ├── TorTransportPlugin.java     # Capacitor плагин для Tor
-│       ├── YandexAdsPlugin.java        # Capacitor плагин для рекламы
 │       └── tor/                        # Реализация SOCKS5 и Onion службы
 │           ├── OnionFrameQueue.java    # Очередь кадров/пакетов
 │           ├── Socks5Client.java       # Клиент SOCKS5
-│           └── TorOnionService.java    # Фоновый сервис Tor
+│           ├── TorOnionService.java    # Фоновый сервис Tor
+│           └── TorNativeSupport.java   # Ленивая загрузка JNI-рантайма tor
 ├── src/
 │   ├── assets/                 # Иконки приложения (trivo-icon.png, app-icon.png)
 │   ├── components/             # Модули интерфейса
@@ -80,6 +80,10 @@ trivo-sync-elite-main/
 │       ├── crypto-async.ts      # Шифрование, генерация ключей и HASH
 │       ├── boot-guard.ts        # Защищенный стартовый загрузчик
 │       ├── backup.ts            # Резервное копирование и экспорт
-│       └── ad-config.ts         # Конфигурация нативной рекламы
-├── capacitor.config.json       # Конфигурация мобильной сборки
+│       ├── layout-metrics.ts    # Метрики раскладки (без рекламных отступов)
+│       ├── home-navigation.ts   # Относительная навигация "домой" (file://)
+│       ├── support-nlp-engine.ts# Офлайн NLP.js движок ассистента
+│       └── workers/             # crypto.worker.ts, nlp.worker.ts
+├── scripts/fix-relative-assets.mjs # Приведение путей dist/ к относительным
+├── capacitor.config.ts         # Конфигурация мобильной сборки (типизированная)
 └── package.json                # Зависимости и скрипты проекта

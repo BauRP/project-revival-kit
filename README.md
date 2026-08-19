@@ -1,92 +1,53 @@
-# Project Revival Kit
+# Trivo Chat Elite (`com.baurp.trivochat`)
 
-PROJECT RESTORATION AND SETUP INSTRUCTIONS
+Zero-trust, serverless messenger. Every message is end-to-end encrypted on device and
+transported peer-to-peer over a **Tor v3 onion service** hosted by the Android app itself.
+There is no application backend, no analytics, no ads and no third-party BaaS.
 
-PHASE 1: CONTEXT INGESTION & ARCHITECTURE ANALYSIS
+## Stack
 
-Before generating or modifying any code, please locate and read the ARCHITECTURE.md file in the root of the provided ZIP archive. It is important to fully understand the application's logic, tech stack, state management, database structure, and custom solutions. Please adapt the setup to match the exact architectural rules defined in this file.
+| Layer | Technology |
+| --- | --- |
+| UI | React 19 + TypeScript, Vite 7, Tailwind CSS v4 (`src/styles.css`, `src/index.css`), Radix/shadcn, Lucide |
+| Routing | TanStack Router / TanStack Start (`src/routes`, `src/router.tsx`, hash history in the APK) |
+| Native shell | Capacitor 8.5.0 (`capacitor.config.ts`), Java Android project in `android/` |
+| Transport | Custom `TorTransport` Capacitor plugin → `TorOnionService` (tor-android 0.4.5.7 + jtorctl), SOCKS5 client, persistent frame queues |
+| Crypto | tweetnacl (Ed25519 / X25519) executed inside `src/lib/workers/crypto.worker.ts` |
+| Local data | Dexie / IndexedDB with encrypted payloads, `safe-storage.ts` fallback |
+| Offline assistant | NLP.js (`@nlpjs/*`) trained on device inside `src/lib/workers/nlp.worker.ts` |
 
-PHASE 2: CORE OBJECTIVE
+## Explicitly absent
 
-Act as a Senior Software Architect. Please reconstruct the provided project files from the ZIP archive with full functional and visual fidelity.
+Firebase, Supabase, GunDB, Google AdMob/AdSense, Yandex Ads, `google-services.json`,
+`YandexAdsPlugin.java`, `ad-config.ts`, `capacitor.config.json` — all removed. Only
+`capacitor.config.ts` exists, and no tracking or ad SDK is referenced by Gradle or npm.
 
-Required modification during setup:
+## Scripts
 
-    REMOVE GOOGLE ADS: Please safely remove any Google Ads (AdMob, AdSense, etc.) initialization, SDK dependencies, UI ad banners, and related logic. The application must be completely ad-free while maintaining all other native functionalities.
-
-PHASE 3: SYSTEM RECOVERY (RESTORE FROM ZIP)
-
-Please ensure the following configurations are restored exactly as they were in the original ZIP archive:
-
-A. UI SCALING & TAILWIND CONFIGURATION
-
-    Restore index.html. Ensure the viewport meta tag is exactly: <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-
-    Inspect tailwind.config.ts (or .js) and src/index.css. Restore all root font-size scales, custom mappings, and breakpoints.
-
-    Ensure touch-action: manipulation, user-select: none, and safe-area inset paddings are fully restored.
-
-B. ANDROID NATIVE PERMISSIONS & MANIFEST
-
-    Re-insert media storage permissions (READ_MEDIA_IMAGES, READ_MEDIA_VIDEO, READ_EXTERNAL_STORAGE, WRITE_EXTERNAL_STORAGE, ACCESS_MEDIA_LOCATION).
-
-    Include android:requestLegacyExternalStorage="true" in the <application> tag.
-
-    Restore all <queries> declarations.
-
-    Preserve android:configChanges parameters on the main activity.
-
-C. CAPACITOR CONFIGURATION
-
-    Restore settings including webDir: "dist", and server: { androidScheme: 'https', cleartext: true }.
-
-    Ensure proper file scheme conversion (Capacitor.convertFileSrc(path)) is maintained for local media.
-
-D. MEDIA SCANNING HANDLERS
-
-    Check all hooks handling media indexing. Ensure runtime permission checks happen before querying storage.
-
-    Ensure the app scans directories recursively to fetch metadata exactly as originally written in the ZIP.
-
-E. LAUNCHER ASSETS & BUILD
-
-    Ensure all original PNG launcher icons from mipmap-* are present.
-
-    Check build.gradle to ensure compileSdk, targetSdk, and dependencies match the original structure.
-
-PHASE 4: IMPLEMENTATION STANDARDS
-
-    Comprehensive Setup: Recreate every feature, utility, component, and routing config exactly as in the source (without the ads).
-
-    No Placeholders: Please provide complete code blocks. Do not use shortcuts, stubs, or comments like "// existing code here".
-
-    Full File Output: When modifying or generating a file, please output the entire unabbreviated file from start to finish.
-
-    Original Code: Please use the exact original logic from the ZIP archive instead of generating new template code.
-
-EXECUTION STRATEGY:
-
-Step 1: Output a brief confirmation that you have read ARCHITECTURE.md and list the core stack you absorbed.
-
-Step 2: Begin the extraction, ad removal, and full unabbreviated code generation following the standards above.
-
-This project was built with [Lovable](https://lovable.dev).
-
-## Build with Lovable
-
-Continue developing this project in the [Lovable editor](https://lovable.dev/projects/9532f93b-9281-4f4a-9ba9-f6453a744383).
-
-- **Ship faster**: describe what you want to build and Lovable handles the code.
-- **Stay in sync**: every change made in Lovable is committed straight to this repository.
-- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
-
-## Development
-
-Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
-
-```sh
-git clone <this-repository-url>
-cd <repository-name>
-npm i
-npm run dev
+```bash
+npm run dev                  # Vite dev server (web preview)
+npm run build                # Web/SPA build into dist/
+npm run build:android        # CAP_BUILD=1 build + relative-path fix + cap sync + assembleDebug
+npm run build:android:release# same pipeline, assembleRelease
+npm run lint                 # ESLint (incl. prettier rules)
+npm run format               # Prettier write
 ```
+
+`scripts/fix-relative-assets.mjs` rewrites any `/./assets/...`, `/assets/...` or
+`/favicon.ico` reference in `dist/` to a document-relative path, which is mandatory for
+the `file://` WebView. `CAP_BUILD=1` additionally sets Vite `base: "./"` and the TanStack
+router basepath to `"./"`.
+
+## Android notes
+
+- Permissions are limited to what Tor needs plus user-triggered capabilities:
+  `INTERNET`, `ACCESS_NETWORK_STATE`, `WAKE_LOCK`, `FOREGROUND_SERVICE(+DATA_SYNC)`,
+  `POST_NOTIFICATIONS`, camera/mic/media.
+- Cleartext is enabled only for loopback (`127.0.0.1`, `localhost`, `10.0.2.2`) through
+  `res/xml/network_security_config.xml`, because the Tor SOCKS proxy is local.
+- `libtor.so` is loaded lazily by `tor/TorNativeSupport.java` on the first explicit
+  `start()` — never at class-load time — so an unsupported ABI degrades gracefully
+  instead of crashing the process.
+- `MainActivity` installs a global `UncaughtExceptionHandler`, logs the whole boot
+  sequence under the `TrivoMain` tag, and paints a native diagnostic screen if the
+  Capacitor bridge itself fails.
