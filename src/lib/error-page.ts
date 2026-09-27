@@ -12,6 +12,7 @@ export function renderErrorPage(): string {
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <meta http-equiv="cache-control" content="no-store" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Trivo Chat — temporarily unavailable</title>
     <style>
@@ -39,7 +40,7 @@ export function renderErrorPage(): string {
       h1 { margin: 0 0 8px; font-size: 20px; font-weight: 700; }
       p { margin: 0 0 24px; font-size: 14px; line-height: 1.5; color: rgba(232, 236, 245, 0.7); }
       .row { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-      button, a.btn {
+      a.btn {
         appearance: none;
         cursor: pointer;
         border-radius: 12px;
@@ -51,7 +52,7 @@ export function renderErrorPage(): string {
         background: rgba(255, 255, 255, 0.06);
         color: #e8ecf5;
       }
-      button.primary { background: #4f7cff; border-color: #4f7cff; color: #fff; }
+      .primary { background: #4f7cff; border-color: #4f7cff; color: #fff; }
     </style>
   </head>
   <body>
@@ -59,8 +60,8 @@ export function renderErrorPage(): string {
       <h1>Something went wrong</h1>
       <p>The app could not be started on the server. Your local messages and keys are untouched — they never leave this device.</p>
       <div class="row">
-        <button class="primary" onclick="location.reload()">Refresh</button>
-        <button class="btn" onclick="location.replace(location.pathname)">Go home</button>
+        <a class="btn primary" href="" target="_self">Refresh</a>
+        <a class="btn" href="./" target="_self">Go home</a>
       </div>
     </main>
   </body>
