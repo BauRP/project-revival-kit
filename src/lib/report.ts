@@ -10,7 +10,10 @@ export interface Report {
   timestamp: number;
 }
 
-export async function submitReport(reportedUserId: string, category: ReportCategory): Promise<void> {
+export async function submitReport(
+  reportedUserId: string,
+  category: ReportCategory,
+): Promise<void> {
   const report: Report = {
     id: `report-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     reportedUserId,

@@ -9,8 +9,8 @@ export interface KeyPair {
 }
 
 export interface IdentityKeys {
-  signing: KeyPair;    // Ed25519 for identity
-  exchange: KeyPair;   // X25519 for key exchange / encryption
+  signing: KeyPair; // Ed25519 for identity
+  exchange: KeyPair; // X25519 for key exchange / encryption
   createdAt: number;
 }
 
@@ -55,7 +55,7 @@ export async function getOrCreateIdentity(): Promise<IdentityKeys> {
 export function encryptMessage(
   plaintext: string,
   recipientPublicKey: string,
-  senderSecretKey: string
+  senderSecretKey: string,
 ): { ciphertext: string; nonce: string } {
   const nonce = nacl.randomBytes(nacl.box.nonceLength);
   const msgBytes = decodeUTF8(plaintext);
@@ -78,13 +78,13 @@ export function decryptMessage(
   ciphertext: string,
   nonce: string,
   senderPublicKey: string,
-  recipientSecretKey: string
+  recipientSecretKey: string,
 ): string {
   const decrypted = nacl.box.open(
     decodeBase64(ciphertext),
     decodeBase64(nonce),
     decodeBase64(senderPublicKey),
-    decodeBase64(recipientSecretKey)
+    decodeBase64(recipientSecretKey),
   );
   if (!decrypted) throw new Error("Decryption failed — invalid key or tampered data");
   return encodeUTF8(decrypted);
@@ -105,13 +105,13 @@ export function verifySignature(data: string, signature: string, publicKey: stri
   return nacl.sign.detached.verify(
     decodeUTF8(data),
     decodeBase64(signature),
-    decodeBase64(publicKey)
+    decodeBase64(publicKey),
   );
 }
 
 /**
  * БОСС: Новый алгоритм генерации уникального ID.
- * Мы используем SHA-256 и переводим его в HEX (цифры и буквы A-F), 
+ * Мы используем SHA-256 и переводим его в HEX (цифры и буквы A-F),
  * чтобы ID был солидным и уникальным.
  */
 export function getKeyFingerprint(publicKey: string): string {
@@ -119,19 +119,19 @@ export function getKeyFingerprint(publicKey: string): string {
     const bytes = decodeBase64(publicKey);
     // Используем SHA-512 через NaCl для более длинного хеша
     const hash = nacl.hash(bytes);
-    
+
     // Превращаем байты в HEX-строку (0-9, A-F)
     const hex = Array.from(hash)
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('')
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("")
       .toUpperCase();
-      
+
     // Берем 12 символов и разбиваем их дефисом для удобства чтения
     // Например: 4A2D-8B1C-E9F0
     const part1 = hex.substring(0, 4);
     const part2 = hex.substring(4, 8);
     const part3 = hex.substring(8, 12);
-    
+
     return `${part1}-${part2}-${part3}`;
   } catch (e) {
     // Если всё совсем плохо, генерируем случайный ID, чтобы не было "111111"
@@ -145,7 +145,7 @@ export function getKeyFingerprint(publicKey: string): string {
 export function pqxdhEncrypt(
   plaintext: string,
   recipientPublicKey: string,
-  senderSecretKey: string
+  senderSecretKey: string,
 ): { ciphertext: string; nonce: string; pqEntropy: string } {
   const pqEntropy = nacl.randomBytes(32);
   const combinedPlaintext = encodeBase64(pqEntropy) + "||" + plaintext;
@@ -157,7 +157,7 @@ export function pqxdhDecrypt(
   ciphertext: string,
   nonce: string,
   senderPublicKey: string,
-  recipientSecretKey: string
+  recipientSecretKey: string,
 ): string {
   const decrypted = decryptMessage(ciphertext, nonce, senderPublicKey, recipientSecretKey);
   const parts = decrypted.split("||");

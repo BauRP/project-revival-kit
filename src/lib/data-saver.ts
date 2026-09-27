@@ -24,7 +24,10 @@ export function setDataSaverEnabled(enabled: boolean): void {
 
 export function getConnectionKind(): ConnectionKind {
   try {
-    const c = (navigator as any).connection || (navigator as any).mozConnection || (navigator as any).webkitConnection;
+    const c =
+      (navigator as any).connection ||
+      (navigator as any).mozConnection ||
+      (navigator as any).webkitConnection;
     if (!c) return "unknown";
     // ConnectivityManager-equivalent: type === "wifi" | "cellular" | "ethernet" | ...
     if (c.type === "wifi" || c.type === "ethernet") return "wifi";

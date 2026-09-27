@@ -69,7 +69,9 @@ export async function loadMyProfile(userId: string): Promise<UserProfile> {
   if (localLoaded && localProfile && localProfile.userId === userId) return localProfile;
   const stored = await dbGet<UserProfile>("settings", LOCAL_KEY);
   const normalized = normalize(stored, userId);
-  localProfile = normalized ? { ...normalized, userId: userId || normalized.userId } : emptyProfile(userId);
+  localProfile = normalized
+    ? { ...normalized, userId: userId || normalized.userId }
+    : emptyProfile(userId);
   localLoaded = true;
   return localProfile;
 }
@@ -159,7 +161,10 @@ async function handleIncoming(userId: string, raw: unknown): Promise<void> {
   // (chat list, chat header, friends list) renders the newest version.
   try {
     const meta = await getChatMeta(userId);
-    if (meta && (meta.friendAvatar !== profile.avatar || (profile.name && meta.friendName !== profile.name))) {
+    if (
+      meta &&
+      (meta.friendAvatar !== profile.avatar || (profile.name && meta.friendName !== profile.name))
+    ) {
       await saveChatMeta({
         ...meta,
         friendAvatar: profile.avatar,

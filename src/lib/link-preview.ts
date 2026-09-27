@@ -28,10 +28,16 @@ const cacheKey = (url: string) => `link-preview-${url}`;
 
 const parseOg = (html: string, url: string): LinkPreview => {
   const get = (prop: string) => {
-    const re = new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`, "i");
+    const re = new RegExp(
+      `<meta[^>]+(?:property|name)=["']${prop}["'][^>]+content=["']([^"']+)["']`,
+      "i",
+    );
     const m = html.match(re);
     if (m) return m[1];
-    const re2 = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${prop}["']`, "i");
+    const re2 = new RegExp(
+      `<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${prop}["']`,
+      "i",
+    );
     const m2 = html.match(re2);
     return m2 ? m2[1] : undefined;
   };
@@ -63,7 +69,11 @@ export async function fetchLinkPreview(url: string): Promise<LinkPreview | null>
     const html = await res.text();
     const preview = parseOg(html, url);
     if (!preview.title && !preview.image && !preview.description) return null;
-    try { await dbPut("settings", cacheKey(url), preview); } catch { /* non-fatal */ }
+    try {
+      await dbPut("settings", cacheKey(url), preview);
+    } catch {
+      /* non-fatal */
+    }
     return preview;
   } catch (e) {
     console.warn("[link-preview] fetch failed", e);

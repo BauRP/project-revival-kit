@@ -121,11 +121,7 @@ export async function deleteMessageForEveryone(
   broadcastLifecycle(selfId, peerId, messageId, patch);
 }
 
-export async function pinMessage(
-  selfId: string,
-  peerId: string,
-  messageId: string,
-): Promise<void> {
+export async function pinMessage(selfId: string, peerId: string, messageId: string): Promise<void> {
   const patch: Partial<MessageLifecycle> = { pinnedAt: Date.now(), pinnedBy: selfId };
   await writeLocalEntry(selfId, peerId, messageId, patch);
   broadcastLifecycle(selfId, peerId, messageId, patch);
@@ -138,7 +134,10 @@ export async function unpinMessage(
 ): Promise<void> {
   const patch: Partial<MessageLifecycle> = { pinnedAt: undefined, pinnedBy: undefined };
   await writeLocalEntry(selfId, peerId, messageId, patch);
-  broadcastLifecycle(selfId, peerId, messageId, { ...patch, clearPin: true } as unknown as Partial<MessageLifecycle>);
+  broadcastLifecycle(selfId, peerId, messageId, {
+    ...patch,
+    clearPin: true,
+  } as unknown as Partial<MessageLifecycle>);
 }
 
 // ─── Subscription ───────────────────────────────────────────

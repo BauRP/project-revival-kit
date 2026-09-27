@@ -72,7 +72,11 @@ const ChatSelectionBar = ({
       )}
 
       {allowPin && onPinToggle && (
-        <button onClick={onPinToggle} className={iconButton} aria-label={isPinned ? "Unpin message" : "Pin message"}>
+        <button
+          onClick={onPinToggle}
+          className={iconButton}
+          aria-label={isPinned ? "Unpin message" : "Pin message"}
+        >
           {isPinned ? <PinOff size={18} /> : <Pin size={18} />}
         </button>
       )}

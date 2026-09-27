@@ -341,9 +341,11 @@ const en: TranslationMap = {
   p2pNetwork: "P2P Network",
   onionTorConnected: "Connected via Onion Tor hidden service",
   technicalTransparency: "Technical Transparency",
-  transparencyDescription: "All cryptographic libraries used in Trivo Chat are open-source and publicly auditable.",
+  transparencyDescription:
+    "All cryptographic libraries used in Trivo Chat are open-source and publicly auditable.",
   deleteAccount: "Delete Account",
-  deleteAccountConfirm: "Are you sure? This will instantly wipe all your local data, chats, keys, and friends. This action cannot be undone.",
+  deleteAccountConfirm:
+    "Are you sure? This will instantly wipe all your local data, chats, keys, and friends. This action cannot be undone.",
   networkNoiseDesc: "Send encrypted dummy packets to mask real activity",
   stealthModeDesc: "Split messages into fragments before sending",
   hideMessageContent: "Hide Message Content",
@@ -392,10 +394,12 @@ const en: TranslationMap = {
   invalidIdFormat: "Invalid ID format",
   cannotAddSelf: "You cannot add yourself",
   shareIdDesc: "Share this ID with friends so they can add you",
-  securityNotice: "🛡️ Security Notice: Your ID is the key to your privacy. Be cautious when sharing it via Email or other messengers. Only share it with people you trust.",
+  securityNotice:
+    "🛡️ Security Notice: Your ID is the key to your privacy. Be cautious when sharing it via Email or other messengers. Only share it with people you trust.",
   addPeerById: "Add a friend by their unique ID",
   unblockRestore: "Unblock & Restore Access?",
-  unblockRestoreDesc: "This user was previously blocked. Would you like to unblock them and add as a friend?",
+  unblockRestoreDesc:
+    "This user was previously blocked. Would you like to unblock them and add as a friend?",
   reportUser: "Report User",
   reportSubmitted: "Report submitted. User blocked.",
   reportFailed: "Failed to submit report",
@@ -434,7 +438,8 @@ const en: TranslationMap = {
   dataAndMemory: "Data and Storage",
   dataSaver: "Data Saver Mode",
   dataSaverDesc: "Media is not downloaded automatically on mobile networks.",
-  deleteAccountWarning: "Deleting your account permanently destroys your local ID, all saved contacts and chat history. Recovery is impossible — you will need to create a new ID and add your contacts again.",
+  deleteAccountWarning:
+    "Deleting your account permanently destroys your local ID, all saved contacts and chat history. Recovery is impossible — you will need to create a new ID and add your contacts again.",
 };
 
 const ru: TranslationMap = {
@@ -560,9 +565,11 @@ const ru: TranslationMap = {
   p2pNetwork: "P2P Сеть",
   onionTorConnected: "Подключено через скрытый сервис Onion Tor",
   technicalTransparency: "Техническая прозрачность",
-  transparencyDescription: "Все криптографические библиотеки Trivo Chat имеют открытый исходный код.",
+  transparencyDescription:
+    "Все криптографические библиотеки Trivo Chat имеют открытый исходный код.",
   deleteAccount: "Удалить аккаунт",
-  deleteAccountConfirm: "Вы уверены? Это мгновенно удалит все локальные данные, чаты, ключи и друзей. Это действие нельзя отменить.",
+  deleteAccountConfirm:
+    "Вы уверены? Это мгновенно удалит все локальные данные, чаты, ключи и друзей. Это действие нельзя отменить.",
   networkNoiseDesc: "Отправка зашифрованных пустых пакетов для маскировки активности",
   stealthModeDesc: "Разбиение сообщений на фрагменты перед отправкой",
   hideMessageContent: "Скрыть содержимое сообщений",
@@ -611,10 +618,12 @@ const ru: TranslationMap = {
   invalidIdFormat: "Неверный формат ID",
   cannotAddSelf: "Нельзя добавить себя",
   shareIdDesc: "Поделитесь этим ID с друзьями, чтобы они могли вас добавить",
-  securityNotice: "🛡️ Безопасность: Ваш ID — это ключ к вашей приватности. Будьте осторожны при его отправке через почту или другие мессенджеры. Делитесь им только с теми, кому доверяете.",
+  securityNotice:
+    "🛡️ Безопасность: Ваш ID — это ключ к вашей приватности. Будьте осторожны при его отправке через почту или другие мессенджеры. Делитесь им только с теми, кому доверяете.",
   addPeerById: "Добавить друга по уникальному ID",
   unblockRestore: "Разблокировать и восстановить доступ?",
-  unblockRestoreDesc: "Этот пользователь был ранее заблокирован. Хотите разблокировать и добавить в друзья?",
+  unblockRestoreDesc:
+    "Этот пользователь был ранее заблокирован. Хотите разблокировать и добавить в друзья?",
   reportUser: "Пожаловаться",
   reportSubmitted: "Жалоба отправлена. Пользователь заблокирован.",
   reportFailed: "Не удалось отправить жалобу",
@@ -653,7 +662,8 @@ const ru: TranslationMap = {
   dataAndMemory: "Данные и память",
   dataSaver: "Режим экономии данных",
   dataSaverDesc: "При мобильной сети медиафайлы не загружаются автоматически.",
-  deleteAccountWarning: "При удалении аккаунта безвозвратно уничтожаются ваш локальный ID, все сохраненные контакты и история чатов. Восстановление данных невозможно — для повторного использования потребуется создать новый ID и заново добавить контакты.",
+  deleteAccountWarning:
+    "При удалении аккаунта безвозвратно уничтожаются ваш локальный ID, все сохраненные контакты и история чатов. Восстановление данных невозможно — для повторного использования потребуется создать новый ID и заново добавить контакты.",
 };
 
 const kk: TranslationMap = {
@@ -779,9 +789,11 @@ const kk: TranslationMap = {
   p2pNetwork: "P2P желісі",
   onionTorConnected: "Onion Tor жасырын қызметі арқылы қосылған",
   technicalTransparency: "Техникалық ашықтық",
-  transparencyDescription: "Trivo Chat қолданатын барлық криптографиялық кітапханалар ашық бастапқы кодты.",
+  transparencyDescription:
+    "Trivo Chat қолданатын барлық криптографиялық кітапханалар ашық бастапқы кодты.",
   deleteAccount: "Аккаунтты жою",
-  deleteAccountConfirm: "Сенімдісіз бе? Бұл барлық жергілікті деректерді, чаттарды, кілттерді және достарды бірден жояды. Бұл әрекетті қайтару мүмкін емес.",
+  deleteAccountConfirm:
+    "Сенімдісіз бе? Бұл барлық жергілікті деректерді, чаттарды, кілттерді және достарды бірден жояды. Бұл әрекетті қайтару мүмкін емес.",
   networkNoiseDesc: "Нақты белсенділікті жасыру үшін шифрланған бос пакеттерді жіберу",
   stealthModeDesc: "Жіберу алдында хабарламаларды фрагменттерге бөлу",
   hideMessageContent: "Хабарлама мазмұнын жасыру",
@@ -829,10 +841,12 @@ const kk: TranslationMap = {
   invalidIdFormat: "Жарамсыз ID форматы",
   cannotAddSelf: "Өзіңізді қоса алмайсыз",
   shareIdDesc: "Достарыңызбен бөлісіңіз, олар сізді қоса алады",
-  securityNotice: "🛡️ Қауіпсіздік ескертуі: Сіздің ID-іңіз құпиялылық кілті болып табылады. Оны пошта немесе басқа мессенджерлер арқылы бөліскенде абай болыңыз. Тек сенімді адамдармен бөлісіңіз.",
+  securityNotice:
+    "🛡️ Қауіпсіздік ескертуі: Сіздің ID-іңіз құпиялылық кілті болып табылады. Оны пошта немесе басқа мессенджерлер арқылы бөліскенде абай болыңыз. Тек сенімді адамдармен бөлісіңіз.",
   addPeerById: "Бірегей ID арқылы дос қосу",
   unblockRestore: "Бұғаттауды алу және қалпына келтіру?",
-  unblockRestoreDesc: "Бұл пайдаланушы бұрын бұғатталған. Бұғаттауды алып, дос ретінде қосғыңыз келе ме?",
+  unblockRestoreDesc:
+    "Бұл пайдаланушы бұрын бұғатталған. Бұғаттауды алып, дос ретінде қосғыңыз келе ме?",
   reportUser: "Шағымдану",
   reportSubmitted: "Шағым жіберілді. Пайдаланушы бұғатталды.",
   reportFailed: "Шағымды жіберу сәтсіз",
@@ -872,7 +886,8 @@ const kk: TranslationMap = {
   dataAndMemory: "Деректер және жады",
   dataSaver: "Деректерді үнемдеу режимі",
   dataSaverDesc: "Мобильді желіде медиафайлдар автоматты жүктелмейді.",
-  deleteAccountWarning: "Аккаунтты жойған кезде жергілікті ID, барлық сақталған контактілер және чат тарихы қайтарымсыз жойылады. Деректерді қалпына келтіру мүмкін емес — қайта пайдалану үшін жаңа ID жасап, контактілерді қайта қосу қажет.",
+  deleteAccountWarning:
+    "Аккаунтты жойған кезде жергілікті ID, барлық сақталған контактілер және чат тарихы қайтарымсыз жойылады. Деректерді қалпына келтіру мүмкін емес — қайта пайдалану үшін жаңа ID жасап, контактілерді қайта қосу қажет.",
 };
 
 const es: TranslationMap = {
@@ -998,9 +1013,11 @@ const es: TranslationMap = {
   p2pNetwork: "Red P2P",
   onionTorConnected: "Conectado mediante el servicio oculto Onion Tor",
   technicalTransparency: "Transparencia técnica",
-  transparencyDescription: "Todas las bibliotecas criptográficas de Trivo Chat son de código abierto y auditables.",
+  transparencyDescription:
+    "Todas las bibliotecas criptográficas de Trivo Chat son de código abierto y auditables.",
   deleteAccount: "Eliminar cuenta",
-  deleteAccountConfirm: "¿Estás seguro? Esto eliminará instantáneamente todos tus datos locales, chats, claves y amigos. Esta acción no se puede deshacer.",
+  deleteAccountConfirm:
+    "¿Estás seguro? Esto eliminará instantáneamente todos tus datos locales, chats, claves y amigos. Esta acción no se puede deshacer.",
   networkNoiseDesc: "Enviar paquetes cifrados ficticios para enmascarar actividad real",
   stealthModeDesc: "Dividir mensajes en fragmentos antes de enviar",
   hideMessageContent: "Ocultar contenido de mensajes",
@@ -1048,10 +1065,12 @@ const es: TranslationMap = {
   invalidIdFormat: "Formato de ID inválido",
   cannotAddSelf: "No puedes agregarte a ti mismo",
   shareIdDesc: "Comparte este ID con amigos para que puedan agregarte",
-  securityNotice: "🛡️ Aviso de seguridad: Tu ID es la llave de tu privacidad. Ten cuidado al compartirlo por correo u otros mensajeros. Compártelo solo con personas de confianza.",
+  securityNotice:
+    "🛡️ Aviso de seguridad: Tu ID es la llave de tu privacidad. Ten cuidado al compartirlo por correo u otros mensajeros. Compártelo solo con personas de confianza.",
   addPeerById: "Agregar amigo por su ID único",
   unblockRestore: "¿Desbloquear y restaurar acceso?",
-  unblockRestoreDesc: "Este usuario fue bloqueado anteriormente. ¿Deseas desbloquearlo y agregarlo como amigo?",
+  unblockRestoreDesc:
+    "Este usuario fue bloqueado anteriormente. ¿Deseas desbloquearlo y agregarlo como amigo?",
   reportUser: "Reportar usuario",
   reportSubmitted: "Reporte enviado. Usuario bloqueado.",
   reportFailed: "Error al enviar reporte",
@@ -1091,7 +1110,8 @@ const es: TranslationMap = {
   dataAndMemory: "Datos y almacenamiento",
   dataSaver: "Modo de ahorro de datos",
   dataSaverDesc: "Los archivos multimedia no se descargan automáticamente en redes móviles.",
-  deleteAccountWarning: "Al eliminar la cuenta se destruyen de forma irreversible tu ID local, todos los contactos guardados y el historial de chats. La recuperación es imposible: tendrás que crear un ID nuevo y añadir los contactos de nuevo.",
+  deleteAccountWarning:
+    "Al eliminar la cuenta se destruyen de forma irreversible tu ID local, todos los contactos guardados y el historial de chats. La recuperación es imposible: tendrás que crear un ID nuevo y añadir los contactos de nuevo.",
 };
 
 const fr: TranslationMap = {
@@ -1148,7 +1168,8 @@ const fr: TranslationMap = {
   noVoices: "Aucun message vocal",
   copied: "Copié",
   partialCopy: "Copie partielle",
-  partialCopyHint: "Sélectionnez un fragment en faisant glisser les poignées, puis appuyez sur « Copier ».",
+  partialCopyHint:
+    "Sélectionnez un fragment en faisant glisser les poignées, puis appuyez sur « Copier ».",
   copySelection: "Copier la sélection",
   copyAll: "Tout copier",
   transcribe: "Transcrire",
@@ -1217,9 +1238,11 @@ const fr: TranslationMap = {
   p2pNetwork: "Réseau P2P",
   onionTorConnected: "Connecté via le service caché Onion Tor",
   technicalTransparency: "Transparence technique",
-  transparencyDescription: "Toutes les bibliothèques cryptographiques de Trivo Chat sont open source et vérifiables.",
+  transparencyDescription:
+    "Toutes les bibliothèques cryptographiques de Trivo Chat sont open source et vérifiables.",
   deleteAccount: "Supprimer le compte",
-  deleteAccountConfirm: "Êtes-vous sûr ? Cela supprimera instantanément toutes vos données locales, discussions, clés et amis. Cette action est irréversible.",
+  deleteAccountConfirm:
+    "Êtes-vous sûr ? Cela supprimera instantanément toutes vos données locales, discussions, clés et amis. Cette action est irréversible.",
   networkNoiseDesc: "Envoyer des paquets chiffrés fictifs pour masquer l'activité réelle",
   stealthModeDesc: "Diviser les messages en fragments avant l'envoi",
   hideMessageContent: "Masquer le contenu des messages",
@@ -1267,10 +1290,12 @@ const fr: TranslationMap = {
   invalidIdFormat: "Format d'ID invalide",
   cannotAddSelf: "Vous ne pouvez pas vous ajouter vous-même",
   shareIdDesc: "Partagez cet ID avec vos amis pour qu'ils puissent vous ajouter",
-  securityNotice: "🛡️ Avis de sécurité : Votre ID est la clé de votre confidentialité. Soyez prudent en le partageant par e-mail ou autres messageries. Ne le partagez qu’avec des personnes de confiance.",
+  securityNotice:
+    "🛡️ Avis de sécurité : Votre ID est la clé de votre confidentialité. Soyez prudent en le partageant par e-mail ou autres messageries. Ne le partagez qu’avec des personnes de confiance.",
   addPeerById: "Ajouter un ami par son ID unique",
   unblockRestore: "Débloquer et restaurer l'accès ?",
-  unblockRestoreDesc: "Cet utilisateur a été bloqué précédemment. Voulez-vous le débloquer et l'ajouter comme ami ?",
+  unblockRestoreDesc:
+    "Cet utilisateur a été bloqué précédemment. Voulez-vous le débloquer et l'ajouter comme ami ?",
   reportUser: "Signaler l'utilisateur",
   reportSubmitted: "Signalement envoyé. Utilisateur bloqué.",
   reportFailed: "Échec de l'envoi du signalement",
@@ -1310,7 +1335,8 @@ const fr: TranslationMap = {
   dataAndMemory: "Données et stockage",
   dataSaver: "Mode économie de données",
   dataSaverDesc: "Les médias ne sont pas téléchargés automatiquement sur les réseaux mobiles.",
-  deleteAccountWarning: "La suppression du compte détruit définitivement votre identifiant local, tous vos contacts enregistrés et l'historique des discussions. Aucune récupération n'est possible : vous devrez créer un nouvel identifiant et rajouter vos contacts.",
+  deleteAccountWarning:
+    "La suppression du compte détruit définitivement votre identifiant local, tous vos contacts enregistrés et l'historique des discussions. Aucune récupération n'est possible : vous devrez créer un nouvel identifiant et rajouter vos contacts.",
 };
 
 const de: TranslationMap = {
@@ -1436,9 +1462,11 @@ const de: TranslationMap = {
   p2pNetwork: "P2P-Netzwerk",
   onionTorConnected: "Verbunden über den Onion-Tor-Hidden-Service",
   technicalTransparency: "Technische Transparenz",
-  transparencyDescription: "Alle kryptografischen Bibliotheken von Trivo Chat sind Open Source und überprüfbar.",
+  transparencyDescription:
+    "Alle kryptografischen Bibliotheken von Trivo Chat sind Open Source und überprüfbar.",
   deleteAccount: "Konto löschen",
-  deleteAccountConfirm: "Sind Sie sicher? Dies löscht sofort alle lokalen Daten, Chats, Schlüssel und Freunde. Diese Aktion kann nicht rückgängig gemacht werden.",
+  deleteAccountConfirm:
+    "Sind Sie sicher? Dies löscht sofort alle lokalen Daten, Chats, Schlüssel und Freunde. Diese Aktion kann nicht rückgängig gemacht werden.",
   networkNoiseDesc: "Verschlüsselte Dummy-Pakete senden, um echte Aktivität zu verschleiern",
   stealthModeDesc: "Nachrichten vor dem Senden in Fragmente aufteilen",
   hideMessageContent: "Nachrichteninhalt verbergen",
@@ -1486,10 +1514,12 @@ const de: TranslationMap = {
   invalidIdFormat: "Ungültiges ID-Format",
   cannotAddSelf: "Sie können sich nicht selbst hinzufügen",
   shareIdDesc: "Teilen Sie diese ID mit Freunden, damit sie Sie hinzufügen können",
-  securityNotice: "🛡️ Sicherheitshinweis: Ihre ID ist der Schlüssel zu Ihrer Privatsphäre. Seien Sie vorsichtig beim Teilen per E-Mail oder anderen Messengern. Nur an vertrauenswürdige Personen weitergeben.",
+  securityNotice:
+    "🛡️ Sicherheitshinweis: Ihre ID ist der Schlüssel zu Ihrer Privatsphäre. Seien Sie vorsichtig beim Teilen per E-Mail oder anderen Messengern. Nur an vertrauenswürdige Personen weitergeben.",
   addPeerById: "Freund über eindeutige ID hinzufügen",
   unblockRestore: "Entsperren und Zugang wiederherstellen?",
-  unblockRestoreDesc: "Dieser Benutzer wurde zuvor blockiert. Möchten Sie ihn entsperren und als Freund hinzufügen?",
+  unblockRestoreDesc:
+    "Dieser Benutzer wurde zuvor blockiert. Möchten Sie ihn entsperren und als Freund hinzufügen?",
   reportUser: "Benutzer melden",
   reportSubmitted: "Meldung gesendet. Benutzer blockiert.",
   reportFailed: "Meldung fehlgeschlagen",
@@ -1529,7 +1559,8 @@ const de: TranslationMap = {
   dataAndMemory: "Daten und Speicher",
   dataSaver: "Datensparmodus",
   dataSaverDesc: "Medien werden im Mobilfunknetz nicht automatisch geladen.",
-  deleteAccountWarning: "Beim Löschen des Kontos werden Ihre lokale ID, alle gespeicherten Kontakte und der Chatverlauf unwiderruflich vernichtet. Eine Wiederherstellung ist unmöglich — Sie müssen eine neue ID erstellen und Ihre Kontakte erneut hinzufügen.",
+  deleteAccountWarning:
+    "Beim Löschen des Kontos werden Ihre lokale ID, alle gespeicherten Kontakte und der Chatverlauf unwiderruflich vernichtet. Eine Wiederherstellung ist unmöglich — Sie müssen eine neue ID erstellen und Ihre Kontakte erneut hinzufügen.",
 };
 
 const ja: TranslationMap = {
@@ -1655,9 +1686,11 @@ const ja: TranslationMap = {
   p2pNetwork: "P2Pネットワーク",
   onionTorConnected: "Onion Tor 秘匿サービス経由で接続済み",
   technicalTransparency: "技術的透明性",
-  transparencyDescription: "Trivo Chatで使用されているすべての暗号ライブラリはオープンソースで監査可能です。",
+  transparencyDescription:
+    "Trivo Chatで使用されているすべての暗号ライブラリはオープンソースで監査可能です。",
   deleteAccount: "アカウント削除",
-  deleteAccountConfirm: "本当によろしいですか？すべてのローカルデータ、チャット、キー、友達が即座に削除されます。この操作は元に戻せません。",
+  deleteAccountConfirm:
+    "本当によろしいですか？すべてのローカルデータ、チャット、キー、友達が即座に削除されます。この操作は元に戻せません。",
   networkNoiseDesc: "実際の活動を隠すために暗号化されたダミーパケットを送信",
   stealthModeDesc: "送信前にメッセージをフラグメントに分割",
   hideMessageContent: "メッセージ内容を非表示",
@@ -1705,10 +1738,12 @@ const ja: TranslationMap = {
   invalidIdFormat: "無効なID形式",
   cannotAddSelf: "自分自身を追加することはできません",
   shareIdDesc: "このIDを友達と共有して追加してもらいましょう",
-  securityNotice: "🛡️ セキュリティ通知: あなたのIDはプライバシーの鍵です。メールや他のメッセンジャーで共有する際は注意してください。信頼できる人とのみ共有してください。",
+  securityNotice:
+    "🛡️ セキュリティ通知: あなたのIDはプライバシーの鍵です。メールや他のメッセンジャーで共有する際は注意してください。信頼できる人とのみ共有してください。",
   addPeerById: "固有IDで友達を追加",
   unblockRestore: "ブロック解除してアクセスを復元しますか？",
-  unblockRestoreDesc: "このユーザーは以前ブロックされました。ブロックを解除して友達として追加しますか？",
+  unblockRestoreDesc:
+    "このユーザーは以前ブロックされました。ブロックを解除して友達として追加しますか？",
   reportUser: "ユーザーを報告",
   reportSubmitted: "報告が送信されました。ユーザーがブロックされました。",
   reportFailed: "報告の送信に失敗しました",
@@ -1748,7 +1783,8 @@ const ja: TranslationMap = {
   dataAndMemory: "データとストレージ",
   dataSaver: "データセーバー",
   dataSaverDesc: "モバイル回線ではメディアを自動ダウンロードしません。",
-  deleteAccountWarning: "アカウントを削除すると、ローカルID、保存済みの連絡先、チャット履歴がすべて完全に消去されます。復元はできません。再度利用するには新しいIDを作成し、連絡先を追加し直す必要があります。",
+  deleteAccountWarning:
+    "アカウントを削除すると、ローカルID、保存済みの連絡先、チャット履歴がすべて完全に消去されます。復元はできません。再度利用するには新しいIDを作成し、連絡先を追加し直す必要があります。",
 };
 
 const zh: TranslationMap = {
@@ -1924,7 +1960,8 @@ const zh: TranslationMap = {
   invalidIdFormat: "无效的ID格式",
   cannotAddSelf: "不能添加自己",
   shareIdDesc: "与好友分享此ID以便他们添加你",
-  securityNotice: "🛡️ 安全提示：您的ID是隐私的钥匙。通过电子邮件或其他即时通讯工具分享时请谨慎。仅与您信任的人分享。",
+  securityNotice:
+    "🛡️ 安全提示：您的ID是隐私的钥匙。通过电子邮件或其他即时通讯工具分享时请谨慎。仅与您信任的人分享。",
   addPeerById: "通过唯一ID添加好友",
   unblockRestore: "解除屏蔽并恢复访问？",
   unblockRestoreDesc: "此用户之前被屏蔽。是否要解除屏蔽并添加为好友？",
@@ -1967,7 +2004,8 @@ const zh: TranslationMap = {
   dataAndMemory: "数据与存储",
   dataSaver: "省流量模式",
   dataSaverDesc: "在移动网络下不会自动下载媒体文件。",
-  deleteAccountWarning: "删除账户将永久销毁您的本地 ID、所有已保存的联系人和聊天记录。数据无法恢复——如需再次使用，必须创建新的 ID 并重新添加联系人。",
+  deleteAccountWarning:
+    "删除账户将永久销毁您的本地 ID、所有已保存的联系人和聊天记录。数据无法恢复——如需再次使用，必须创建新的 ID 并重新添加联系人。",
 };
 
 const ar: TranslationMap = {
@@ -2093,9 +2131,11 @@ const ar: TranslationMap = {
   p2pNetwork: "شبكة P2P",
   onionTorConnected: "متصل عبر خدمة Onion Tor المخفية",
   technicalTransparency: "الشفافية التقنية",
-  transparencyDescription: "جميع مكتبات التشفير المستخدمة في Trivo Chat مفتوحة المصدر وقابلة للتدقيق.",
+  transparencyDescription:
+    "جميع مكتبات التشفير المستخدمة في Trivo Chat مفتوحة المصدر وقابلة للتدقيق.",
   deleteAccount: "حذف الحساب",
-  deleteAccountConfirm: "هل أنت متأكد؟ سيتم حذف جميع البيانات المحلية والمحادثات والمفاتيح والأصدقاء فوراً. لا يمكن التراجع عن هذا الإجراء.",
+  deleteAccountConfirm:
+    "هل أنت متأكد؟ سيتم حذف جميع البيانات المحلية والمحادثات والمفاتيح والأصدقاء فوراً. لا يمكن التراجع عن هذا الإجراء.",
   networkNoiseDesc: "إرسال حزم وهمية مشفرة لإخفاء النشاط الحقيقي",
   stealthModeDesc: "تقسيم الرسائل إلى أجزاء قبل الإرسال",
   hideMessageContent: "إخفاء محتوى الرسائل",
@@ -2143,7 +2183,8 @@ const ar: TranslationMap = {
   invalidIdFormat: "تنسيق معرف غير صالح",
   cannotAddSelf: "لا يمكنك إضافة نفسك",
   shareIdDesc: "شارك هذا المعرف مع الأصدقاء حتى يتمكنوا من إضافتك",
-  securityNotice: "🛡️ تنبيه أمني: معرّفك هو مفتاح خصوصيتك. كن حذرًا عند مشاركته عبر البريد الإلكتروني أو تطبيقات المراسلة الأخرى. شاركه فقط مع من تثق بهم.",
+  securityNotice:
+    "🛡️ تنبيه أمني: معرّفك هو مفتاح خصوصيتك. كن حذرًا عند مشاركته عبر البريد الإلكتروني أو تطبيقات المراسلة الأخرى. شاركه فقط مع من تثق بهم.",
   addPeerById: "أضف صديقاً عبر معرفه الفريد",
   unblockRestore: "إلغاء الحظر واستعادة الوصول؟",
   unblockRestoreDesc: "تم حظر هذا المستخدم سابقاً. هل تريد إلغاء حظره وإضافته كصديق؟",
@@ -2186,7 +2227,8 @@ const ar: TranslationMap = {
   dataAndMemory: "البيانات والتخزين",
   dataSaver: "وضع توفير البيانات",
   dataSaverDesc: "لا يتم تنزيل الوسائط تلقائيًا على شبكات الجوال.",
-  deleteAccountWarning: "عند حذف الحساب يتم تدمير معرّفك المحلي وجميع جهات الاتصال المحفوظة وسجل المحادثات نهائيًا. الاسترداد مستحيل — ستحتاج إلى إنشاء معرّف جديد وإضافة جهات الاتصال من جديد.",
+  deleteAccountWarning:
+    "عند حذف الحساب يتم تدمير معرّفك المحلي وجميع جهات الاتصال المحفوظة وسجل المحادثات نهائيًا. الاسترداد مستحيل — ستحتاج إلى إنشاء معرّف جديد وإضافة جهات الاتصال من جديد.",
 };
 
 const hi: TranslationMap = {
@@ -2312,9 +2354,11 @@ const hi: TranslationMap = {
   p2pNetwork: "P2P नेटवर्क",
   onionTorConnected: "Onion Tor छिपी सेवा के माध्यम से जुड़ा हुआ",
   technicalTransparency: "तकनीकी पारदर्शिता",
-  transparencyDescription: "Trivo Chat में उपयोग की जाने वाली सभी क्रिप्टोग्राफ़िक लाइब्रेरी ओपन-सोर्स और ऑडिट योग्य हैं।",
+  transparencyDescription:
+    "Trivo Chat में उपयोग की जाने वाली सभी क्रिप्टोग्राफ़िक लाइब्रेरी ओपन-सोर्स और ऑडिट योग्य हैं।",
   deleteAccount: "खाता हटाएं",
-  deleteAccountConfirm: "क्या आप सुनिश्चित हैं? यह सभी स्थानीय डेटा, चैट, कुंजी और दोस्तों को तुरंत मिटा देगा। यह क्रिया पूर्ववत नहीं की जा सकती।",
+  deleteAccountConfirm:
+    "क्या आप सुनिश्चित हैं? यह सभी स्थानीय डेटा, चैट, कुंजी और दोस्तों को तुरंत मिटा देगा। यह क्रिया पूर्ववत नहीं की जा सकती।",
   networkNoiseDesc: "वास्तविक गतिविधि को छिपाने के लिए एन्क्रिप्टेड डमी पैकेट भेजें",
   stealthModeDesc: "भेजने से पहले संदेशों को टुकड़ों में विभाजित करें",
   hideMessageContent: "संदेश सामग्री छिपाएं",
@@ -2362,10 +2406,12 @@ const hi: TranslationMap = {
   invalidIdFormat: "अमान्य ID प्रारूप",
   cannotAddSelf: "आप खुद को नहीं जोड़ सकते",
   shareIdDesc: "दोस्तों के साथ यह ID साझा करें ताकि वे आपको जोड़ सकें",
-  securityNotice: "🛡️ सुरक्षा सूचना: आपकी ID आपकी गोपनीयता की कुंजी है। ईमेल या अन्य मैसेंजर के माध्यम से इसे साझा करते समय सावधान रहें। केवल विश्वसनीय लोगों के साथ साझा करें।",
+  securityNotice:
+    "🛡️ सुरक्षा सूचना: आपकी ID आपकी गोपनीयता की कुंजी है। ईमेल या अन्य मैसेंजर के माध्यम से इसे साझा करते समय सावधान रहें। केवल विश्वसनीय लोगों के साथ साझा करें।",
   addPeerById: "अद्वितीय ID द्वारा दोस्त जोड़ें",
   unblockRestore: "अनब्लॉक और एक्सेस पुनर्स्थापित करें?",
-  unblockRestoreDesc: "यह उपयोगकर्ता पहले ब्लॉक किया गया था। क्या आप अनब्लॉक करके दोस्त के रूप में जोड़ना चाहते हैं?",
+  unblockRestoreDesc:
+    "यह उपयोगकर्ता पहले ब्लॉक किया गया था। क्या आप अनब्लॉक करके दोस्त के रूप में जोड़ना चाहते हैं?",
   reportUser: "उपयोगकर्ता की रिपोर्ट करें",
   reportSubmitted: "रिपोर्ट भेजी गई। उपयोगकर्ता ब्लॉक किया गया।",
   reportFailed: "रिपोर्ट भेजने में विफल",
@@ -2405,7 +2451,8 @@ const hi: TranslationMap = {
   dataAndMemory: "डेटा और स्टोरेज",
   dataSaver: "डेटा सेवर मोड",
   dataSaverDesc: "मोबाइल नेटवर्क पर मीडिया स्वतः डाउनलोड नहीं होगा।",
-  deleteAccountWarning: "खाता हटाने पर आपकी लोकल ID, सभी सहेजे गए संपर्क और चैट इतिहास स्थायी रूप से नष्ट हो जाते हैं। पुनर्प्राप्ति संभव नहीं है — दोबारा उपयोग के लिए नई ID बनानी होगी और संपर्क फिर से जोड़ने होंगे।",
+  deleteAccountWarning:
+    "खाता हटाने पर आपकी लोकल ID, सभी सहेजे गए संपर्क और चैट इतिहास स्थायी रूप से नष्ट हो जाते हैं। पुनर्प्राप्ति संभव नहीं है — दोबारा उपयोग के लिए नई ID बनानी होगी और संपर्क फिर से जोड़ने होंगे।",
 };
 
 const pt: TranslationMap = {
@@ -2483,7 +2530,8 @@ const pt: TranslationMap = {
   myQrCode: "Meu código QR",
   scanQr: "Escanear QR",
   yourUniqueId: "Seu ID único",
-  shareQr: "Compartilhe este código QR com amigos para que eles possam adicioná-lo instantaneamente",
+  shareQr:
+    "Compartilhe este código QR com amigos para que eles possam adicioná-lo instantaneamente",
   pointCamera: "Aponte sua câmera para o código QR de um amigo para adicioná-lo",
   cameraRequired: "Acesso à câmera necessário no dispositivo nativo",
   contacts: "contatos",
@@ -2531,9 +2579,11 @@ const pt: TranslationMap = {
   p2pNetwork: "Rede P2P",
   onionTorConnected: "Conectado via serviço oculto Onion Tor",
   technicalTransparency: "Transparência técnica",
-  transparencyDescription: "Todas as bibliotecas criptográficas do Trivo Chat são de código aberto e auditáveis.",
+  transparencyDescription:
+    "Todas as bibliotecas criptográficas do Trivo Chat são de código aberto e auditáveis.",
   deleteAccount: "Excluir conta",
-  deleteAccountConfirm: "Tem certeza? Isso apagará instantaneamente todos os dados locais, conversas, chaves e amigos. Esta ação não pode ser desfeita.",
+  deleteAccountConfirm:
+    "Tem certeza? Isso apagará instantaneamente todos os dados locais, conversas, chaves e amigos. Esta ação não pode ser desfeita.",
   networkNoiseDesc: "Enviar pacotes criptografados fictícios para mascarar atividade real",
   stealthModeDesc: "Dividir mensagens em fragmentos antes de enviar",
   hideMessageContent: "Ocultar conteúdo de mensagens",
@@ -2581,10 +2631,12 @@ const pt: TranslationMap = {
   invalidIdFormat: "Formato de ID inválido",
   cannotAddSelf: "Você não pode adicionar a si mesmo",
   shareIdDesc: "Compartilhe este ID com amigos para que possam adicioná-lo",
-  securityNotice: "🛡️ Aviso de segurança: Seu ID é a chave da sua privacidade. Tenha cuidado ao compartilhá-lo por e-mail ou outros mensageiros. Compartilhe apenas com pessoas de confiança.",
+  securityNotice:
+    "🛡️ Aviso de segurança: Seu ID é a chave da sua privacidade. Tenha cuidado ao compartilhá-lo por e-mail ou outros mensageiros. Compartilhe apenas com pessoas de confiança.",
   addPeerById: "Adicionar amigo pelo ID único",
   unblockRestore: "Desbloquear e restaurar acesso?",
-  unblockRestoreDesc: "Este usuário foi bloqueado anteriormente. Deseja desbloqueá-lo e adicionar como amigo?",
+  unblockRestoreDesc:
+    "Este usuário foi bloqueado anteriormente. Deseja desbloqueá-lo e adicionar como amigo?",
   reportUser: "Denunciar usuário",
   reportSubmitted: "Denúncia enviada. Usuário bloqueado.",
   reportFailed: "Falha ao enviar denúncia",
@@ -2624,7 +2676,8 @@ const pt: TranslationMap = {
   dataAndMemory: "Dados e armazenamento",
   dataSaver: "Modo de economia de dados",
   dataSaverDesc: "As mídias não são baixadas automaticamente em redes móveis.",
-  deleteAccountWarning: "Ao excluir a conta, seu ID local, todos os contatos salvos e o histórico de conversas são destruídos permanentemente. A recuperação é impossível — será necessário criar um novo ID e adicionar os contatos novamente.",
+  deleteAccountWarning:
+    "Ao excluir a conta, seu ID local, todos os contatos salvos e o histórico de conversas são destruídos permanentemente. A recuperação é impossível — será necessário criar um novo ID e adicionar os contatos novamente.",
 };
 
 const tr: TranslationMap = {
@@ -2750,9 +2803,11 @@ const tr: TranslationMap = {
   p2pNetwork: "P2P ağı",
   onionTorConnected: "Onion Tor gizli servisi üzerinden bağlandı",
   technicalTransparency: "Teknik şeffaflık",
-  transparencyDescription: "Trivo Chat'te kullanılan tüm kriptografik kütüphaneler açık kaynaklı ve denetlenebilirdir.",
+  transparencyDescription:
+    "Trivo Chat'te kullanılan tüm kriptografik kütüphaneler açık kaynaklı ve denetlenebilirdir.",
   deleteAccount: "Hesabı sil",
-  deleteAccountConfirm: "Emin misiniz? Bu, tüm yerel verileri, sohbetleri, anahtarları ve arkadaşları anında silecektir. Bu işlem geri alınamaz.",
+  deleteAccountConfirm:
+    "Emin misiniz? Bu, tüm yerel verileri, sohbetleri, anahtarları ve arkadaşları anında silecektir. Bu işlem geri alınamaz.",
   networkNoiseDesc: "Gerçek etkinliği maskelemek için şifreli sahte paketler gönderin",
   stealthModeDesc: "Göndermeden önce mesajları parçalara ayırın",
   hideMessageContent: "Mesaj içeriğini gizle",
@@ -2800,10 +2855,12 @@ const tr: TranslationMap = {
   invalidIdFormat: "Geçersiz ID formatı",
   cannotAddSelf: "Kendinizi ekleyemezsiniz",
   shareIdDesc: "Bu ID'yi arkadaşlarınızla paylaşın",
-  securityNotice: "🛡️ Güvenlik Uyarısı: Kimliğiniz gizliliğinizin anahtarıdır. E-posta veya diğer mesajlaşma uygulamaları üzerinden paylaşırken dikkatli olun. Yalnızca güvendiğiniz kişilerle paylaşın.",
+  securityNotice:
+    "🛡️ Güvenlik Uyarısı: Kimliğiniz gizliliğinizin anahtarıdır. E-posta veya diğer mesajlaşma uygulamaları üzerinden paylaşırken dikkatli olun. Yalnızca güvendiğiniz kişilerle paylaşın.",
   addPeerById: "Benzersiz ID ile arkadaş ekle",
   unblockRestore: "Engeli kaldır ve erişimi geri yükle?",
-  unblockRestoreDesc: "Bu kullanıcı daha önce engellenmiş. Engeli kaldırıp arkadaş olarak eklemek ister misiniz?",
+  unblockRestoreDesc:
+    "Bu kullanıcı daha önce engellenmiş. Engeli kaldırıp arkadaş olarak eklemek ister misiniz?",
   reportUser: "Kullanıcıyı bildir",
   reportSubmitted: "Bildirim gönderildi. Kullanıcı engellendi.",
   reportFailed: "Bildirim gönderilemedi",
@@ -2843,7 +2900,8 @@ const tr: TranslationMap = {
   dataAndMemory: "Veri ve depolama",
   dataSaver: "Veri tasarrufu modu",
   dataSaverDesc: "Mobil ağda medya dosyaları otomatik indirilmez.",
-  deleteAccountWarning: "Hesabı silmek yerel kimliğinizi, kayıtlı tüm kişileri ve sohbet geçmişini kalıcı olarak yok eder. Kurtarma mümkün değildir — yeniden kullanmak için yeni bir kimlik oluşturup kişileri tekrar eklemeniz gerekir.",
+  deleteAccountWarning:
+    "Hesabı silmek yerel kimliğinizi, kayıtlı tüm kişileri ve sohbet geçmişini kalıcı olarak yok eder. Kurtarma mümkün değildir — yeniden kullanmak için yeni bir kimlik oluşturup kişileri tekrar eklemeniz gerekir.",
 };
 
 const ko: TranslationMap = {
@@ -2969,9 +3027,11 @@ const ko: TranslationMap = {
   p2pNetwork: "P2P 네트워크",
   onionTorConnected: "Onion Tor 히든 서비스로 연결됨",
   technicalTransparency: "기술적 투명성",
-  transparencyDescription: "Trivo Chat에서 사용하는 모든 암호화 라이브러리는 오픈 소스이며 감사 가능합니다.",
+  transparencyDescription:
+    "Trivo Chat에서 사용하는 모든 암호화 라이브러리는 오픈 소스이며 감사 가능합니다.",
   deleteAccount: "계정 삭제",
-  deleteAccountConfirm: "정말이요? 모든 로컬 데이터, 채팅, 키 및 친구가 즉시 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
+  deleteAccountConfirm:
+    "정말이요? 모든 로컬 데이터, 채팅, 키 및 친구가 즉시 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
   networkNoiseDesc: "실제 활동을 숨기기 위해 암호화된 더미 패킷 전송",
   stealthModeDesc: "전송 전 메시지를 조각으로 분할",
   hideMessageContent: "메시지 내용 숨기기",
@@ -3019,7 +3079,8 @@ const ko: TranslationMap = {
   invalidIdFormat: "잘못된 ID 형식",
   cannotAddSelf: "자기 자신은 추가할 수 없습니다",
   shareIdDesc: "이 ID를 친구와 공유하여 추가하세요",
-  securityNotice: "🛡️ 보안 알림: ID는 개인정보의 열쇠입니다. 이메일이나 다른 메신저로 공유할 때 주의하세요. 신뢰할 수 있는 사람과만 공유하세요.",
+  securityNotice:
+    "🛡️ 보안 알림: ID는 개인정보의 열쇠입니다. 이메일이나 다른 메신저로 공유할 때 주의하세요. 신뢰할 수 있는 사람과만 공유하세요.",
   addPeerById: "고유 ID로 친구 추가",
   unblockRestore: "차단 해제 및 액세스 복원?",
   unblockRestoreDesc: "이 사용자는 이전에 차단되었습니다. 차단 해제하고 친구로 추가하시겠습니까?",
@@ -3062,7 +3123,8 @@ const ko: TranslationMap = {
   dataAndMemory: "데이터 및 저장공간",
   dataSaver: "데이터 절약 모드",
   dataSaverDesc: "모바일 네트워크에서는 미디어를 자동으로 내려받지 않습니다.",
-  deleteAccountWarning: "계정을 삭제하면 로컬 ID, 저장된 모든 연락처와 대화 기록이 영구적으로 파기됩니다. 복구는 불가능하며, 다시 사용하려면 새 ID를 만들고 연락처를 다시 추가해야 합니다.",
+  deleteAccountWarning:
+    "계정을 삭제하면 로컬 ID, 저장된 모든 연락처와 대화 기록이 영구적으로 파기됩니다. 복구는 불가능하며, 다시 사용하려면 새 ID를 만들고 연락처를 다시 추가해야 합니다.",
 };
 
 const it: TranslationMap = {
@@ -3188,9 +3250,11 @@ const it: TranslationMap = {
   p2pNetwork: "Rete P2P",
   onionTorConnected: "Connesso tramite servizio nascosto Onion Tor",
   technicalTransparency: "Trasparenza tecnica",
-  transparencyDescription: "Tutte le librerie crittografiche utilizzate in Trivo Chat sono open source e verificabili.",
+  transparencyDescription:
+    "Tutte le librerie crittografiche utilizzate in Trivo Chat sono open source e verificabili.",
   deleteAccount: "Elimina account",
-  deleteAccountConfirm: "Sei sicuro? Questo eliminerà istantaneamente tutti i dati locali, chat, chiavi e amici. Questa azione non può essere annullata.",
+  deleteAccountConfirm:
+    "Sei sicuro? Questo eliminerà istantaneamente tutti i dati locali, chat, chiavi e amici. Questa azione non può essere annullata.",
   networkNoiseDesc: "Inviare pacchetti crittografati fittizi per mascherare l'attività reale",
   stealthModeDesc: "Dividere i messaggi in frammenti prima dell'invio",
   hideMessageContent: "Nascondi contenuto messaggi",
@@ -3238,10 +3302,12 @@ const it: TranslationMap = {
   invalidIdFormat: "Formato ID non valido",
   cannotAddSelf: "Non puoi aggiungere te stesso",
   shareIdDesc: "Condividi questo ID con gli amici per aggiungerti",
-  securityNotice: "🛡️ Avviso di sicurezza: Il tuo ID è la chiave della tua privacy. Fai attenzione quando lo condividi via e-mail o altri messaggeri. Condividilo solo con persone fidate.",
+  securityNotice:
+    "🛡️ Avviso di sicurezza: Il tuo ID è la chiave della tua privacy. Fai attenzione quando lo condividi via e-mail o altri messaggeri. Condividilo solo con persone fidate.",
   addPeerById: "Aggiungi amico tramite ID univoco",
   unblockRestore: "Sblocca e ripristina accesso?",
-  unblockRestoreDesc: "Questo utente è stato bloccato in precedenza. Vuoi sbloccarlo e aggiungerlo come amico?",
+  unblockRestoreDesc:
+    "Questo utente è stato bloccato in precedenza. Vuoi sbloccarlo e aggiungerlo come amico?",
   reportUser: "Segnala utente",
   reportSubmitted: "Segnalazione inviata. Utente bloccato.",
   reportFailed: "Invio segnalazione fallito",
@@ -3281,7 +3347,8 @@ const it: TranslationMap = {
   dataAndMemory: "Dati e memoria",
   dataSaver: "Modalità risparmio dati",
   dataSaverDesc: "I media non vengono scaricati automaticamente su rete mobile.",
-  deleteAccountWarning: "L'eliminazione dell'account distrugge in modo irreversibile il tuo ID locale, tutti i contatti salvati e la cronologia delle chat. Il recupero è impossibile: dovrai creare un nuovo ID e aggiungere di nuovo i contatti.",
+  deleteAccountWarning:
+    "L'eliminazione dell'account distrugge in modo irreversibile il tuo ID locale, tutti i contatti salvati e la cronologia delle chat. Il recupero è impossibile: dovrai creare un nuovo ID e aggiungere di nuovo i contatti.",
 };
 
 const nl: TranslationMap = {
@@ -3407,9 +3474,11 @@ const nl: TranslationMap = {
   p2pNetwork: "P2P-netwerk",
   onionTorConnected: "Verbonden via Onion Tor hidden service",
   technicalTransparency: "Technische transparantie",
-  transparencyDescription: "Alle cryptografische bibliotheken in Trivo Chat zijn open source en controleerbaar.",
+  transparencyDescription:
+    "Alle cryptografische bibliotheken in Trivo Chat zijn open source en controleerbaar.",
   deleteAccount: "Account verwijderen",
-  deleteAccountConfirm: "Weet u het zeker? Dit verwijdert onmiddellijk alle lokale gegevens, chats, sleutels en vrienden. Deze actie kan niet ongedaan worden gemaakt.",
+  deleteAccountConfirm:
+    "Weet u het zeker? Dit verwijdert onmiddellijk alle lokale gegevens, chats, sleutels en vrienden. Deze actie kan niet ongedaan worden gemaakt.",
   networkNoiseDesc: "Versleutelde dummy-pakketten versturen om echte activiteit te maskeren",
   stealthModeDesc: "Berichten opsplitsen in fragmenten vóór verzending",
   hideMessageContent: "Berichtinhoud verbergen",
@@ -3457,10 +3526,12 @@ const nl: TranslationMap = {
   invalidIdFormat: "Ongeldig ID-formaat",
   cannotAddSelf: "U kunt uzelf niet toevoegen",
   shareIdDesc: "Deel dit ID met vrienden zodat ze u kunnen toevoegen",
-  securityNotice: "🛡️ Beveiligingsmelding: Uw ID is de sleutel tot uw privacy. Wees voorzichtig bij het delen via e-mail of andere messengers. Deel alleen met vertrouwde personen.",
+  securityNotice:
+    "🛡️ Beveiligingsmelding: Uw ID is de sleutel tot uw privacy. Wees voorzichtig bij het delen via e-mail of andere messengers. Deel alleen met vertrouwde personen.",
   addPeerById: "Voeg vriend toe via uniek ID",
   unblockRestore: "Deblokkeren en toegang herstellen?",
-  unblockRestoreDesc: "Deze gebruiker was eerder geblokkeerd. Wilt u deblokkeren en als vriend toevoegen?",
+  unblockRestoreDesc:
+    "Deze gebruiker was eerder geblokkeerd. Wilt u deblokkeren en als vriend toevoegen?",
   reportUser: "Gebruiker rapporteren",
   reportSubmitted: "Melding verzonden. Gebruiker geblokkeerd.",
   reportFailed: "Melding verzenden mislukt",
@@ -3500,11 +3571,26 @@ const nl: TranslationMap = {
   dataAndMemory: "Gegevens en opslag",
   dataSaver: "Databesparingsmodus",
   dataSaverDesc: "Media worden niet automatisch gedownload op mobiele netwerken.",
-  deleteAccountWarning: "Bij het verwijderen van je account worden je lokale ID, alle opgeslagen contacten en de chatgeschiedenis onherroepelijk vernietigd. Herstel is onmogelijk — je moet een nieuwe ID aanmaken en je contacten opnieuw toevoegen.",
+  deleteAccountWarning:
+    "Bij het verwijderen van je account worden je lokale ID, alle opgeslagen contacten en de chatgeschiedenis onherroepelijk vernietigd. Herstel is onmogelijk — je moet een nieuwe ID aanmaken en je contacten opnieuw toevoegen.",
 };
 
 export const translations: Record<string, TranslationMap> = {
-  en, ru, kk, es, fr, de, ja, zh, ar, hi, pt, tr, ko, it, nl,
+  en,
+  ru,
+  kk,
+  es,
+  fr,
+  de,
+  ja,
+  zh,
+  ar,
+  hi,
+  pt,
+  tr,
+  ko,
+  it,
+  nl,
 };
 
 export type Language = string;

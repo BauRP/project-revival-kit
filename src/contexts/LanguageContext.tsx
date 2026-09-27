@@ -25,7 +25,7 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
     (key: TranslationKey): string => {
       return translations[language]?.[key] ?? translations["en"][key] ?? key;
     },
-    [language]
+    [language],
   );
 
   return (

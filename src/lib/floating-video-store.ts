@@ -23,7 +23,9 @@ export const useFloatingVideo = () => {
   const [v, setV] = useState<FloatingVideoSource | null>(current);
   useEffect(() => {
     listeners.add(setV);
-    return () => { listeners.delete(setV); };
+    return () => {
+      listeners.delete(setV);
+    };
   }, []);
   return v;
 };

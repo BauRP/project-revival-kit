@@ -19,7 +19,7 @@ export async function scrubImageMetadata(file: File): Promise<File> {
 
   try {
     const bitmap = await createImageBitmap(file);
-    
+
     // Clamp dimensions to prevent memory issues
     let { width, height } = bitmap;
     if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
@@ -49,7 +49,7 @@ export async function scrubImageMetadata(file: File): Promise<File> {
     });
 
     console.log(
-      `[MediaScrub] Stripped metadata: ${file.name} (${formatBytes(file.size)} → ${formatBytes(scrubbed.size)})`
+      `[MediaScrub] Stripped metadata: ${file.name} (${formatBytes(file.size)} → ${formatBytes(scrubbed.size)})`,
     );
 
     return scrubbed;
@@ -67,7 +67,7 @@ async function fallbackScrub(file: File): Promise<File> {
   return new Promise((resolve) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
-    
+
     img.onload = () => {
       let { width, height } = img;
       if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
@@ -80,7 +80,7 @@ async function fallbackScrub(file: File): Promise<File> {
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext("2d");
-      
+
       if (!ctx) {
         URL.revokeObjectURL(url);
         resolve(file); // Can't scrub, return original
@@ -100,7 +100,7 @@ async function fallbackScrub(file: File): Promise<File> {
           resolve(new File([blob], file.name, { type: outputType, lastModified: Date.now() }));
         },
         outputType,
-        outputType === "image/jpeg" ? 0.92 : undefined
+        outputType === "image/jpeg" ? 0.92 : undefined,
       );
     };
 

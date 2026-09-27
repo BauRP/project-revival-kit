@@ -71,14 +71,22 @@ const AddFriend = () => {
     const peerStatus = getPresenceStatus(friendId);
 
     // Local relationship cache; the signed request itself travels over Tor.
-    localPeerCache.get("trivo-friends").get(userId).get(friendId).put({
-      addedAt: Date.now(),
-      status: peerStatus === "online" ? "confirmed" : "pending",
-    });
-    localPeerCache.get("trivo-friends").get(friendId).get(userId).put({
-      addedAt: Date.now(),
-      status: peerStatus === "online" ? "confirmed" : "pending",
-    });
+    localPeerCache
+      .get("trivo-friends")
+      .get(userId)
+      .get(friendId)
+      .put({
+        addedAt: Date.now(),
+        status: peerStatus === "online" ? "confirmed" : "pending",
+      });
+    localPeerCache
+      .get("trivo-friends")
+      .get(friendId)
+      .get(userId)
+      .put({
+        addedAt: Date.now(),
+        status: peerStatus === "online" ? "confirmed" : "pending",
+      });
 
     // Send friend request via the P2P engine + local queue for offline delivery
     await sendFriendRequest({
@@ -175,18 +183,26 @@ const AddFriend = () => {
               {addingStatus === "adding" ? (
                 <div className="w-4 h-4 border-2 border-primary-foreground border-t-transparent rounded-full animate-spin" />
               ) : addingStatus === "pending" ? (
-                <><Clock size={16} /> {t("offline")}</>
+                <>
+                  <Clock size={16} /> {t("offline")}
+                </>
               ) : addingStatus === "done" ? (
-                <><Check size={16} /> {t("friendAdded")}</>
+                <>
+                  <Check size={16} /> {t("friendAdded")}
+                </>
               ) : (
-                <><UserPlus size={16} /> {t("add")}</>
+                <>
+                  <UserPlus size={16} /> {t("add")}
+                </>
               )}
             </button>
           </div>
           {addingStatus === "pending" && (
             <div className="flex items-center gap-2 mt-3 px-1">
               <Clock size={12} className="text-yellow-500" />
-              <span className="text-[11px] text-yellow-500">Pending — request will sync when they come online</span>
+              <span className="text-[11px] text-yellow-500">
+                Pending — request will sync when they come online
+              </span>
             </div>
           )}
         </motion.div>
@@ -201,9 +217,7 @@ const AddFriend = () => {
           aria-label="Security notice"
         >
           <ShieldAlert size={16} className="text-yellow-500 shrink-0 mt-0.5" />
-          <p className="text-[12.5px] leading-relaxed text-foreground/90">
-            {t("securityNotice")}
-          </p>
+          <p className="text-[12.5px] leading-relaxed text-foreground/90">{t("securityNotice")}</p>
         </motion.div>
       </div>
 
@@ -221,7 +235,10 @@ const AddFriend = () => {
             </p>
             <div className="flex gap-3 pt-2">
               <button
-                onClick={() => { setShowUnblockModal(false); setPendingUnblockId(""); }}
+                onClick={() => {
+                  setShowUnblockModal(false);
+                  setPendingUnblockId("");
+                }}
                 className="flex-1 py-2.5 rounded-xl glass-panel-sm text-sm text-foreground font-medium hover:bg-secondary/50 transition-colors"
               >
                 {t("cancel")}

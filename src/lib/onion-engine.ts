@@ -324,7 +324,10 @@ export async function onionRegisterPeer(userId: string, onion: string): Promise<
 
 function normalizeOnion(value: string): string {
   const trimmed = (value || "").trim().toLowerCase();
-  const stripped = trimmed.replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/:\d+$/, "");
+  const stripped = trimmed
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "")
+    .replace(/:\d+$/, "");
   return stripped;
 }
 
@@ -561,16 +564,15 @@ async function acceptBlobChunk(fromUserId: string, body: Record<string, unknown>
   if (!fileId) return;
   const index = Number(body.index || 0);
   const totalChunks = Number(body.totalChunks || 1);
-  const entry: PartialReceive =
-    partialReceives.get(fileId) || {
-      fileId,
-      fromUserId,
-      name: String(body.name || fileId),
-      mimeType: String(body.mimeType || "application/octet-stream"),
-      totalChunks,
-      received: new Map<number, string>(),
-      updatedAt: Date.now(),
-    };
+  const entry: PartialReceive = partialReceives.get(fileId) || {
+    fileId,
+    fromUserId,
+    name: String(body.name || fileId),
+    mimeType: String(body.mimeType || "application/octet-stream"),
+    totalChunks,
+    received: new Map<number, string>(),
+    updatedAt: Date.now(),
+  };
   entry.received.set(index, String(body.data || ""));
   entry.totalChunks = totalChunks;
   entry.updatedAt = Date.now();
@@ -832,10 +834,7 @@ export async function rtcDial(remoteUserId: string): Promise<boolean> {
  * this returns `true` when the frame was accepted for delivery (live or
  * queued) and kicks the real dispatch in the background.
  */
-export function rtcSendDispatch(
-  targetUserId: string,
-  payload: Record<string, unknown>,
-): boolean {
+export function rtcSendDispatch(targetUserId: string, payload: Record<string, unknown>): boolean {
   if (!targetUserId) return false;
   void onionSendDispatch(targetUserId, payload);
   return onionIsConnectedTo(targetUserId);

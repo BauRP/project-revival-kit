@@ -23,18 +23,28 @@ export async function stripExifMetadata(file: File): Promise<File> {
       canvas.width = img.naturalWidth;
       canvas.height = img.naturalHeight;
       const ctx = canvas.getContext("2d");
-      if (!ctx) { resolve(file); return; }
+      if (!ctx) {
+        resolve(file);
+        return;
+      }
       ctx.drawImage(img, 0, 0);
-      canvas.toBlob((blob) => {
-        URL.revokeObjectURL(url);
-        if (blob) {
-          resolve(new File([blob], file.name, { type: file.type, lastModified: Date.now() }));
-        } else {
-          resolve(file);
-        }
-      }, file.type, 0.92);
+      canvas.toBlob(
+        (blob) => {
+          URL.revokeObjectURL(url);
+          if (blob) {
+            resolve(new File([blob], file.name, { type: file.type, lastModified: Date.now() }));
+          } else {
+            resolve(file);
+          }
+        },
+        file.type,
+        0.92,
+      );
     };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
     img.src = url;
   });
 }
@@ -44,7 +54,10 @@ export async function stripExifMetadata(file: File): Promise<File> {
  * In production this would integrate with a real AV API.
  * Always returns safe=true for internal voice recordings.
  */
-export function simulateSecurityScan(fileName: string, isInternalRecording: boolean = false): ScanResult {
+export function simulateSecurityScan(
+  fileName: string,
+  isInternalRecording: boolean = false,
+): ScanResult {
   // Internal voice recordings bypass scanning
   if (isInternalRecording) {
     return { safe: true, fileName };
@@ -63,7 +76,10 @@ export function simulateSecurityScan(fileName: string, isInternalRecording: bool
 /**
  * Get localized blocked file message
  */
-export function getBlockedFileMessage(lang: string, type: "photo" | "file"): { title: string; footer: string } {
+export function getBlockedFileMessage(
+  lang: string,
+  type: "photo" | "file",
+): { title: string; footer: string } {
   if (lang === "ru" || lang === "kk") {
     const item = type === "photo" ? "фото" : "файл";
     return {

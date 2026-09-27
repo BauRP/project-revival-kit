@@ -9,7 +9,12 @@ interface CacheEntry {
 const cache = new Map<string, CacheEntry>();
 const keyOf = (text: string, src: string, tgt: string) => `${src}>${tgt}::${text}`;
 
-async function callWithRetry(text: string, src: string, tgt: string, attempts = 2): Promise<string | null> {
+async function callWithRetry(
+  text: string,
+  src: string,
+  tgt: string,
+  attempts = 2,
+): Promise<string | null> {
   let lastErr: string | undefined;
   for (let i = 0; i < attempts; i++) {
     try {
@@ -31,7 +36,11 @@ async function callWithRetry(text: string, src: string, tgt: string, attempts = 
 }
 
 /** LLM translate with in-memory de-dup cache. Returns translated text or null. */
-export async function translateLLM(text: string, source: string, target: string): Promise<string | null> {
+export async function translateLLM(
+  text: string,
+  source: string,
+  target: string,
+): Promise<string | null> {
   const trimmed = text.trim();
   if (!trimmed) return null;
   if (source === target) return null;
@@ -47,7 +56,11 @@ export async function translateLLM(text: string, source: string, target: string)
   return p;
 }
 
-export function getTranslationError(text: string, source: string, target: string): string | undefined {
+export function getTranslationError(
+  text: string,
+  source: string,
+  target: string,
+): string | undefined {
   return cache.get(keyOf(text.trim(), source, target))?.error;
 }
 

@@ -27,7 +27,8 @@ const OneTimeMediaBubble = ({ consumed, sent, onOpen }: OneTimeMediaBubbleProps)
       <div
         className="absolute inset-0 backdrop-blur-md"
         style={{
-          background: "repeating-linear-gradient(45deg, rgba(0,255,255,0.04) 0 6px, transparent 6px 12px)",
+          background:
+            "repeating-linear-gradient(45deg, rgba(0,255,255,0.04) 0 6px, transparent 6px 12px)",
         }}
       />
       <div className="relative w-12 h-12 rounded-full border-2 border-dotted border-[#00FFFF] flex items-center justify-center">

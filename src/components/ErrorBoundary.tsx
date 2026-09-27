@@ -162,7 +162,9 @@ class ErrorBoundary extends Component<Props, State> {
             <div style={{ fontSize: 11, letterSpacing: 0.4, color: "rgba(232,236,245,0.45)" }}>
               ERROR
             </div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "#ff9d9d", wordBreak: "break-word" }}>
+            <div
+              style={{ fontSize: 14, fontWeight: 600, color: "#ff9d9d", wordBreak: "break-word" }}
+            >
               {record?.message ?? "Unknown error"}
             </div>
           </div>
@@ -196,7 +198,8 @@ class ErrorBoundary extends Component<Props, State> {
                 whiteSpace: "pre-wrap",
                 wordBreak: "break-word",
                 color: "rgba(232,236,245,0.8)",
-                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
+                fontFamily:
+                  'ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace',
               }}
             >
               {record?.stack || "No stack trace available."}

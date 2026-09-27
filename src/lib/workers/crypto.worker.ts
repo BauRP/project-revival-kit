@@ -55,10 +55,7 @@ function run(kind: CryptoJobKind, p: Record<string, unknown>): unknown {
       };
     }
     case "sign": {
-      const sig = nacl.sign.detached(
-        decodeUTF8(String(p.data)),
-        decodeBase64(String(p.secretKey)),
-      );
+      const sig = nacl.sign.detached(decodeUTF8(String(p.data)), decodeBase64(String(p.secretKey)));
       return encodeBase64(sig);
     }
     case "verify": {

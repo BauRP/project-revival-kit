@@ -83,9 +83,7 @@ const DeleteMessageSheet = ({
                   className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-border/30 bg-white/[0.02] hover:bg-primary/10 hover:border-primary/40 transition-colors text-left"
                 >
                   <Trash2 size={18} className="text-primary shrink-0" />
-                  <span className="text-sm font-medium text-foreground">
-                    {t("deleteForMe")}
-                  </span>
+                  <span className="text-sm font-medium text-foreground">{t("deleteForMe")}</span>
                 </button>
 
                 {canDeleteForEveryone && (

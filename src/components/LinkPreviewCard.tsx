@@ -22,7 +22,9 @@ const LinkPreviewCard = ({ url, variant = "bubble", onDismiss }: LinkPreviewCard
       setPreview(p);
       setLoading(false);
     });
-    return () => { mounted = false; };
+    return () => {
+      mounted = false;
+    };
   }, [url]);
 
   if (loading && variant === "bubble") return null;
@@ -36,19 +38,27 @@ const LinkPreviewCard = ({ url, variant = "bubble", onDismiss }: LinkPreviewCard
           alt=""
           className="w-16 h-16 object-cover shrink-0"
           loading="lazy"
-          onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.display = "none";
+          }}
         />
       )}
       <div className="flex-1 min-w-0 p-2 pr-3">
         <div className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-[#00FFFF]/80 truncate">
           <Link2 size={10} />
-          <span className="truncate">{preview?.siteName || (preview ? new URL(preview.url).hostname : "")}</span>
+          <span className="truncate">
+            {preview?.siteName || (preview ? new URL(preview.url).hostname : "")}
+          </span>
         </div>
-        {preview?.title && <p className="text-xs font-semibold text-foreground truncate">{preview.title}</p>}
+        {preview?.title && (
+          <p className="text-xs font-semibold text-foreground truncate">{preview.title}</p>
+        )}
         {preview?.description && (
           <p className="text-[11px] text-muted-foreground line-clamp-2">{preview.description}</p>
         )}
-        {!preview && loading && <p className="text-[11px] text-muted-foreground italic">Loading preview…</p>}
+        {!preview && loading && (
+          <p className="text-[11px] text-muted-foreground italic">Loading preview…</p>
+        )}
       </div>
       {onDismiss && (
         <button

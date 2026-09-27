@@ -12,11 +12,25 @@ import type { ChatFolder } from "@/hooks/useFolders";
 import FloatingVideoHost from "@/components/FloatingVideoHost";
 import { useIdentity } from "@/contexts/IdentityContext";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { initPeer, onP2PMessage, onConnectionChange, flushPendingMessages, purgeExpiredLocalMessages, saveChatMeta, getChatMeta, type P2PMessage } from "@/lib/p2p";
+import {
+  initPeer,
+  onP2PMessage,
+  onConnectionChange,
+  flushPendingMessages,
+  purgeExpiredLocalMessages,
+  saveChatMeta,
+  getChatMeta,
+  type P2PMessage,
+} from "@/lib/p2p";
 import { initTrivoServer } from "@/lib/trivo-server";
 import { executePanic, createPanicLongPress } from "@/lib/panic";
 import { startPresence, setInvisibleMode } from "@/lib/presence";
-import { performStartupHandshake, listenForFriendRequests, acceptFriendRequest, purgeExpiredBufferedMessagesForAllUsers } from "@/lib/sync/peer-sync";
+import {
+  performStartupHandshake,
+  listenForFriendRequests,
+  acceptFriendRequest,
+  purgeExpiredBufferedMessagesForAllUsers,
+} from "@/lib/sync/peer-sync";
 import { initMockPeer } from "@/lib/mock-peer";
 import { isDuplicateMessage } from "@/lib/local-peer-cache";
 import { LAYOUT_CONFIG, getAppTopOffset, getBottomNavOffset } from "@/lib/layout-metrics";
@@ -30,7 +44,9 @@ const BIOMETRIC_GRACE_PERIOD = 5000; // 5 seconds
 
 const Index = () => {
   const [activeTab, setActiveTab] = useState<Tab>("chats");
-  const [openChat, setOpenChat] = useState<{ id: string; name: string; emoji: string } | null>(null);
+  const [openChat, setOpenChat] = useState<{ id: string; name: string; emoji: string } | null>(
+    null,
+  );
   const [activeFolder, setActiveFolder] = useState<ChatFolder | null>(null);
   const [biometricLocked, setBiometricLocked] = useState(false);
   const { userId, stealthMode } = useIdentity();
@@ -122,7 +138,9 @@ const Index = () => {
           void performStartupHandshake(userId)
             .then((buffered) => {
               if (!disposed && buffered.length > 0) {
-                toast.info(`${buffered.length} missed message${buffered.length > 1 ? "s" : ""} synced`);
+                toast.info(
+                  `${buffered.length} missed message${buffered.length > 1 ? "s" : ""} synced`,
+                );
               }
             })
             .catch((err) => console.warn("[trivo] startup handshake failed:", err));
@@ -173,10 +191,26 @@ const Index = () => {
       disposed = true;
       if (paintFrame !== undefined) window.cancelAnimationFrame(paintFrame);
       if (bootTimer !== undefined) window.clearTimeout(bootTimer);
-      try { unsubMsg(); } catch { /* noop */ }
-      try { unsubConn(); } catch { /* noop */ }
-      try { unsubFriendReq(); } catch { /* noop */ }
-      try { stopPresence?.(); } catch { /* noop */ }
+      try {
+        unsubMsg();
+      } catch {
+        /* noop */
+      }
+      try {
+        unsubConn();
+      } catch {
+        /* noop */
+      }
+      try {
+        unsubFriendReq();
+      } catch {
+        /* noop */
+      }
+      try {
+        stopPresence?.();
+      } catch {
+        /* noop */
+      }
     };
   }, [userId, language]);
 
@@ -209,10 +243,22 @@ const Index = () => {
   const biometricOverlay = lockActive ? (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       {/* Blur layer: prevents reading underlying chat content */}
-      <div className="absolute inset-0 bg-background/80" style={{ backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }} />
+      <div
+        className="absolute inset-0 bg-background/80"
+        style={{ backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)" }}
+      />
       <div className="relative z-10 glass-panel neon-border rounded-2xl p-8 text-center space-y-4 mx-6 max-w-sm">
         <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto neon-glow">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--primary))" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="32"
+            height="32"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="hsl(var(--primary))"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
           </svg>
@@ -252,7 +298,11 @@ const Index = () => {
             onBack={() => setOpenChat(null)}
           />
         </div>
-        <FloatingVideoHost onExpand={() => { /* already inside the chat */ }} />
+        <FloatingVideoHost
+          onExpand={() => {
+            /* already inside the chat */
+          }}
+        />
       </div>
     );
   }
@@ -270,8 +320,10 @@ const Index = () => {
         aria-hidden="true"
       />
 
-
-      <div className="flex-1 min-h-0 overflow-hidden" style={{ paddingBottom: getBottomNavOffset() }}>
+      <div
+        className="flex-1 min-h-0 overflow-hidden"
+        style={{ paddingBottom: getBottomNavOffset() }}
+      >
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -301,7 +353,11 @@ const Index = () => {
         </AnimatePresence>
       </div>
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
-      <FloatingVideoHost onExpand={() => { /* future: route back to source chat */ }} />
+      <FloatingVideoHost
+        onExpand={() => {
+          /* future: route back to source chat */
+        }}
+      />
     </div>
   );
 };

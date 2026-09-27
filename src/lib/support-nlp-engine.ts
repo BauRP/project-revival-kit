@@ -22,7 +22,7 @@ export type BotLang = "ru" | "en";
 const NLP_CONFIDENCE_THRESHOLD = 0.55;
 
 const intentById = new Map<string, SupportIntent>(
-  botKnowledgeBase.map((intent) => [intent.id, intent])
+  botKnowledgeBase.map((intent) => [intent.id, intent]),
 );
 
 /** Slash commands resolve deterministically, bypassing the classifier. */
@@ -72,7 +72,7 @@ function levenshtein(a: string, b: string): number {
         matrix[i][j] = Math.min(
           matrix[i - 1][j - 1] + 1,
           matrix[i][j - 1] + 1,
-          matrix[i - 1][j] + 1
+          matrix[i - 1][j] + 1,
         );
       }
     }
@@ -186,10 +186,7 @@ function fallback(lang: BotLang): string {
  *   3. lexical / typo-tolerant fallback
  *   4. menu fallback
  */
-export async function resolveReply(
-  userMessage: string,
-  requestedLang?: BotLang
-): Promise<string> {
+export async function resolveReply(userMessage: string, requestedLang?: BotLang): Promise<string> {
   const raw = (userMessage || "").trim();
   const lang = requestedLang || detectLanguage(raw);
   const clean = normalize(raw);
@@ -202,7 +199,12 @@ export async function resolveReply(
   try {
     const nlp = await warmup();
     const result = await nlp.process(lang, raw);
-    if (result && result.intent && result.intent !== "None" && result.score >= NLP_CONFIDENCE_THRESHOLD) {
+    if (
+      result &&
+      result.intent &&
+      result.intent !== "None" &&
+      result.score >= NLP_CONFIDENCE_THRESHOLD
+    ) {
       const answer = answerFor(result.intent, lang);
       if (answer) return answer;
     }

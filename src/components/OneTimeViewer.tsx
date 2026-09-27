@@ -23,7 +23,9 @@ interface OneTimeViewerProps {
 const OneTimeViewer = ({ open, url, mediaType, onClose, onConsumed }: OneTimeViewerProps) => {
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") handleDismiss(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleDismiss();
+    };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -62,7 +64,10 @@ const OneTimeViewer = ({ open, url, mediaType, onClose, onConsumed }: OneTimeVie
             </div>
             <button
               type="button"
-              onClick={(e) => { e.stopPropagation(); handleDismiss(); }}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleDismiss();
+              }}
               className="p-2 rounded-full bg-white/5 text-white"
               aria-label="Close"
             >

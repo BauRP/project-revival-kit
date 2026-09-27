@@ -12,7 +12,8 @@ function openDB(): Promise<IDBDatabase> {
 
       if (oldVersion < 1) {
         if (!db.objectStoreNames.contains("identity")) db.createObjectStore("identity");
-        if (!db.objectStoreNames.contains("messages")) db.createObjectStore("messages", { keyPath: "id" });
+        if (!db.objectStoreNames.contains("messages"))
+          db.createObjectStore("messages", { keyPath: "id" });
         if (!db.objectStoreNames.contains("settings")) db.createObjectStore("settings");
       }
 

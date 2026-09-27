@@ -45,7 +45,8 @@ function getBroadcast(): BroadcastChannel | null {
       event: MessageEvent<{ origin?: string; channelId?: string; key?: string; data?: any }>,
     ) => {
       const payload = event.data;
-      if (!payload || payload.origin === getClientId() || !payload.channelId || !payload.key) return;
+      if (!payload || payload.origin === getClientId() || !payload.channelId || !payload.key)
+        return;
       emit(payload.channelId, payload.data, payload.key);
     };
   } catch {
@@ -111,19 +112,29 @@ function emit(channelId: string, data: any, key: string): void {
   });
 }
 
-export function publishPublicKeys(userId: string, signingPubKey: string, exchangePubKey: string): void {
+export function publishPublicKeys(
+  userId: string,
+  signingPubKey: string,
+  exchangePubKey: string,
+): void {
   if (!userId) return;
   try {
     localStorage.setItem(
       KEYS_PREFIX + userId,
-      JSON.stringify({ signingKey: signingPubKey, exchangeKey: exchangePubKey, updatedAt: Date.now() }),
+      JSON.stringify({
+        signingKey: signingPubKey,
+        exchangeKey: exchangePubKey,
+        updatedAt: Date.now(),
+      }),
     );
   } catch {
     // Non-fatal: WebRTC can still use keys stored in Dexie contacts.
   }
 }
 
-export async function lookupPublicKeys(userId: string): Promise<{ signingKey: string; exchangeKey: string } | null> {
+export async function lookupPublicKeys(
+  userId: string,
+): Promise<{ signingKey: string; exchangeKey: string } | null> {
   try {
     const cached = localStorage.getItem(KEYS_PREFIX + userId);
     if (!cached) return null;
@@ -139,7 +150,11 @@ export async function lookupPublicKeys(userId: string): Promise<{ signingKey: st
 
 export function writePeerCache(channelId: string, messagePayload: Record<string, unknown>): void {
   const key = String(messagePayload.id || generateUUIDv4());
-  const data = { ...messagePayload, id: key, timestamp: Number(messagePayload.timestamp || Date.now()) };
+  const data = {
+    ...messagePayload,
+    id: key,
+    timestamp: Number(messagePayload.timestamp || Date.now()),
+  };
   writeEntry(channelId, key, data);
   emit(channelId, data, key);
   try {
@@ -185,7 +200,7 @@ function makeNode(path: string[], mapped = false): CacheNode {
       if (mapped) {
         Object.entries(entries).forEach(([entryKey, data]) => cb(data, entryKey));
       } else {
-        cb(key ? entries[key] ?? null : null, key);
+        cb(key ? (entries[key] ?? null) : null, key);
       }
       return node;
     },

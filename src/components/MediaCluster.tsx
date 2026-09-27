@@ -19,7 +19,12 @@ const MediaCluster = ({ items, onOpen }: MediaClusterProps) => {
     const m = items[0];
     return (
       <a href={m.url} target="_blank" rel="noopener noreferrer" className="block">
-        <img src={m.url} alt={m.name} className="rounded-xl max-w-full max-h-[240px] object-cover" loading="lazy" />
+        <img
+          src={m.url}
+          alt={m.name}
+          className="rounded-xl max-w-full max-h-[240px] object-cover"
+          loading="lazy"
+        />
       </a>
     );
   }
@@ -36,7 +41,10 @@ const MediaCluster = ({ items, onOpen }: MediaClusterProps) => {
           <button
             key={i}
             type="button"
-            onClick={(e) => { e.stopPropagation(); onOpen?.(m); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpen?.(m);
+            }}
             className="relative aspect-square overflow-hidden bg-black"
           >
             <img src={m.url} alt={m.name} className="w-full h-full object-cover" loading="lazy" />

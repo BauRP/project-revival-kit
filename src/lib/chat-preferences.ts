@@ -28,11 +28,17 @@ export async function getChatPreferences(chatId: string): Promise<ChatPreference
   return (await dbGet<ChatPreferenceState>("settings", `${KEY_PREFIX}${chatId}`)) || {};
 }
 
-export async function saveChatPreferences(chatId: string, next: ChatPreferenceState): Promise<void> {
+export async function saveChatPreferences(
+  chatId: string,
+  next: ChatPreferenceState,
+): Promise<void> {
   await dbPut("settings", `${KEY_PREFIX}${chatId}`, next);
 }
 
-export async function updateChatPreferences(chatId: string, patch: Partial<ChatPreferenceState>): Promise<ChatPreferenceState> {
+export async function updateChatPreferences(
+  chatId: string,
+  patch: Partial<ChatPreferenceState>,
+): Promise<ChatPreferenceState> {
   const current = await getChatPreferences(chatId);
   const next = { ...current, ...patch };
   await saveChatPreferences(chatId, next);

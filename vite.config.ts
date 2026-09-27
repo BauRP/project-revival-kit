@@ -15,7 +15,7 @@ function mirrorServerEntry() {
         const envName = this?.environment?.name;
         // Только для серверных сборок
         if (envName !== "ssr" && envName !== "server") return;
-        
+
         const destFile = resolve(process.cwd(), "dist/server/server.js");
         const destDir = dirname(destFile);
         mkdirSync(destDir, { recursive: true });
@@ -24,7 +24,7 @@ function mirrorServerEntry() {
         const possibleSources = [
           resolve(process.cwd(), ".output/server/index.mjs"),
           resolve(process.cwd(), "node_modules/.nitro/vite/services/ssr/index.js"),
-          resolve(process.cwd(), "dist/server/index.js")
+          resolve(process.cwd(), "dist/server/index.js"),
         ];
 
         let found = false;
@@ -38,12 +38,12 @@ function mirrorServerEntry() {
             }
 
             // Создаем server.js, который требует prerender (берем скопированный index.js/mjs)
-            const copiedSrcFile = resolve(destDir, src.endsWith('.mjs') ? 'index.mjs' : 'index.js');
+            const copiedSrcFile = resolve(destDir, src.endsWith(".mjs") ? "index.mjs" : "index.js");
             if (existsSync(copiedSrcFile)) {
-               copyFileSync(copiedSrcFile, destFile);
+              copyFileSync(copiedSrcFile, destFile);
             } else {
-               // Фолбэк
-               copyFileSync(src, destFile);
+              // Фолбэк
+              copyFileSync(src, destFile);
             }
 
             // eslint-disable-next-line no-console
@@ -52,12 +52,14 @@ function mirrorServerEntry() {
             break;
           }
         }
-        
+
         // Предохранитель, чтобы сборка Vite не падала с Fatal Error
         if (!found) {
-            // eslint-disable-next-line no-console
-            console.log("[trivo] Внимание: серверный файл не найден, создаю заглушку для пререндера.");
-            writeFileSync(destFile, "export default {};");
+          // eslint-disable-next-line no-console
+          console.log(
+            "[trivo] Внимание: серверный файл не найден, создаю заглушку для пререндера.",
+          );
+          writeFileSync(destFile, "export default {};");
         }
       },
     },

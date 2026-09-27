@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Download, Languages } from "lucide-react";
 import { Language, Translation } from "@capacitor-mlkit/translation";
 import { isNative } from "@/lib/platform";
-import { getLanguageName, getTranslationSettings, saveTranslationSettings, TRANSLATION_LANGUAGE_OPTIONS } from "@/lib/translation-config";
+import {
+  getLanguageName,
+  getTranslationSettings,
+  saveTranslationSettings,
+  TRANSLATION_LANGUAGE_OPTIONS,
+} from "@/lib/translation-config";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Switch } from "./ui/switch";
 import { toast } from "sonner";
@@ -25,7 +30,11 @@ const TranslationSettingsPanel = ({ onBack }: TranslationSettingsPanelProps) => 
     });
   }, []);
 
-  const persist = async (nextSource = sourceLanguage, nextTarget = targetLanguage, nextAuto = autoTranslateIncoming) => {
+  const persist = async (
+    nextSource = sourceLanguage,
+    nextTarget = targetLanguage,
+    nextAuto = autoTranslateIncoming,
+  ) => {
     await saveTranslationSettings({
       sourceLanguage: nextSource,
       targetLanguage: nextTarget,
@@ -43,7 +52,9 @@ const TranslationSettingsPanel = ({ onBack }: TranslationSettingsPanelProps) => 
     try {
       await Translation.downloadModel({ language: sourceLanguage as Language });
       await Translation.downloadModel({ language: targetLanguage as Language });
-      toast.success(`Offline packs ready: ${getLanguageName(sourceLanguage)} → ${getLanguageName(targetLanguage)}`);
+      toast.success(
+        `Offline packs ready: ${getLanguageName(sourceLanguage)} → ${getLanguageName(targetLanguage)}`,
+      );
     } catch {
       toast.error("Could not download language packs.");
     } finally {
@@ -66,7 +77,9 @@ const TranslationSettingsPanel = ({ onBack }: TranslationSettingsPanelProps) => 
             <Languages size={18} className="text-primary" />
             <div className="flex-1">
               <p className="text-sm font-medium text-foreground">Automatic translation</p>
-              <p className="text-xs text-muted-foreground">Translate incoming messages when the detected source matches your chosen pair.</p>
+              <p className="text-xs text-muted-foreground">
+                Translate incoming messages when the detected source matches your chosen pair.
+              </p>
             </div>
             <Switch
               checked={autoTranslateIncoming}
@@ -79,13 +92,21 @@ const TranslationSettingsPanel = ({ onBack }: TranslationSettingsPanelProps) => 
 
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">Source Language</p>
-            <Select value={sourceLanguage} onValueChange={(value) => { setSourceLanguage(value); persist(value, targetLanguage, autoTranslateIncoming); }}>
+            <Select
+              value={sourceLanguage}
+              onValueChange={(value) => {
+                setSourceLanguage(value);
+                persist(value, targetLanguage, autoTranslateIncoming);
+              }}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select source language" />
               </SelectTrigger>
               <SelectContent>
                 {TRANSLATION_LANGUAGE_OPTIONS.map((language) => (
-                  <SelectItem key={language.code} value={language.code}>{language.name}</SelectItem>
+                  <SelectItem key={language.code} value={language.code}>
+                    {language.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -93,13 +114,21 @@ const TranslationSettingsPanel = ({ onBack }: TranslationSettingsPanelProps) => 
 
           <div className="space-y-2">
             <p className="text-xs text-muted-foreground">Target Language</p>
-            <Select value={targetLanguage} onValueChange={(value) => { setTargetLanguage(value); persist(sourceLanguage, value, autoTranslateIncoming); }}>
+            <Select
+              value={targetLanguage}
+              onValueChange={(value) => {
+                setTargetLanguage(value);
+                persist(sourceLanguage, value, autoTranslateIncoming);
+              }}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select target language" />
               </SelectTrigger>
               <SelectContent>
                 {TRANSLATION_LANGUAGE_OPTIONS.map((language) => (
-                  <SelectItem key={language.code} value={language.code}>{language.name}</SelectItem>
+                  <SelectItem key={language.code} value={language.code}>
+                    {language.name}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -115,7 +144,8 @@ const TranslationSettingsPanel = ({ onBack }: TranslationSettingsPanelProps) => 
           </button>
 
           <div className="rounded-xl border border-border bg-background p-3 text-xs text-muted-foreground leading-relaxed">
-            English ↔ Russian is bundled as the default offline pair. Additional language packs can be downloaded on-device for 100+ languages.
+            English ↔ Russian is bundled as the default offline pair. Additional language packs can
+            be downloaded on-device for 100+ languages.
           </div>
         </div>
       </div>

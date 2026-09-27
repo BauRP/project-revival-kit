@@ -93,7 +93,10 @@ const TOPICS: Topic[] = [
   {
     id: "routing",
     icon: RouteIcon,
-    title: { en: "How Messages are Routed via Tor", ru: "Как сообщения маршрутизируются через Tor" },
+    title: {
+      en: "How Messages are Routed via Tor",
+      ru: "Как сообщения маршрутизируются через Tor",
+    },
     summary: {
       en: "Sealed frame → local queue → SOCKS5 → peer's onion service.",
       ru: "Запечатанный кадр → локальная очередь → SOCKS5 → onion-служба собеседника.",
@@ -122,7 +125,7 @@ const TOPICS: Topic[] = [
     body: {
       en: [
         "Trivo receives messages by hosting a server, not by polling one. Your handset is the endpoint of your own onion service, which means it must be listening at the moment a contact sends something. Android aggressively suspends normal processes, so the only supported way to keep that listener alive is a foreground service — and Android requires every foreground service to display a persistent notification.",
-        "That is the notification titled \"P2P Tor Onion Network: Presence and Connectivity Check\". It does not send anything anywhere and it deliberately shows no onion address, no contact name and no message preview: it exists purely because the operating system demands a visible marker for a long-running service. Dismissing it is not possible while the transport is active; stopping the transport is done from inside the app.",
+        'That is the notification titled "P2P Tor Onion Network: Presence and Connectivity Check". It does not send anything anywhere and it deliberately shows no onion address, no contact name and no message preview: it exists purely because the operating system demands a visible marker for a long-running service. Dismissing it is not possible while the transport is active; stopping the transport is done from inside the app.',
         "While the service runs, it keeps the Tor daemon bootstrapped, accepts inbound streams, buffers frames that arrive while the interface is closed, and retries anything sitting in the outbox. When you open the app again, those buffered frames are drained into the chat list instantly, which is why messages appear immediately rather than after a manual refresh.",
       ],
       ru: [

@@ -11,7 +11,12 @@ import { subscribeToPresence, getPresenceStatus, onPresenceChange } from "@/lib/
 import { dbGet, dbPut, dbDelete } from "@/lib/storage";
 import { blockUser, unblockUser, submitReport } from "@/lib/report";
 import { isTrivoSupport, SUPPORT_BOT_NAME } from "@/lib/mock-peer";
-import { getChatPreferences, getMuteUntil, updateChatPreferences, type DisappearingDuration } from "@/lib/chat-preferences";
+import {
+  getChatPreferences,
+  getMuteUntil,
+  updateChatPreferences,
+  type DisappearingDuration,
+} from "@/lib/chat-preferences";
 import { subscribeToProfile, onProfileChange, getProfile } from "@/lib/profile";
 import { toast } from "@/hooks/use-toast";
 
@@ -47,31 +52,36 @@ const FriendsList = ({ onOpenChat }: FriendsListProps) => {
   const loadFriends = async () => {
     const metas = await getAllChatMetas();
     const starred = (await dbGet<string[]>("settings", "starred-friends")) || [];
-    const friendList: Friend[] = await Promise.all(metas.map(async (m: ChatMeta) => {
-      const preferences = await getChatPreferences(m.friendId);
-      const profile = getProfile(m.friendId);
-      return {
-        id: m.friendId,
-        name: isTrivoSupport(m.friendId) ? SUPPORT_BOT_NAME : profile?.name || m.friendName,
-        avatar: profile?.avatar ?? m.friendAvatar ?? null,
-        status: getPresenceStatus(m.friendId),
-        customStatus: profile?.status === "custom" ? profile.customStatus : "",
-        blocked: !!preferences.blocked,
-        starred: starred.includes(m.friendId) || !!preferences.favorite,
-        archived: !!preferences.archived,
-        muted: !!preferences.mutedUntil && preferences.mutedUntil > Date.now(),
-      };
-    }));
+    const friendList: Friend[] = await Promise.all(
+      metas.map(async (m: ChatMeta) => {
+        const preferences = await getChatPreferences(m.friendId);
+        const profile = getProfile(m.friendId);
+        return {
+          id: m.friendId,
+          name: isTrivoSupport(m.friendId) ? SUPPORT_BOT_NAME : profile?.name || m.friendName,
+          avatar: profile?.avatar ?? m.friendAvatar ?? null,
+          status: getPresenceStatus(m.friendId),
+          customStatus: profile?.status === "custom" ? profile.customStatus : "",
+          blocked: !!preferences.blocked,
+          starred: starred.includes(m.friendId) || !!preferences.favorite,
+          archived: !!preferences.archived,
+          muted: !!preferences.mutedUntil && preferences.mutedUntil > Date.now(),
+        };
+      }),
+    );
     setFriends(friendList);
   };
 
   useEffect(() => {
     loadFriends();
     const unsubPresence = onPresenceChange((userId, status) => {
-      setFriends((prev) => prev.map((f) => f.id === userId ? { ...f, status } : f));
+      setFriends((prev) => prev.map((f) => (f.id === userId ? { ...f, status } : f)));
     });
     const interval = setInterval(loadFriends, 5000);
-    return () => { clearInterval(interval); unsubPresence(); };
+    return () => {
+      clearInterval(interval);
+      unsubPresence();
+    };
   }, []);
 
   useEffect(() => {
@@ -101,7 +111,11 @@ const FriendsList = ({ onOpenChat }: FriendsListProps) => {
 
   const removeFriend = async (id: string) => {
     await clearMessagesForChat(id);
-    try { await dbDelete("contacts", id); } catch { /* ignore */ }
+    try {
+      await dbDelete("contacts", id);
+    } catch {
+      /* ignore */
+    }
     setFriends((prev) => prev.filter((f) => f.id !== id));
     closeMenu();
     toast({ title: t("friendRemoved") });
@@ -119,7 +133,8 @@ const FriendsList = ({ onOpenChat }: FriendsListProps) => {
     const next = !current.blocked;
     setFriends((prev) => prev.map((f) => (f.id === id ? { ...f, blocked: next } : f)));
     await updateChatPreferences(id, { blocked: next });
-    if (next) await blockUser(id); else await unblockUser(id);
+    if (next) await blockUser(id);
+    else await unblockUser(id);
     closeMenu();
   };
 
@@ -211,7 +226,9 @@ const FriendsList = ({ onOpenChat }: FriendsListProps) => {
     <div className="flex flex-col h-full">
       <div className="header-safe-zone px-5 pb-4 flex items-center justify-between shrink-0">
         <h1 className="text-2xl font-bold gradient-text">{t("friends")}</h1>
-        <span className="text-sm text-muted-foreground">{friends.length} {t("contacts")}</span>
+        <span className="text-sm text-muted-foreground">
+          {friends.length} {t("contacts")}
+        </span>
       </div>
       <div className="flex-1 overflow-y-auto scrollbar-hide px-3 space-y-1.5">
         <AnimatePresence>
@@ -229,8 +246,13 @@ const FriendsList = ({ onOpenChat }: FriendsListProps) => {
             >
               <div className="relative shrink-0">
                 <DefaultAvatar src={friend.avatar} size={48} />
-                <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background ${statusColors[friend.status]}`}
-                  style={friend.status === "online" ? { boxShadow: "0 0 6px hsl(var(--neon-glow) / 0.6)" } : {}}
+                <div
+                  className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background ${statusColors[friend.status]}`}
+                  style={
+                    friend.status === "online"
+                      ? { boxShadow: "0 0 6px hsl(var(--neon-glow) / 0.6)" }
+                      : {}
+                  }
                 />
               </div>
               <div className="flex-1 min-w-0">
@@ -243,7 +265,10 @@ const FriendsList = ({ onOpenChat }: FriendsListProps) => {
                 </p>
               </div>
               <button
-                onClick={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === friend.id ? null : friend.id); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(menuOpen === friend.id ? null : friend.id);
+                }}
                 className="p-2 rounded-lg hover:bg-secondary/50 text-muted-foreground"
                 aria-label="Menu"
               >
@@ -253,12 +278,22 @@ const FriendsList = ({ onOpenChat }: FriendsListProps) => {
               <ContactActionsMenu
                 open={menuOpen === friend.id}
                 onClose={closeMenu}
-                state={{ muted: friend.muted, blocked: friend.blocked, favorite: friend.starred, archived: friend.archived }}
-                onMute={() => { void handleMuteMenu(friend.id); }}
+                state={{
+                  muted: friend.muted,
+                  blocked: friend.blocked,
+                  favorite: friend.starred,
+                  archived: friend.archived,
+                }}
+                onMute={() => {
+                  void handleMuteMenu(friend.id);
+                }}
                 onToggleBlock={() => toggleBlock(friend.id)}
                 onToggleFavorite={() => toggleStar(friend.id)}
                 onToggleArchive={() => toggleArchive(friend.id)}
-                onAssignGroup={() => { setAssignTarget({ id: friend.id, name: friend.name }); closeMenu(); }}
+                onAssignGroup={() => {
+                  setAssignTarget({ id: friend.id, name: friend.name });
+                  closeMenu();
+                }}
                 onClearChat={() => clearChat(friend.id)}
                 onReport={() => report(friend.id)}
                 onDeleteFriend={() => removeFriend(friend.id)}

@@ -51,7 +51,7 @@ export interface MessageFragment {
 export function fragmentMessage(
   messageId: string,
   text: string,
-  chunkSize: number = 8
+  chunkSize: number = 8,
 ): MessageFragment[] {
   const fragments: MessageFragment[] = [];
   const totalChunks = Math.ceil(text.length / chunkSize);

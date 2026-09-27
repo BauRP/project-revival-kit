@@ -53,7 +53,8 @@ const ChatProfileSheet = ({ open, onClose, peerName, messages }: Props) => {
       if (media?.url) {
         const mime = media.mimeType || "";
         if (media.type === "image" || mime.startsWith("image/")) photos.push(m);
-        else if (m.roundVideo || media.type === "video" || mime.startsWith("video/")) videos.push(m);
+        else if (m.roundVideo || media.type === "video" || mime.startsWith("video/"))
+          videos.push(m);
         else if (media.type === "audio" || mime.startsWith("audio/")) voices.push(m);
         else files.push(m);
       }
@@ -138,8 +139,19 @@ const ChatProfileSheet = ({ open, onClose, peerName, messages }: Props) => {
           ) : (
             <div className="grid grid-cols-3 gap-1 p-1">
               {indexed.photos.map((m) => (
-                <a key={m.id} href={m.media!.url} target="_blank" rel="noopener noreferrer" className="aspect-square block">
-                  <img src={m.media!.url} alt={m.media!.name || ""} className="w-full h-full object-cover" loading="lazy" />
+                <a
+                  key={m.id}
+                  href={m.media!.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="aspect-square block"
+                >
+                  <img
+                    src={m.media!.url}
+                    alt={m.media!.name || ""}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
                 </a>
               ))}
             </div>
@@ -152,7 +164,14 @@ const ChatProfileSheet = ({ open, onClose, peerName, messages }: Props) => {
           ) : (
             <div className="grid grid-cols-2 gap-1 p-1">
               {indexed.videos.map((m) => (
-                <video key={m.id} src={m.media!.url} controls playsInline className="w-full aspect-video object-cover bg-black" preload="metadata" />
+                <video
+                  key={m.id}
+                  src={m.media!.url}
+                  controls
+                  playsInline
+                  className="w-full aspect-video object-cover bg-black"
+                  preload="metadata"
+                />
               ))}
             </div>
           )}
@@ -174,7 +193,9 @@ const ChatProfileSheet = ({ open, onClose, peerName, messages }: Props) => {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm text-white truncate">{m.media!.name || "Файл"}</p>
-                      <p className="text-[11px] text-[#00FFFF]/60">{m.media!.size ? formatFileSize(m.media!.size) : ""}</p>
+                      <p className="text-[11px] text-[#00FFFF]/60">
+                        {m.media!.size ? formatFileSize(m.media!.size) : ""}
+                      </p>
                     </div>
                   </button>
                 </li>
@@ -235,6 +256,5 @@ const Empty = ({ label }: { label: string }) => (
     <p className="text-sm text-[#00FFFF]/40">{label}</p>
   </div>
 );
-
 
 export default ChatProfileSheet;

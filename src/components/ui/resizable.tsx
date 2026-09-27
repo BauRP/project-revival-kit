@@ -1,9 +1,5 @@
 import { GripVertical } from "lucide-react";
-import {
-  Group as PanelGroup,
-  Panel,
-  Separator as PanelResizeHandle,
-} from "react-resizable-panels";
+import { Group as PanelGroup, Panel, Separator as PanelResizeHandle } from "react-resizable-panels";
 
 import { cn } from "@/lib/utils";
 

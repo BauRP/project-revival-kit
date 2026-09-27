@@ -55,12 +55,18 @@ export const SpoilerText = ({ text }: { text: string }) => {
       raf = requestAnimationFrame(draw);
     };
     raf = requestAnimationFrame(draw);
-    return () => { cancelled = true; cancelAnimationFrame(raf); };
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
   }, [revealed]);
 
   return (
     <span
-      onClick={(e) => { e.stopPropagation(); setRevealed(true); }}
+      onClick={(e) => {
+        e.stopPropagation();
+        setRevealed(true);
+      }}
       className="relative inline-block align-baseline cursor-pointer rounded-sm"
       style={{
         padding: revealed ? 0 : "0 2px",
@@ -85,7 +91,9 @@ export const SpoilerText = ({ text }: { text: string }) => {
  * Splits a string into spoiler / plain segments based on the ||spoiler||
  * delimiter. Returns a list ready to render.
  */
-export const parseSpoilers = (input: string): Array<{ type: "text" | "spoiler"; value: string }> => {
+export const parseSpoilers = (
+  input: string,
+): Array<{ type: "text" | "spoiler"; value: string }> => {
   const parts: Array<{ type: "text" | "spoiler"; value: string }> = [];
   const re = /\|\|([^|]+)\|\|/g;
   let last = 0;
@@ -106,7 +114,11 @@ export const RichText = ({ text }: { text: string }) => {
   return (
     <>
       {parts.map((p, i) =>
-        p.type === "spoiler" ? <SpoilerText key={i} text={p.value} /> : <span key={i}>{p.value}</span>,
+        p.type === "spoiler" ? (
+          <SpoilerText key={i} text={p.value} />
+        ) : (
+          <span key={i}>{p.value}</span>
+        ),
       )}
     </>
   );

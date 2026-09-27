@@ -1,4 +1,16 @@
-import { Shield, Key, Fingerprint, Lock, Wifi, Activity, Zap, Eye, EyeOff, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Shield,
+  Key,
+  Fingerprint,
+  Lock,
+  Wifi,
+  Activity,
+  Zap,
+  Eye,
+  EyeOff,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { useIdentity } from "@/contexts/IdentityContext";
@@ -44,7 +56,10 @@ const SecurityDashboard = () => {
 
       <div className="flex-1 overflow-y-auto scrollbar-hide">
         {/* Shield Icon — separated from the list below with a fixed bottom gap */}
-        <div className="flex justify-center mb-8" style={{ paddingTop: "0.75rem", paddingBottom: "0.5rem" }}>
+        <div
+          className="flex justify-center mb-8"
+          style={{ paddingTop: "0.75rem", paddingBottom: "0.5rem" }}
+        >
           <motion.div
             animate={{ scale: [1, 1.05, 1] }}
             transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
@@ -70,10 +85,14 @@ const SecurityDashboard = () => {
               />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-foreground">{label}</p>
-                <p className={`text-xs ${active ? "text-primary" : "text-muted-foreground"}`}>{value}</p>
+                <p className={`text-xs ${active ? "text-primary" : "text-muted-foreground"}`}>
+                  {value}
+                </p>
               </div>
               {/* Read-only status badge */}
-              <span className={`text-[10px] px-2 py-0.5 rounded-full ${active ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}>
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded-full ${active ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}
+              >
                 {active ? t("active") : t("inactive")}
               </span>
             </motion.div>
@@ -87,9 +106,7 @@ const SecurityDashboard = () => {
               <Wifi size={18} className="text-primary mt-0.5 shrink-0" />
               <div className="min-w-0">
                 <p className="text-sm font-medium text-foreground">{t("p2pNetwork")}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {t("onionTorConnected")}
-                </p>
+                <p className="text-xs text-muted-foreground mt-1">{t("onionTorConnected")}</p>
               </div>
             </div>
           </div>
@@ -111,43 +128,64 @@ const SecurityDashboard = () => {
           </button>
 
           {keysOpen && (
-          <div id="security-key-info" className="glass-panel neon-border rounded-xl p-3 space-y-2.5">
-            <div className="flex items-center gap-3">
-              <Fingerprint size={18} className="text-pink-400" style={{ filter: "drop-shadow(0 0 4px #f472b6)" }} />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-muted-foreground">{t("keyFingerprint")}</p>
-                <p className="text-sm font-mono text-foreground truncate">{fingerprint || "..."}</p>
+            <div
+              id="security-key-info"
+              className="glass-panel neon-border rounded-xl p-3 space-y-2.5"
+            >
+              <div className="flex items-center gap-3">
+                <Fingerprint
+                  size={18}
+                  className="text-pink-400"
+                  style={{ filter: "drop-shadow(0 0 4px #f472b6)" }}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground">{t("keyFingerprint")}</p>
+                  <p className="text-sm font-mono text-foreground truncate">
+                    {fingerprint || "..."}
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <div className="flex items-center gap-3">
-              <Key size={18} className="text-yellow-400" style={{ filter: "drop-shadow(0 0 4px #facc15)" }} />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-muted-foreground">{t("signingKey")}</p>
-                <p className="text-sm font-mono text-foreground truncate">
-                  {identity?.signing.publicKey.substring(0, 24)}...
-                </p>
+              <div className="flex items-center gap-3">
+                <Key
+                  size={18}
+                  className="text-yellow-400"
+                  style={{ filter: "drop-shadow(0 0 4px #facc15)" }}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground">{t("signingKey")}</p>
+                  <p className="text-sm font-mono text-foreground truncate">
+                    {identity?.signing.publicKey.substring(0, 24)}...
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <div className="flex items-center gap-3">
-              <Zap size={18} className="text-blue-400" style={{ filter: "drop-shadow(0 0 4px #60a5fa)" }} />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-muted-foreground">{t("exchangeKey")}</p>
-                <p className="text-sm font-mono text-foreground truncate">
-                  {identity?.exchange.publicKey.substring(0, 24)}...
-                </p>
+              <div className="flex items-center gap-3">
+                <Zap
+                  size={18}
+                  className="text-blue-400"
+                  style={{ filter: "drop-shadow(0 0 4px #60a5fa)" }}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground">{t("exchangeKey")}</p>
+                  <p className="text-sm font-mono text-foreground truncate">
+                    {identity?.exchange.publicKey.substring(0, 24)}...
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <div className="flex items-center gap-3">
-              <Activity size={18} className="text-purple-400" style={{ filter: "drop-shadow(0 0 4px #a78bfa)" }} />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs text-muted-foreground">{t("pqxdhStatus")}</p>
-                <p className="text-sm text-primary font-medium">{t("hybridActive")}</p>
+              <div className="flex items-center gap-3">
+                <Activity
+                  size={18}
+                  className="text-purple-400"
+                  style={{ filter: "drop-shadow(0 0 4px #a78bfa)" }}
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground">{t("pqxdhStatus")}</p>
+                  <p className="text-sm text-primary font-medium">{t("hybridActive")}</p>
+                </div>
               </div>
             </div>
-          </div>
           )}
         </div>
       </div>

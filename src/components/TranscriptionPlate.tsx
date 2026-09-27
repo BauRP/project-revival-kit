@@ -67,7 +67,9 @@ const TranscriptionPlate = ({ audioUrl }: Props) => {
           style={{ boxShadow: "0 0 8px rgba(0,255,255,0.25)" }}
         >
           {text ? (
-            <p className="text-xs leading-relaxed text-[#E6FFFF] whitespace-pre-wrap break-words">{text}</p>
+            <p className="text-xs leading-relaxed text-[#E6FFFF] whitespace-pre-wrap break-words">
+              {text}
+            </p>
           ) : (
             <div className="flex items-center justify-between gap-2">
               <p className="text-xs text-[#FF6B6B]">Не удалось расшифровать ({error})</p>

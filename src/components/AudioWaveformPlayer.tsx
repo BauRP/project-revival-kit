@@ -75,9 +75,7 @@ const AudioWaveformPlayer = ({ src, name, sent }: AudioWaveformPlayerProps) => {
         ? `hsl(${getComputedStyle(document.documentElement).getPropertyValue("--primary").trim()})`
         : "#6366f1";
 
-    const inactiveColor = sent
-      ? "hsla(0, 0%, 100%, 0.3)"
-      : "hsla(0, 0%, 60%, 0.3)";
+    const inactiveColor = sent ? "hsla(0, 0%, 100%, 0.3)" : "hsla(0, 0%, 60%, 0.3)";
 
     for (let i = 0; i < peaks.length; i++) {
       const x = i * (BAR_WIDTH + BAR_GAP);
@@ -141,13 +139,18 @@ const AudioWaveformPlayer = ({ src, name, sent }: AudioWaveformPlayerProps) => {
         <button
           onClick={handlePlayPause}
           className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors ${
-            sent ? "bg-primary-foreground/20 hover:bg-primary-foreground/30" : "bg-primary/15 hover:bg-primary/25"
+            sent
+              ? "bg-primary-foreground/20 hover:bg-primary-foreground/30"
+              : "bg-primary/15 hover:bg-primary/25"
           }`}
         >
           {playing ? (
             <Pause size={16} className={sent ? "text-primary-foreground" : "text-primary"} />
           ) : (
-            <Play size={16} className={`${sent ? "text-primary-foreground" : "text-primary"} ml-0.5`} />
+            <Play
+              size={16}
+              className={`${sent ? "text-primary-foreground" : "text-primary"} ml-0.5`}
+            />
           )}
         </button>
         <div className="flex flex-col gap-1 flex-1 min-w-0">
@@ -159,10 +162,14 @@ const AudioWaveformPlayer = ({ src, name, sent }: AudioWaveformPlayerProps) => {
             style={{ height: CANVAS_HEIGHT }}
           />
           <div className="flex items-center justify-between">
-            <span className={`text-[10px] ${sent ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+            <span
+              className={`text-[10px] ${sent ? "text-primary-foreground/60" : "text-muted-foreground"}`}
+            >
               {formatTime(playing ? currentTime : 0)}
             </span>
-            <span className={`text-[10px] ${sent ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
+            <span
+              className={`text-[10px] ${sent ? "text-primary-foreground/60" : "text-muted-foreground"}`}
+            >
               {duration > 0 ? formatTime(duration) : "--:--"}
             </span>
           </div>

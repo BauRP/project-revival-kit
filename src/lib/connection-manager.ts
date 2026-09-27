@@ -131,9 +131,10 @@ class ConnectionManager {
   advance(kind: NodeKind): NetNode | null {
     const pool = kind === "stun" ? this.stun : this.wss;
     for (let step = 0; step < pool.length; step++) {
-      const next = kind === "stun"
-        ? (this.stunIdx = (this.stunIdx + 1) % pool.length)
-        : (this.wssIdx = (this.wssIdx + 1) % pool.length);
+      const next =
+        kind === "stun"
+          ? (this.stunIdx = (this.stunIdx + 1) % pool.length)
+          : (this.wssIdx = (this.wssIdx + 1) % pool.length);
       if (pool[next].online) {
         this.emit(pool[next], kind);
         return pool[next];
@@ -177,7 +178,11 @@ class ConnectionManager {
     return {
       close: () => {
         closed = true;
-        try { socket?.close(); } catch { /* noop */ }
+        try {
+          socket?.close();
+        } catch {
+          /* noop */
+        }
       },
     };
   }
@@ -185,7 +190,9 @@ class ConnectionManager {
   /** Subscribe to active-node changes (priority recovery / failover). */
   onChange(cb: (active: NetNode | null, kind: NodeKind) => void): () => void {
     this.listeners.add(cb);
-    return () => { this.listeners.delete(cb); };
+    return () => {
+      this.listeners.delete(cb);
+    };
   }
 
   // ───────────────────────────── internals ─────────────────────────────────
@@ -200,7 +207,13 @@ class ConnectionManager {
   }
 
   private emit(node: NetNode | null, kind: NodeKind) {
-    this.listeners.forEach((l) => { try { l(node, kind); } catch { /* noop */ } });
+    this.listeners.forEach((l) => {
+      try {
+        l(node, kind);
+      } catch {
+        /* noop */
+      }
+    });
   }
 
   /** Silent ping sweep — re-promotes nodes that recover. */
@@ -234,23 +247,50 @@ class ConnectionManager {
           pc.onicecandidate = (ev) => {
             if (settled) return;
             if (ev.candidate && /typ (srflx|relay)/.test(ev.candidate.candidate)) {
-              settled = true; pc.close(); done(true);
+              settled = true;
+              pc.close();
+              done(true);
             }
           };
           pc.createDataChannel("p");
-          pc.createOffer().then((o) => pc.setLocalDescription(o)).catch(() => {});
-          setTimeout(() => { if (!settled) { pc.close(); done(false); } }, 4000);
-        } catch { done(false); }
+          pc.createOffer()
+            .then((o) => pc.setLocalDescription(o))
+            .catch(() => {});
+          setTimeout(() => {
+            if (!settled) {
+              pc.close();
+              done(false);
+            }
+          }, 4000);
+        } catch {
+          done(false);
+        }
         return;
       }
 
       // wss probe
       try {
         const ws = new WebSocket(node.url);
-        const timer = setTimeout(() => { try { ws.close(); } catch {} done(false); }, 4000);
-        ws.onopen = () => { clearTimeout(timer); try { ws.close(); } catch {} done(true); };
-        ws.onerror = () => { clearTimeout(timer); done(false); };
-      } catch { done(false); }
+        const timer = setTimeout(() => {
+          try {
+            ws.close();
+          } catch {}
+          done(false);
+        }, 4000);
+        ws.onopen = () => {
+          clearTimeout(timer);
+          try {
+            ws.close();
+          } catch {}
+          done(true);
+        };
+        ws.onerror = () => {
+          clearTimeout(timer);
+          done(false);
+        };
+      } catch {
+        done(false);
+      }
     });
   }
 }

@@ -44,7 +44,6 @@ const TabbedWorkspace = ({ onActiveFolderChange }: Props) => {
     if (next >= 0 && next < folders.length) setActive(folders[next].id);
   };
 
-
   const handleAdd = async () => {
     if (!newName.trim()) {
       setEditing(false);
@@ -135,7 +134,10 @@ const TabbedWorkspace = ({ onActiveFolderChange }: Props) => {
         </div>
 
         {/* Dynamic zone — user folders scroll horizontally. */}
-        <div ref={listRef} className="flex items-center flex-1 min-w-0 overflow-x-auto scrollbar-hide">
+        <div
+          ref={listRef}
+          className="flex items-center flex-1 min-w-0 overflow-x-auto scrollbar-hide"
+        >
           {customFolders.map(renderTab)}
 
           {editing && (

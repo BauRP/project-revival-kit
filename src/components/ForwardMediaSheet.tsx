@@ -22,7 +22,9 @@ const ForwardMediaSheet = ({ open, media, text, onClose, onSubmit }: ForwardMedi
 
   useEffect(() => {
     if (!open) return;
-    getAllChatMetas().then(setContacts).catch(() => setContacts([]));
+    getAllChatMetas()
+      .then(setContacts)
+      .catch(() => setContacts([]));
   }, [open]);
 
   useEffect(() => {
@@ -57,7 +59,12 @@ const ForwardMediaSheet = ({ open, media, text, onClose, onSubmit }: ForwardMedi
               {media ? (
                 <div className="rounded-xl border border-border bg-secondary/20 p-3 flex items-center gap-3">
                   {media.type === "image" ? (
-                    <img src={media.url} alt={media.name} className="w-14 h-14 rounded-lg object-cover" loading="lazy" />
+                    <img
+                      src={media.url}
+                      alt={media.name}
+                      className="w-14 h-14 rounded-lg object-cover"
+                      loading="lazy"
+                    />
                   ) : (
                     <div className="w-14 h-14 rounded-lg bg-secondary flex items-center justify-center text-xs text-muted-foreground px-2 text-center">
                       {media.name}
@@ -71,7 +78,9 @@ const ForwardMediaSheet = ({ open, media, text, onClose, onSubmit }: ForwardMedi
               ) : (
                 <div className="rounded-xl border border-border bg-secondary/20 p-3">
                   <p className="text-xs uppercase tracking-wide text-muted-foreground mb-1">Text</p>
-                  <p className="text-sm text-foreground line-clamp-3 whitespace-pre-wrap break-words">{text}</p>
+                  <p className="text-sm text-foreground line-clamp-3 whitespace-pre-wrap break-words">
+                    {text}
+                  </p>
                 </div>
               )}
             </div>
@@ -85,7 +94,9 @@ const ForwardMediaSheet = ({ open, media, text, onClose, onSubmit }: ForwardMedi
                 >
                   <DefaultAvatar src={contact.friendAvatar || undefined} size={40} />
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-foreground truncate">{contact.friendName}</p>
+                    <p className="text-sm font-medium text-foreground truncate">
+                      {contact.friendName}
+                    </p>
                     <p className="text-xs text-muted-foreground truncate">{contact.friendId}</p>
                   </div>
                 </button>
@@ -103,7 +114,10 @@ const ForwardMediaSheet = ({ open, media, text, onClose, onSubmit }: ForwardMedi
             </div>
 
             <div className="flex gap-2">
-              <button onClick={onClose} className="flex-1 rounded-xl border border-border px-4 py-3 text-sm text-foreground">
+              <button
+                onClick={onClose}
+                className="flex-1 rounded-xl border border-border px-4 py-3 text-sm text-foreground"
+              >
                 Cancel
               </button>
               <button

@@ -58,11 +58,12 @@ export async function initMockPeer(language: string): Promise<boolean> {
     friendId: MOCK_PEER_ID,
     friendName: name,
     friendAvatar: null,
-    lastMessage: language === "ru"
-      ? "Добро пожаловать в Trivo! 🎉"
-      : language === "kk"
-      ? "Trivo-ға қош келдіңіз! 🎉"
-      : "Welcome to Trivo! 🎉",
+    lastMessage:
+      language === "ru"
+        ? "Добро пожаловать в Trivo! 🎉"
+        : language === "kk"
+          ? "Trivo-ға қош келдіңіз! 🎉"
+          : "Welcome to Trivo! 🎉",
     lastMessageTime: Date.now(),
     unread: 1,
     started: true,
@@ -73,11 +74,12 @@ export async function initMockPeer(language: string): Promise<boolean> {
     id: `mock-welcome-${Date.now()}`,
     from: MOCK_PEER_ID,
     to: "self",
-    text: language === "ru"
-      ? "Привет! Я бот поддержки Trivo. Это тестовый чат, чтобы вы могли изучить приложение. Все ваши сообщения зашифрованы сквозным шифрованием. 🔐"
-      : language === "kk"
-      ? "Сәлем! Мен Trivo қолдау ботымын. Бұл сынақ чат, қолданбаны зерттеуге арналған. Барлық хабарламаларыңыз сквозды шифрланған. 🔐"
-      : "Hi! I'm the Trivo support bot. This is a test chat so you can explore the app. All your messages are end-to-end encrypted. 🔐",
+    text:
+      language === "ru"
+        ? "Привет! Я бот поддержки Trivo. Это тестовый чат, чтобы вы могли изучить приложение. Все ваши сообщения зашифрованы сквозным шифрованием. 🔐"
+        : language === "kk"
+          ? "Сәлем! Мен Trivo қолдау ботымын. Бұл сынақ чат, қолданбаны зерттеуге арналған. Барлық хабарламаларыңыз сквозды шифрланған. 🔐"
+          : "Hi! I'm the Trivo support bot. This is a test chat so you can explore the app. All your messages are end-to-end encrypted. 🔐",
     timestamp: Date.now(),
     status: "delivered",
   };

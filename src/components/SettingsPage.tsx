@@ -1,4 +1,21 @@
-import { ArrowLeft, Bell, BellOff, Check, ExternalLink, EyeOff, FileText, Fingerprint, Globe, Languages, Mail, Moon, Shield, Sun, Trash2, Wifi } from "lucide-react";
+import {
+  ArrowLeft,
+  Bell,
+  BellOff,
+  Check,
+  ExternalLink,
+  EyeOff,
+  FileText,
+  Fingerprint,
+  Globe,
+  Languages,
+  Mail,
+  Moon,
+  Shield,
+  Sun,
+  Trash2,
+  Wifi,
+} from "lucide-react";
 import { type ReactNode, useCallback, useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useTheme } from "@/contexts/ThemeContext";
@@ -62,16 +79,32 @@ const SettingsSwitchRow = ({ icon, title, description, checked, onToggle }: Sett
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium leading-5 text-gray-900 dark:text-neutral-100">{title}</p>
-        {description && <p className="mt-0.5 text-[11px] leading-4 text-gray-500 dark:text-neutral-400">{description}</p>}
+        {description && (
+          <p className="mt-0.5 text-[11px] leading-4 text-gray-500 dark:text-neutral-400">
+            {description}
+          </p>
+        )}
       </div>
       <div onClick={(event) => event.stopPropagation()} className="shrink-0 pointer-events-auto">
-        <Switch checked={checked} onCheckedChange={(value) => void onToggle(value)} aria-label={title} />
+        <Switch
+          checked={checked}
+          onCheckedChange={(value) => void onToggle(value)}
+          aria-label={title}
+        />
       </div>
     </div>
   );
 };
 
-const SettingsLinkRow = ({ icon, title, onClick }: { icon: ReactNode; title: string; onClick: () => void }) => (
+const SettingsLinkRow = ({
+  icon,
+  title,
+  onClick,
+}: {
+  icon: ReactNode;
+  title: string;
+  onClick: () => void;
+}) => (
   <button
     type="button"
     onClick={onClick}
@@ -80,12 +113,15 @@ const SettingsLinkRow = ({ icon, title, onClick }: { icon: ReactNode; title: str
     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-primary dark:bg-neutral-800">
       {icon}
     </div>
-    <span className="min-w-0 flex-1 text-sm font-medium text-gray-900 dark:text-neutral-100">{title}</span>
+    <span className="min-w-0 flex-1 text-sm font-medium text-gray-900 dark:text-neutral-100">
+      {title}
+    </span>
     <ArrowLeft size={14} className="shrink-0 rotate-180 text-gray-400 dark:text-neutral-500" />
   </button>
 );
 
-const settingsGroupClass = "overflow-hidden rounded-2xl border border-gray-300 bg-white shadow-sm divide-y divide-gray-100 dark:border-neutral-800 dark:bg-neutral-900 dark:shadow-none dark:divide-neutral-800/60 pointer-events-auto";
+const settingsGroupClass =
+  "overflow-hidden rounded-2xl border border-gray-300 bg-white shadow-sm divide-y divide-gray-100 dark:border-neutral-800 dark:bg-neutral-900 dark:shadow-none dark:divide-neutral-800/60 pointer-events-auto";
 
 const SettingsPage = ({ onBack }: SettingsPageProps) => {
   const { theme, setTheme } = useTheme();
@@ -93,8 +129,12 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
   const { stealthMode, toggleStealth, deleteAccount } = useIdentity();
   const { isEnabled: biometricEnabled, toggle: toggleBiometric } = useBiometricAuth();
 
-  const [notifications, setNotifications] = useState(() => readStoredBoolean("trivo-notifications", true));
-  const [hideContent, setHideContent] = useState(() => readStoredBoolean("trivo-hide-content", false));
+  const [notifications, setNotifications] = useState(() =>
+    readStoredBoolean("trivo-notifications", true),
+  );
+  const [hideContent, setHideContent] = useState(() =>
+    readStoredBoolean("trivo-hide-content", false),
+  );
   const [dataSaver, setDataSaver] = useState(() => isDataSaverEnabled());
   const [showTransparency, setShowTransparency] = useState(false);
   const [showTranslationSettings, setShowTranslationSettings] = useState(false);
@@ -104,26 +144,35 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
   // Android hardware Back / web Back / Esc must pop THIS screen back to
   // Profile instead of exiting the app. Layered LIFO: any open sub-sheet or
   // modal closes first.
-  useBackNavigation(showDeleteModal, useCallback(() => {
-    setShowDeleteModal(false);
-    return true;
-  }, []));
-  useBackNavigation(showLanguageSheet, useCallback(() => {
-    setShowLanguageSheet(false);
-    return true;
-  }, []));
-  useBackNavigation(true, useCallback(() => {
-    if (showTransparency) {
-      setShowTransparency(false);
+  useBackNavigation(
+    showDeleteModal,
+    useCallback(() => {
+      setShowDeleteModal(false);
       return true;
-    }
-    if (showTranslationSettings) {
-      setShowTranslationSettings(false);
+    }, []),
+  );
+  useBackNavigation(
+    showLanguageSheet,
+    useCallback(() => {
+      setShowLanguageSheet(false);
       return true;
-    }
-    onBack();
-    return true;
-  }, [onBack, showTransparency, showTranslationSettings]));
+    }, []),
+  );
+  useBackNavigation(
+    true,
+    useCallback(() => {
+      if (showTransparency) {
+        setShowTransparency(false);
+        return true;
+      }
+      if (showTranslationSettings) {
+        setShowTranslationSettings(false);
+        return true;
+      }
+      onBack();
+      return true;
+    }, [onBack, showTransparency, showTranslationSettings]),
+  );
 
   const handleToggleNotifications = useCallback(async (checked: boolean) => {
     setNotifications(checked);
@@ -147,9 +196,12 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
     setDataSaverEnabled(checked);
   }, []);
 
-  const handleToggleTheme = useCallback((checked: boolean) => {
-    setTheme(checked ? "dark" : "light");
-  }, [setTheme]);
+  const handleToggleTheme = useCallback(
+    (checked: boolean) => {
+      setTheme(checked ? "dark" : "light");
+    },
+    [setTheme],
+  );
 
   const handleToggleBiometric = useCallback(() => {
     void toggleBiometric();
@@ -194,7 +246,9 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
 
       <div className="flex-1 space-y-6 overflow-y-auto px-4 pb-3 scrollbar-hide pointer-events-auto">
         <section className="space-y-2">
-          <p className="px-1 pt-2 text-xs font-medium text-gray-500 dark:text-neutral-400">{t("settings")}</p>
+          <p className="px-1 pt-2 text-xs font-medium text-gray-500 dark:text-neutral-400">
+            {t("settings")}
+          </p>
           <div className={settingsGroupClass}>
             <SettingsSwitchRow
               icon={theme === "dark" ? <Moon size={18} /> : <Sun size={18} />}
@@ -210,11 +264,16 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-primary dark:bg-neutral-800">
                 <Globe size={18} />
               </div>
-              <span className="min-w-0 flex-1 text-sm font-medium text-gray-900 dark:text-neutral-100">{t("language")}</span>
+              <span className="min-w-0 flex-1 text-sm font-medium text-gray-900 dark:text-neutral-100">
+                {t("language")}
+              </span>
               <span className="max-w-[45%] truncate text-xs font-medium text-primary">
                 {languageNames[language as keyof typeof languageNames] ?? language}
               </span>
-              <ArrowLeft size={14} className="shrink-0 rotate-180 text-gray-400 dark:text-neutral-500" />
+              <ArrowLeft
+                size={14}
+                className="shrink-0 rotate-180 text-gray-400 dark:text-neutral-500"
+              />
             </button>
             <SettingsLinkRow
               icon={<Languages size={18} />}
@@ -225,7 +284,9 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
         </section>
 
         <section className="space-y-2">
-          <p className="px-1 text-xs font-medium text-gray-500 dark:text-neutral-400">{t("notificationsSection")}</p>
+          <p className="px-1 text-xs font-medium text-gray-500 dark:text-neutral-400">
+            {t("notificationsSection")}
+          </p>
           <div className={settingsGroupClass}>
             <SettingsSwitchRow
               icon={<Bell size={18} />}
@@ -244,7 +305,9 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
         </section>
 
         <section className="space-y-2">
-          <p className="px-1 text-xs font-medium text-gray-500 dark:text-neutral-400">{t("dataAndMemory")}</p>
+          <p className="px-1 text-xs font-medium text-gray-500 dark:text-neutral-400">
+            {t("dataAndMemory")}
+          </p>
           <div className={settingsGroupClass}>
             <SettingsSwitchRow
               icon={<Wifi size={18} />}
@@ -256,9 +319,10 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
           </div>
         </section>
 
-
         <section className="space-y-2">
-          <p className="px-1 text-xs font-medium text-gray-500 dark:text-neutral-400">{t("securitySection")}</p>
+          <p className="px-1 text-xs font-medium text-gray-500 dark:text-neutral-400">
+            {t("securitySection")}
+          </p>
           <div className={settingsGroupClass}>
             <SettingsSwitchRow
               icon={<Fingerprint size={18} />}
@@ -282,13 +346,17 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
         </section>
 
         <section className="space-y-2">
-          <p className="px-1 text-xs font-medium text-gray-500 dark:text-neutral-400">{t("supportPrivacy")}</p>
+          <p className="px-1 text-xs font-medium text-gray-500 dark:text-neutral-400">
+            {t("supportPrivacy")}
+          </p>
           <div className={settingsGroupClass}>
             <div className="flex items-center gap-3 px-4 py-3.5">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-primary dark:bg-neutral-800">
                 <Mail size={18} />
               </div>
-              <span className="min-w-0 flex-1 text-sm font-medium text-gray-900 dark:text-neutral-100">{t("supportEmail")}</span>
+              <span className="min-w-0 flex-1 text-sm font-medium text-gray-900 dark:text-neutral-100">
+                {t("supportEmail")}
+              </span>
               <a href="mailto:trivo.support@proton.me" className="text-xs font-medium text-primary">
                 trivo.support@proton.me
               </a>
@@ -302,7 +370,9 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-primary dark:bg-neutral-800">
                 <Shield size={18} />
               </div>
-              <span className="min-w-0 flex-1 text-sm font-medium text-gray-900 dark:text-neutral-100">{t("privacyPolicy")}</span>
+              <span className="min-w-0 flex-1 text-sm font-medium text-gray-900 dark:text-neutral-100">
+                {t("privacyPolicy")}
+              </span>
               <ExternalLink size={14} className="shrink-0 text-gray-400 dark:text-neutral-500" />
             </a>
           </div>
@@ -311,7 +381,6 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
         {/* Tight, balanced tail: only the OS safe-area inset is reserved below
             the warning text — no dead space on any screen size. */}
         <div className="flex w-full flex-col items-center gap-2 pt-1 safe-pb">
-
           <button
             type="button"
             onClick={() => setShowDeleteModal(true)}

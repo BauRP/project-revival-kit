@@ -46,7 +46,10 @@ const SelectiveCopySheet = ({ open, text, onClose }: SelectiveCopySheetProps) =>
   const copy = async () => {
     const value = selected.trim() || text;
     await navigator.clipboard.writeText(value);
-    toast({ title: "Скопировано", description: value.length > 40 ? value.slice(0, 40) + "…" : value });
+    toast({
+      title: "Скопировано",
+      description: value.length > 40 ? value.slice(0, 40) + "…" : value,
+    });
     onClose();
   };
 

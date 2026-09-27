@@ -251,12 +251,12 @@ const ProfilePage = () => {
             )}
           </div>
 
-
-
           <div className="flex items-center gap-2 mt-2">
             <div
               className={`w-2.5 h-2.5 rounded-full ${statusOptions.find((s) => s.id === status)?.color}`}
-              style={status === "online" ? { boxShadow: "0 0 6px hsl(var(--neon-glow) / 0.6)" } : {}}
+              style={
+                status === "online" ? { boxShadow: "0 0 6px hsl(var(--neon-glow) / 0.6)" } : {}
+              }
             />
             <span className="text-sm text-muted-foreground">
               {status === "custom"
