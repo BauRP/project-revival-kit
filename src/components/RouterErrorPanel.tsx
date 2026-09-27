@@ -6,13 +6,7 @@ import { goHome } from "@/lib/home-navigation";
  * Kept in its own module so `src/router.tsx` exports only non-component
  * values (Vite Fast Refresh requirement: react-refresh/only-export-components).
  */
-export default function RouterErrorPanel({
-  error,
-  reset,
-}: {
-  error: Error;
-  reset: () => void;
-}) {
+export default function RouterErrorPanel({ error, reset }: { error: Error; reset: () => void }) {
   const router = useRouter();
 
   return (
