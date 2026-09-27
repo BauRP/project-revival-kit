@@ -15,9 +15,17 @@ export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
       { title: "Trivo Chat Elite | Private Tor Messenger" },
-      { name: "description", content: "Private peer-to-peer messaging over Tor onion services with local end-to-end encrypted storage." },
+      {
+        name: "description",
+        content:
+          "Private peer-to-peer messaging over Tor onion services with local end-to-end encrypted storage.",
+      },
       { property: "og:title", content: "Trivo Chat Elite | Private Tor Messenger" },
-      { property: "og:description", content: "Private peer-to-peer messaging over Tor onion services with local end-to-end encrypted storage." },
+      {
+        property: "og:description",
+        content:
+          "Private peer-to-peer messaging over Tor onion services with local end-to-end encrypted storage.",
+      },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],

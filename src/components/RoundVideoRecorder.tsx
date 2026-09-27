@@ -21,7 +21,12 @@ interface RoundVideoRecorderProps {
 const PREVIEW_SIZE = 240; // px
 const RING_STROKE = 4;
 
-const RoundVideoRecorder = ({ open, onClose, onRecorded, maxDurationMs = 60_000 }: RoundVideoRecorderProps) => {
+const RoundVideoRecorder = ({
+  open,
+  onClose,
+  onRecorded,
+  maxDurationMs = 60_000,
+}: RoundVideoRecorderProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -35,7 +40,11 @@ const RoundVideoRecorder = ({ open, onClose, onRecorded, maxDurationMs = 60_000 
   const cleanup = () => {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
-    try { recorderRef.current?.stop(); } catch { /* ignore */ }
+    try {
+      recorderRef.current?.stop();
+    } catch {
+      /* ignore */
+    }
     recorderRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
@@ -46,7 +55,10 @@ const RoundVideoRecorder = ({ open, onClose, onRecorded, maxDurationMs = 60_000 
   };
 
   useEffect(() => {
-    if (!open) { cleanup(); return; }
+    if (!open) {
+      cleanup();
+      return;
+    }
     let cancelled = false;
     (async () => {
       try {
@@ -54,11 +66,16 @@ const RoundVideoRecorder = ({ open, onClose, onRecorded, maxDurationMs = 60_000 
           video: { facingMode: "user", width: 480, height: 480 },
           audio: true,
         });
-        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          await videoRef.current.play().catch(() => { /* autoplay race */ });
+          await videoRef.current.play().catch(() => {
+            /* autoplay race */
+          });
         }
       } catch (err) {
         console.error("[RoundVideo] camera error", err);
@@ -66,7 +83,10 @@ const RoundVideoRecorder = ({ open, onClose, onRecorded, maxDurationMs = 60_000 
         onClose();
       }
     })();
-    return () => { cancelled = true; cleanup(); };
+    return () => {
+      cancelled = true;
+      cleanup();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -90,9 +110,14 @@ const RoundVideoRecorder = ({ open, onClose, onRecorded, maxDurationMs = 60_000 
       : MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
         ? "video/webm;codecs=vp9,opus"
         : "video/webm";
-    const rec = new MediaRecorder(streamRef.current, { mimeType: mime, videoBitsPerSecond: 1_000_000 });
+    const rec = new MediaRecorder(streamRef.current, {
+      mimeType: mime,
+      videoBitsPerSecond: 1_000_000,
+    });
     recorderRef.current = rec;
-    rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+    rec.ondataavailable = (e) => {
+      if (e.data.size > 0) chunksRef.current.push(e.data);
+    };
     rec.start(250);
     startedAtRef.current = performance.now();
     setRecording(true);
@@ -113,10 +138,17 @@ const RoundVideoRecorder = ({ open, onClose, onRecorded, maxDurationMs = 60_000 
       cleanup();
       onClose();
     };
-    try { rec.stop(); } catch { /* ignore */ }
+    try {
+      rec.stop();
+    } catch {
+      /* ignore */
+    }
   };
 
-  const cancel = () => { cleanup(); onClose(); };
+  const cancel = () => {
+    cleanup();
+    onClose();
+  };
 
   // Ring geometry
   const radius = (PREVIEW_SIZE - RING_STROKE) / 2;

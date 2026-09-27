@@ -9,9 +9,7 @@ export interface ChatFolder {
 
 const LS_KEY = "trivo-chat-folders-v1";
 // Only the system "ВСЕ" tab is seeded by default. Users create their own custom groups.
-const DEFAULTS: Omit<ChatFolder, "id">[] = [
-  { name: "ВСЕ", position: 0, is_system: true },
-];
+const DEFAULTS: Omit<ChatFolder, "id">[] = [{ name: "ВСЕ", position: 0, is_system: true }];
 
 const seedLocal = (): ChatFolder[] =>
   DEFAULTS.map((d, i) => ({ ...d, id: `local-${i}-${d.name}` }));

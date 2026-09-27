@@ -81,9 +81,7 @@ function RootErrorComponent({ error }: { error: Error }) {
           border: "1px solid rgba(255,255,255,0.12)",
         }}
       >
-        <h1 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 700 }}>
-          Something went wrong
-        </h1>
+        <h1 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 700 }}>Something went wrong</h1>
         <p
           style={{
             margin: "0 0 24px",

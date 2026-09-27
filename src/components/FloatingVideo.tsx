@@ -32,7 +32,8 @@ const FloatingVideo = ({ source, onClose, onExpand }: FloatingVideoProps) => {
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    if (paused) v.pause(); else v.play().catch(() => {});
+    if (paused) v.pause();
+    else v.play().catch(() => {});
   }, [paused, source]);
 
   if (!source) return null;
@@ -45,12 +46,15 @@ const FloatingVideo = ({ source, onClose, onExpand }: FloatingVideoProps) => {
     if (!dragStart.current) return;
     const dx = e.clientX - dragStart.current.x;
     const dy = e.clientY - dragStart.current.y;
-    const W = 192, H = 108;
+    const W = 192,
+      H = 108;
     const nx = Math.min(Math.max(dragStart.current.ox + dx, 4), window.innerWidth - W - 4);
     const ny = Math.min(Math.max(dragStart.current.oy + dy, 4), window.innerHeight - H - 4);
     setPos({ x: nx, y: ny });
   };
-  const onPointerUp = () => { dragStart.current = null; };
+  const onPointerUp = () => {
+    dragStart.current = null;
+  };
 
   return (
     <motion.div
@@ -85,7 +89,10 @@ const FloatingVideo = ({ source, onClose, onExpand }: FloatingVideoProps) => {
       <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-1 p-1 bg-gradient-to-t from-black/80 to-transparent">
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); setPaused((p) => !p); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setPaused((p) => !p);
+          }}
           className="p-1 rounded text-[#00FFFF] hover:bg-[#00FFFF]/15"
           aria-label={paused ? "Play" : "Pause"}
         >
@@ -93,7 +100,10 @@ const FloatingVideo = ({ source, onClose, onExpand }: FloatingVideoProps) => {
         </button>
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); onExpand(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onExpand();
+          }}
           className="p-1 rounded text-[#00FFFF] hover:bg-[#00FFFF]/15"
           aria-label="Return to fullscreen"
         >
@@ -101,7 +111,10 @@ const FloatingVideo = ({ source, onClose, onExpand }: FloatingVideoProps) => {
         </button>
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); onClose(); }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onClose();
+          }}
           className="p-1 rounded text-[#00FFFF] hover:bg-destructive/30 hover:text-destructive"
           aria-label="Close"
         >

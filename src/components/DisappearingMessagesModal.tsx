@@ -45,7 +45,10 @@ const DisappearingMessagesModal = ({ open, onClose, onSelect }: DisappearingMess
                 </button>
               ))}
             </div>
-            <button onClick={onClose} className="w-full rounded-xl border border-border px-4 py-3 text-sm text-foreground">
+            <button
+              onClick={onClose}
+              className="w-full rounded-xl border border-border px-4 py-3 text-sm text-foreground"
+            >
               Back
             </button>
           </motion.div>

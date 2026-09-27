@@ -30,7 +30,7 @@ const BottomNav = ({ activeTab, onTabChange }: BottomNavProps) => {
   const { t } = useLanguage();
 
   return (
-    <nav 
+    <nav
       className="!fixed !bottom-0 left-0 right-0 z-[100] w-full"
       style={{
         position: "fixed",
@@ -64,12 +64,15 @@ const BottomNav = ({ activeTab, onTabChange }: BottomNavProps) => {
                     className="absolute top-0 left-3 right-3 h-0.5 rounded-full"
                     style={{
                       background: "hsl(var(--neon-glow))",
-                      boxShadow: "0 0 8px hsl(var(--neon-glow) / 0.6), 0 0 20px hsl(var(--neon-glow) / 0.3)",
+                      boxShadow:
+                        "0 0 8px hsl(var(--neon-glow) / 0.6), 0 0 20px hsl(var(--neon-glow) / 0.3)",
                     }}
                     transition={{ type: "spring", stiffness: 400, damping: 30 }}
                   />
                 )}
-                <div className={`flex h-[22px] items-center justify-center transition-all ${isActive ? "drop-shadow-[0_0_6px_hsl(var(--neon-glow)/0.5)]" : ""}`}>
+                <div
+                  className={`flex h-[22px] items-center justify-center transition-all ${isActive ? "drop-shadow-[0_0_6px_hsl(var(--neon-glow)/0.5)]" : ""}`}
+                >
                   <Icon
                     size={22}
                     className={`transition-colors ${isActive ? "text-primary" : "text-muted-foreground"}`}

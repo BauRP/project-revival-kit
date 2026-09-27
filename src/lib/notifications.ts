@@ -1,6 +1,10 @@
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { Translation } from "@capacitor-mlkit/translation";
-import { detectLanguage, getTranslationSettings, translateWithBundledDictionary } from "@/lib/translation-config";
+import {
+  detectLanguage,
+  getTranslationSettings,
+  translateWithBundledDictionary,
+} from "@/lib/translation-config";
 import { isNative } from "@/lib/platform";
 
 export async function notifyIncomingMessage(title: string, body: string): Promise<void> {
@@ -24,8 +28,7 @@ export async function notifyIncomingMessage(title: string, body: string): Promis
         },
       ],
     });
-  } catch {
-  }
+  } catch {}
 }
 
 export async function translateIncomingMessage(text: string): Promise<string | null> {
@@ -54,7 +57,11 @@ export async function translateOutgoingInverse(text: string): Promise<string | n
   return runTranslation(text, outSource, outTarget);
 }
 
-async function runTranslation(text: string, sourceLanguage: string, targetLanguage: string): Promise<string | null> {
+async function runTranslation(
+  text: string,
+  sourceLanguage: string,
+  targetLanguage: string,
+): Promise<string | null> {
   // Primary path: context-aware LLM translation via Lovable AI Gateway.
   try {
     const { translateLLM } = await import("@/lib/translate-client");

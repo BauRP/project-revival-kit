@@ -28,10 +28,26 @@ const CallScreen = ({ name, type, onEnd }: CallScreenProps) => {
         <DefaultAvatar size={40} />
         <p className="text-xs text-foreground font-medium">{name}</p>
         <div className="flex gap-2">
-          <button onClick={(e) => { e.stopPropagation(); setMuted(!muted); }} className="p-1.5 rounded-full glass-panel-sm">
-            {muted ? <MicOff size={14} className="text-destructive" /> : <Mic size={14} className="text-foreground" />}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setMuted(!muted);
+            }}
+            className="p-1.5 rounded-full glass-panel-sm"
+          >
+            {muted ? (
+              <MicOff size={14} className="text-destructive" />
+            ) : (
+              <Mic size={14} className="text-foreground" />
+            )}
           </button>
-          <button onClick={(e) => { e.stopPropagation(); onEnd(); }} className="p-1.5 rounded-full bg-destructive">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEnd();
+            }}
+            className="p-1.5 rounded-full bg-destructive"
+          >
             <PhoneOff size={14} className="text-destructive-foreground" />
           </button>
         </div>
@@ -65,16 +81,18 @@ const CallScreen = ({ name, type, onEnd }: CallScreenProps) => {
       <p className="text-sm text-primary mb-2">
         {type === "video" ? t("videoCall") : t("audioCall")}
       </p>
-      <p className="text-xs text-muted-foreground mb-12 animate-pulse">
-        Calling...
-      </p>
+      <p className="text-xs text-muted-foreground mb-12 animate-pulse">Calling...</p>
 
       <div className="flex items-center gap-6">
         <button
           onClick={() => setMuted(!muted)}
           className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${muted ? "bg-destructive/20 neon-border" : "glass-panel-sm neon-border"}`}
         >
-          {muted ? <MicOff size={22} className="text-destructive" /> : <Mic size={22} className="text-foreground" />}
+          {muted ? (
+            <MicOff size={22} className="text-destructive" />
+          ) : (
+            <Mic size={22} className="text-foreground" />
+          )}
         </button>
 
         {type === "video" && (
@@ -82,7 +100,11 @@ const CallScreen = ({ name, type, onEnd }: CallScreenProps) => {
             onClick={() => setCameraOn(!cameraOn)}
             className={`w-14 h-14 rounded-full flex items-center justify-center transition-all ${!cameraOn ? "bg-destructive/20 neon-border" : "glass-panel-sm neon-border"}`}
           >
-            {cameraOn ? <Video size={22} className="text-foreground" /> : <VideoOff size={22} className="text-destructive" />}
+            {cameraOn ? (
+              <Video size={22} className="text-foreground" />
+            ) : (
+              <VideoOff size={22} className="text-destructive" />
+            )}
           </button>
         )}
 

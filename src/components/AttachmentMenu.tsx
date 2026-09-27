@@ -9,10 +9,34 @@ interface AttachmentMenuProps {
 }
 
 const items = [
-  { key: "round", label: "Round Video", accept: "round-video", icon: Video, tone: "bg-[#00FFFF]/15 text-[#00FFFF]" },
-  { key: "photo", label: "Photo / Gallery", accept: "image/*", icon: ImageIcon, tone: "bg-primary/15 text-primary" },
-  { key: "audio", label: "Audio / Music", accept: "audio/*", icon: Music, tone: "bg-yellow-500/15 text-yellow-500" },
-  { key: "file", label: "Files", accept: "*/*", icon: FileText, tone: "bg-secondary text-secondary-foreground" },
+  {
+    key: "round",
+    label: "Round Video",
+    accept: "round-video",
+    icon: Video,
+    tone: "bg-[#00FFFF]/15 text-[#00FFFF]",
+  },
+  {
+    key: "photo",
+    label: "Photo / Gallery",
+    accept: "image/*",
+    icon: ImageIcon,
+    tone: "bg-primary/15 text-primary",
+  },
+  {
+    key: "audio",
+    label: "Audio / Music",
+    accept: "audio/*",
+    icon: Music,
+    tone: "bg-yellow-500/15 text-yellow-500",
+  },
+  {
+    key: "file",
+    label: "Files",
+    accept: "*/*",
+    icon: FileText,
+    tone: "bg-secondary text-secondary-foreground",
+  },
 ] as const;
 
 const AttachmentMenu = ({ open, onClose, onSelect }: AttachmentMenuProps) => {

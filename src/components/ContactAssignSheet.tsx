@@ -42,7 +42,10 @@ const ContactAssignSheet = ({ open, chatId, chatName, onClose }: Props) => {
 
   const handleCreate = async () => {
     const trimmed = newName.trim();
-    if (!trimmed) { setCreating(false); return; }
+    if (!trimmed) {
+      setCreating(false);
+      return;
+    }
     await addFolder(trimmed);
     setNewName("");
     setCreating(false);
@@ -68,10 +71,15 @@ const ContactAssignSheet = ({ open, chatId, chatName, onClose }: Props) => {
           >
             <div className="flex items-center justify-between">
               <div className="min-w-0">
-                <p className="text-[10px] uppercase tracking-wider text-[#00FFFF] font-bold">Группы</p>
+                <p className="text-[10px] uppercase tracking-wider text-[#00FFFF] font-bold">
+                  Группы
+                </p>
                 <p className="text-sm text-foreground truncate">{chatName || "Контакт"}</p>
               </div>
-              <button onClick={onClose} className="p-1.5 rounded-md hover:bg-white/10 text-muted-foreground">
+              <button
+                onClick={onClose}
+                className="p-1.5 rounded-md hover:bg-white/10 text-muted-foreground"
+              >
                 <X size={18} />
               </button>
             </div>
@@ -108,7 +116,10 @@ const ContactAssignSheet = ({ open, chatId, chatName, onClose }: Props) => {
                   onBlur={handleCreate}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleCreate();
-                    if (e.key === "Escape") { setNewName(""); setCreating(false); }
+                    if (e.key === "Escape") {
+                      setNewName("");
+                      setCreating(false);
+                    }
                   }}
                   placeholder="ИМЯ ГРУППЫ"
                   maxLength={16}

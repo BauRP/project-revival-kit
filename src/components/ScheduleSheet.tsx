@@ -77,7 +77,9 @@ const ScheduleSheet = ({ open, onClose, onConfirm }: ScheduleSheetProps) => {
               </div>
 
               <div className="space-y-1.5">
-                <label className="text-[11px] uppercase tracking-wide text-muted-foreground">Custom date &amp; time</label>
+                <label className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                  Custom date &amp; time
+                </label>
                 <div className="flex gap-2">
                   <input
                     type="datetime-local"

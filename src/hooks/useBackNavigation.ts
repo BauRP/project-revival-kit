@@ -68,11 +68,12 @@ const install = () => {
   if (isNative()) {
     void runNative(
       "App",
-      () => CapacitorApp.addListener("backButton", ({ canGoBack }) => {
-        if (runTop()) return;
-        if (canGoBack) window.history.back();
-        else void CapacitorApp.minimizeApp().catch(() => undefined);
-      }),
+      () =>
+        CapacitorApp.addListener("backButton", ({ canGoBack }) => {
+          if (runTop()) return;
+          if (canGoBack) window.history.back();
+          else void CapacitorApp.minimizeApp().catch(() => undefined);
+        }),
       null,
       "Android back-button listener",
     );

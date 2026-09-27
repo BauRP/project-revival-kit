@@ -30,9 +30,7 @@ const PinnedHeader = ({ preview, onJump, onUnpin, label }: PinnedHeaderProps) =>
           <span className="block text-[10px] uppercase tracking-wide text-primary/80 font-semibold">
             {label}
           </span>
-          <span className="block text-xs text-foreground truncate">
-            {preview}
-          </span>
+          <span className="block text-xs text-foreground truncate">{preview}</span>
         </span>
       </button>
       <button

@@ -4,11 +4,11 @@ export interface TranscribeAudioInput {
   audioUrl: string;
 }
 
-export type TranscribeAudioResult =
-  | { ok: true; text: string }
-  | { ok: false; error: string };
+export type TranscribeAudioResult = { ok: true; text: string } | { ok: false; error: string };
 
-export async function transcribeAudioServer({ audioUrl }: TranscribeAudioInput): Promise<TranscribeAudioResult> {
+export async function transcribeAudioServer({
+  audioUrl,
+}: TranscribeAudioInput): Promise<TranscribeAudioResult> {
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) {
     return { ok: false, error: "LOVABLE_API_KEY is not configured" };

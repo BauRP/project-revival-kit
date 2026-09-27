@@ -35,7 +35,9 @@ export async function toggleReaction(
 }
 
 /** Aggregate reactions for one message into [{emoji, count}] for rendering. */
-export function aggregate(forMsg: Record<string, string> | undefined): Array<{ emoji: string; count: number }> {
+export function aggregate(
+  forMsg: Record<string, string> | undefined,
+): Array<{ emoji: string; count: number }> {
   if (!forMsg) return [];
   const counts: Record<string, number> = {};
   for (const emoji of Object.values(forMsg)) {

@@ -15,7 +15,10 @@ export function generateSecureUserId(length = 12): string {
   // the UI forever if it repeatedly returns bytes that fail the format rule.
   for (let attempt = 0; attempt < 128; attempt += 1) {
     const random = crypto.getRandomValues(new Uint8Array(safeLength));
-    const candidate = Array.from(random, (value) => USER_ID_ALPHABET[value % USER_ID_ALPHABET.length]).join("");
+    const candidate = Array.from(
+      random,
+      (value) => USER_ID_ALPHABET[value % USER_ID_ALPHABET.length],
+    ).join("");
 
     if (/[A-Za-z]/.test(candidate) && /\d/.test(candidate)) {
       return candidate;
@@ -41,7 +44,7 @@ export function publicKeyToBase58Id(publicKey: string): string {
   } catch (error) {
     console.error("Ошибка генерации ID:", error);
     // Фолбек: если что-то пошло не так, возвращаем часть самого ключа в base58
-    return bs58.encode(new Uint8Array(10)); 
+    return bs58.encode(new Uint8Array(10));
   }
 }
 

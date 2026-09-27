@@ -18,11 +18,7 @@ import {
   rtcOnConnectionChange,
   rtcRegisterIncomingListener,
 } from "./onion-engine";
-import {
-  enqueuePending,
-  markPendingDelivered,
-  getPendingFor,
-} from "./dexie-db";
+import { enqueuePending, markPendingDelivered, getPendingFor } from "./dexie-db";
 
 export interface P2PMessage {
   id: string;
@@ -115,10 +111,7 @@ export async function initPeer(userId: string): Promise<string> {
 
 // ─── Outbound ────────────────────────────────────────────────
 
-export async function sendP2PMessage(
-  toPeerId: string,
-  message: P2PMessage,
-): Promise<boolean> {
+export async function sendP2PMessage(toPeerId: string, message: P2PMessage): Promise<boolean> {
   // Try to bring the connection up (no-op if already verified).
   const live = await rtcEnsureConnection(toPeerId).catch(() => false);
 
@@ -234,9 +227,7 @@ export function onP2PMessage(cb: (msg: P2PMessage) => void): () => void {
   };
 }
 
-export function onConnectionChange(
-  cb: (peerId: string, connected: boolean) => void,
-): () => void {
+export function onConnectionChange(cb: (peerId: string, connected: boolean) => void): () => void {
   connectionListeners.add(cb);
   return () => {
     connectionListeners.delete(cb);

@@ -42,9 +42,10 @@ export interface TorTransportPlugin {
    * `secretKey` (optional) is an `ED25519-V3:<base64>` blob previously returned
    * by this call, so the same .onion address survives reinstall/restore.
    */
-  start(options: { label?: string; secretKey?: string | null }): Promise<
-    TorStatus & { secretKey: string | null }
-  >;
+  start(options: {
+    label?: string;
+    secretKey?: string | null;
+  }): Promise<TorStatus & { secretKey: string | null }>;
   stop(): Promise<void>;
   getStatus(): Promise<TorStatus>;
   /** Immediate synchronous-ish delivery attempt over the Tor SOCKS port. */

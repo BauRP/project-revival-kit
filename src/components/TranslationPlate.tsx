@@ -15,7 +15,13 @@ interface TranslationPlateProps {
  * toggle row, with a "translating…" indicator while the LLM call is in
  * flight and a retry affordance on failure.
  */
-const TranslationPlate = ({ translatedText, sent, translating, error, onRetry }: TranslationPlateProps) => {
+const TranslationPlate = ({
+  translatedText,
+  sent,
+  translating,
+  error,
+  onRetry,
+}: TranslationPlateProps) => {
   // Spec §3 — translation block must start COLLAPSED. User taps the
   // "ПЕРЕВОД" header to expand it.
   const [open, setOpen] = useState(false);
@@ -59,7 +65,10 @@ const TranslationPlate = ({ translatedText, sent, translating, error, onRetry }:
                   {onRetry && (
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); onRetry(); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onRetry();
+                      }}
                       className="inline-flex items-center gap-1 underline hover:opacity-90"
                     >
                       <RotateCw size={11} /> Повторить
@@ -75,7 +84,10 @@ const TranslationPlate = ({ translatedText, sent, translating, error, onRetry }:
 
       <button
         type="button"
-        onClick={(e) => { e.stopPropagation(); setOpen((p) => !p); }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((p) => !p);
+        }}
         className={`w-full flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-medium transition-colors ${tone}`}
         aria-expanded={open}
         aria-label={open ? "Скрыть перевод" : "Показать перевод"}

@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 
 /** Phase 2 §5 — seven core emoji reactions. */
 export const REACTION_EMOJIS = ["👍", "❤️", "🔥", "😂", "😮", "😢", "🙏"] as const;
-export type ReactionEmoji = typeof REACTION_EMOJIS[number];
+export type ReactionEmoji = (typeof REACTION_EMOJIS)[number];
 
 interface ReactionsBarProps {
   visible: boolean;
@@ -48,7 +48,10 @@ const ReactionsBar = ({ visible, onPick, onDismiss, align = "start" }: Reactions
                 type="button"
                 whileTap={{ scale: 1.4 }}
                 whileHover={{ scale: 1.2 }}
-                onClick={(e) => { e.stopPropagation(); onPick(emoji); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPick(emoji);
+                }}
                 className="text-xl leading-none px-1 py-0.5 select-none"
                 aria-label={`React with ${emoji}`}
               >

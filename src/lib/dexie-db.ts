@@ -106,9 +106,7 @@ export async function saveContactKeys(
   });
 }
 
-export async function getContactKeys(
-  userId: string,
-): Promise<ContactRecord | undefined> {
+export async function getContactKeys(userId: string): Promise<ContactRecord | undefined> {
   return dxdb.contacts.get(userId);
 }
 
@@ -147,9 +145,7 @@ export async function getContactOnion(userId: string): Promise<string | null> {
 }
 
 /** Reverse lookup: which contact owns this onion hostname. */
-export async function getContactByOnion(
-  onionAddress: string,
-): Promise<ContactRecord | undefined> {
+export async function getContactByOnion(onionAddress: string): Promise<ContactRecord | undefined> {
   if (!onionAddress) return undefined;
   return dxdb.contacts.where("onionAddress").equals(onionAddress).first();
 }
@@ -165,7 +161,9 @@ export async function getContactLastSeen(userId: string): Promise<number | null>
 
 // ─── Pending queue ────────────────────────────────────────────
 
-export async function enqueuePending(record: Omit<PendingMessageRecord, "createdAt" | "status">): Promise<void> {
+export async function enqueuePending(
+  record: Omit<PendingMessageRecord, "createdAt" | "status">,
+): Promise<void> {
   await dxdb.pending_messages.put({
     ...record,
     createdAt: Date.now(),
@@ -174,10 +172,7 @@ export async function enqueuePending(record: Omit<PendingMessageRecord, "created
 }
 
 export async function getPendingFor(targetUserId: string): Promise<PendingMessageRecord[]> {
-  const list = await dxdb.pending_messages
-    .where("targetUserId")
-    .equals(targetUserId)
-    .toArray();
+  const list = await dxdb.pending_messages.where("targetUserId").equals(targetUserId).toArray();
   return list
     .filter((r) => r.status === "queued" || r.status === "in_flight")
     .sort((a, b) => a.createdAt - b.createdAt);
@@ -252,7 +247,9 @@ export async function putLifecycle(
   });
 }
 
-export async function getLifecycleMap(chatKey: string): Promise<Record<string, Record<string, unknown>>> {
+export async function getLifecycleMap(
+  chatKey: string,
+): Promise<Record<string, Record<string, unknown>>> {
   const rows = await dxdb.lifecycle.where("chatKey").equals(chatKey).toArray();
   const out: Record<string, Record<string, unknown>> = {};
   for (const r of rows) out[r.messageId] = r.data;

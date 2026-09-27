@@ -48,7 +48,10 @@ function openDB(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
-async function tx<T>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> {
+async function tx<T>(
+  mode: IDBTransactionMode,
+  run: (s: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const t = db.transaction(STORE, mode);
@@ -60,14 +63,19 @@ async function tx<T>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBRe
 
 export async function listOutbox(): Promise<ScheduledItem[]> {
   try {
-    const all = await tx<ScheduledItem[]>("readonly", (s) => s.getAll() as IDBRequest<ScheduledItem[]>);
+    const all = await tx<ScheduledItem[]>(
+      "readonly",
+      (s) => s.getAll() as IDBRequest<ScheduledItem[]>,
+    );
     return all.sort((a, b) => a.scheduledAt - b.scheduledAt);
   } catch {
     return [];
   }
 }
 
-export async function enqueue(item: Omit<ScheduledItem, "id" | "createdAt"> & { id?: string }): Promise<ScheduledItem> {
+export async function enqueue(
+  item: Omit<ScheduledItem, "id" | "createdAt"> & { id?: string },
+): Promise<ScheduledItem> {
   const full: ScheduledItem = {
     id: item.id ?? `out_${crypto.randomUUID()}`,
     chatId: item.chatId,
@@ -116,7 +124,10 @@ async function fireDue() {
 
 function scheduleNextWake() {
   if (typeof window === "undefined") return;
-  if (timer) { clearTimeout(timer); timer = null; }
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+  }
   void listOutbox().then((items) => {
     if (!items.length) return;
     const next = items[0];

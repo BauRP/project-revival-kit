@@ -66,10 +66,13 @@ function publishHeartbeat(userId: string) {
   // Does not affect Tor messaging or any other subsystem.
   if (invisibleMode) return;
   try {
-    localPeerCache.get("trivo-presence").get(userId).put({
-      status: document.hidden ? "away" : "online",
-      lastSeen: Date.now(),
-    });
+    localPeerCache
+      .get("trivo-presence")
+      .get(userId)
+      .put({
+        status: document.hidden ? "away" : "online",
+        lastSeen: Date.now(),
+      });
   } catch {}
 }
 
@@ -87,24 +90,27 @@ function publishStatus(userId: string, status: PresenceStatus) {
 export function subscribeToPresence(userId: string): () => void {
   try {
     // Босс: добавили очистку, чтобы не было дублей подписок
-    localPeerCache.get("trivo-presence").get(userId).on((data: any) => {
-      if (!data || !data.lastSeen) return;
-      
-      const elapsed = Date.now() - data.lastSeen;
-      let status: PresenceStatus;
-      
-      if (elapsed > OFFLINE_THRESHOLD) {
-        status = "offline";
-      } else {
-        status = data.status || "offline";
-      }
-      
-      const prev = presenceCache.get(userId);
-      if (prev !== status) {
-        presenceCache.set(userId, status);
-        listeners.forEach((cb) => cb(userId, status));
-      }
-    });
+    localPeerCache
+      .get("trivo-presence")
+      .get(userId)
+      .on((data: any) => {
+        if (!data || !data.lastSeen) return;
+
+        const elapsed = Date.now() - data.lastSeen;
+        let status: PresenceStatus;
+
+        if (elapsed > OFFLINE_THRESHOLD) {
+          status = "offline";
+        } else {
+          status = data.status || "offline";
+        }
+
+        const prev = presenceCache.get(userId);
+        if (prev !== status) {
+          presenceCache.set(userId, status);
+          listeners.forEach((cb) => cb(userId, status));
+        }
+      });
   } catch {}
 
   return () => {
@@ -120,5 +126,7 @@ export function getPresenceStatus(userId: string): PresenceStatus {
 
 export function onPresenceChange(cb: PresenceCallback): () => void {
   listeners.add(cb);
-  return () => { listeners.delete(cb); };
+  return () => {
+    listeners.delete(cb);
+  };
 }

@@ -16,7 +16,7 @@ const MAGIC = "TRIVO-BACKUP-V1";
 
 interface EncryptedEnvelope {
   magic: typeof MAGIC;
-  nonce: string;     // base64
+  nonce: string; // base64
   ciphertext: string; // base64
   createdAt: number;
 }

@@ -1,4 +1,33 @@
-import { ArrowLeft, FileText, Check, CheckCheck, Phone, Video, Flag, Download, Clock, ShieldAlert, Search, Pin, X, CornerUpLeft, Languages, BellOff, MoreVertical, TimerReset, Eye, Star, StarOff, Ban, VolumeX, Trash2, Archive, ArchiveRestore, FolderPlus, UserMinus } from "lucide-react";
+import {
+  ArrowLeft,
+  FileText,
+  Check,
+  CheckCheck,
+  Phone,
+  Video,
+  Flag,
+  Download,
+  Clock,
+  ShieldAlert,
+  Search,
+  Pin,
+  X,
+  CornerUpLeft,
+  Languages,
+  BellOff,
+  MoreVertical,
+  TimerReset,
+  Eye,
+  Star,
+  StarOff,
+  Ban,
+  VolumeX,
+  Trash2,
+  Archive,
+  ArchiveRestore,
+  FolderPlus,
+  UserMinus,
+} from "lucide-react";
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import CustomEmojiPicker from "./CustomEmojiPicker";
@@ -16,7 +45,11 @@ import { rtcOnConnectionChange, rtcIsConnectedTo } from "@/lib/onion-engine";
 import { getContactLastSeen, setContactLastSeen } from "@/lib/dexie-db";
 import { toast } from "@/hooks/use-toast";
 import { generateUUIDv4, isDuplicateMessage } from "@/lib/local-peer-cache";
-import { simulateSecurityScan, stripExifMetadata, getBlockedFileMessage } from "@/lib/security-scan";
+import {
+  simulateSecurityScan,
+  stripExifMetadata,
+  getBlockedFileMessage,
+} from "@/lib/security-scan";
 import {
   sendP2PMessage,
   getMessagesForChat,
@@ -26,7 +59,11 @@ import {
   getChatMeta,
   type P2PMessage,
 } from "@/lib/p2p";
-import { bufferMessageInCloud, updateMessageStatus, listenForStatusUpdates } from "@/lib/sync/peer-sync";
+import {
+  bufferMessageInCloud,
+  updateMessageStatus,
+  listenForStatusUpdates,
+} from "@/lib/sync/peer-sync";
 import {
   subscribeLifecycle,
   editMessage as fsEditMessage,
@@ -53,18 +90,34 @@ import OneTimeViewer from "./OneTimeViewer";
 import OneTimeMediaBubble from "./OneTimeMediaBubble";
 import RoundVideoRecorder from "./RoundVideoRecorder";
 import { enqueue as enqueueOutbox, registerSender, type ScheduledItem } from "@/lib/outbox";
-import { getChatPreferences, getDeleteAt, isExpired, updateChatPreferences, getMuteUntil, type DisappearingDuration } from "@/lib/chat-preferences";
+import {
+  getChatPreferences,
+  getDeleteAt,
+  isExpired,
+  updateChatPreferences,
+  getMuteUntil,
+  type DisappearingDuration,
+} from "@/lib/chat-preferences";
 import MuteModal from "./MuteModal";
 import ContactAssignSheet from "./ContactAssignSheet";
 import { blockUser, unblockUser } from "@/lib/report";
 import { clearMessagesForChat } from "@/lib/p2p";
 import { dbGet, dbPut, dbDelete } from "@/lib/storage";
-import { notifyIncomingMessage, translateIncomingMessage, translateOutgoingInverse } from "@/lib/notifications";
+import {
+  notifyIncomingMessage,
+  translateIncomingMessage,
+  translateOutgoingInverse,
+} from "@/lib/notifications";
 import { useBackNavigation } from "@/hooks/useBackNavigation";
 
 import { RichText } from "./SpoilerText";
 import ReactionsBar, { type ReactionEmoji } from "./ReactionsBar";
-import { aggregate as aggregateReactions, getReactions, toggleReaction, type ReactionMap } from "@/lib/reactions";
+import {
+  aggregate as aggregateReactions,
+  getReactions,
+  toggleReaction,
+  type ReactionMap,
+} from "@/lib/reactions";
 import LinkPreviewCard from "./LinkPreviewCard";
 import SelectiveCopySheet from "./SelectiveCopySheet";
 import { extractFirstUrl } from "@/lib/link-preview";
@@ -129,8 +182,12 @@ const TapToDownload = ({
       className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[#00FFFF]/40 bg-black text-[#00FFFF] hover:bg-[#00FFFF]/10 transition-colors"
     >
       <Download size={14} />
-      <span className="text-xs font-medium truncate max-w-[200px]">{t("tapToDownload")} — {label}</span>
-      {sizeBytes ? <span className="text-[10px] opacity-60">{formatFileSize(sizeBytes)}</span> : null}
+      <span className="text-xs font-medium truncate max-w-[200px]">
+        {t("tapToDownload")} — {label}
+      </span>
+      {sizeBytes ? (
+        <span className="text-[10px] opacity-60">{formatFileSize(sizeBytes)}</span>
+      ) : null}
     </button>
   );
 };
@@ -170,10 +227,14 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   const [forwardingMedia, setForwardingMedia] = useState<MediaAttachment | null>(null);
   const [forwardSheetOpen, setForwardSheetOpen] = useState(false);
   const [deleteSheetOpen, setDeleteSheetOpen] = useState(false);
-  const [disappearingDuration, setDisappearingDuration] = useState<"1h" | "6h" | "12h" | "24h" | "off">("off");
+  const [disappearingDuration, setDisappearingDuration] = useState<
+    "1h" | "6h" | "12h" | "24h" | "off"
+  >("off");
   const [lifecycle, setLifecycle] = useState<Record<string, MessageLifecycle>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [replyTo, setReplyTo] = useState<{ id: string; preview: string; sent: boolean } | null>(null);
+  const [replyTo, setReplyTo] = useState<{ id: string; preview: string; sent: boolean } | null>(
+    null,
+  );
   // V6 §2 — Master Translator toggle. When ACTIVE the outgoing Mirror-Inverse swap
   // intercepts every send, replaces the input with the translated string, and
   // discards the original. When INACTIVE messages are sent as plain text.
@@ -231,20 +292,62 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     replyTo !== null;
 
   const handleBack = useCallback(() => {
-    if (showEmoji) { setShowEmoji(false); return true; }
-    if (showAttach) { setShowAttach(false); return true; }
-    if (showReport) { setShowReport(false); return true; }
-    if (forwardSheetOpen) { setForwardSheetOpen(false); return true; }
-    if (deleteSheetOpen) { setDeleteSheetOpen(false); return true; }
-    if (callType !== null) { setCallType(null); return true; }
-    if (searchOpen) { setSearchOpen(false); setSearchQuery(""); return true; }
-    if (editingId) { setEditingId(null); return true; }
+    if (showEmoji) {
+      setShowEmoji(false);
+      return true;
+    }
+    if (showAttach) {
+      setShowAttach(false);
+      return true;
+    }
+    if (showReport) {
+      setShowReport(false);
+      return true;
+    }
+    if (forwardSheetOpen) {
+      setForwardSheetOpen(false);
+      return true;
+    }
+    if (deleteSheetOpen) {
+      setDeleteSheetOpen(false);
+      return true;
+    }
+    if (callType !== null) {
+      setCallType(null);
+      return true;
+    }
+    if (searchOpen) {
+      setSearchOpen(false);
+      setSearchQuery("");
+      return true;
+    }
+    if (editingId) {
+      setEditingId(null);
+      return true;
+    }
     // CAB / selection has priority over reply-quote so the user can dismiss
     // the contextual bar without losing their pending reply draft.
-    if (selectedIds.length > 0) { setSelectedIds([]); return true; }
-    if (replyTo) { setReplyTo(null); return true; }
+    if (selectedIds.length > 0) {
+      setSelectedIds([]);
+      return true;
+    }
+    if (replyTo) {
+      setReplyTo(null);
+      return true;
+    }
     return false;
-  }, [showEmoji, showAttach, showReport, forwardSheetOpen, deleteSheetOpen, callType, searchOpen, editingId, selectedIds.length, replyTo]);
+  }, [
+    showEmoji,
+    showAttach,
+    showReport,
+    forwardSheetOpen,
+    deleteSheetOpen,
+    callType,
+    searchOpen,
+    editingId,
+    selectedIds.length,
+    replyTo,
+  ]);
 
   useBackNavigation(anyOverlayOpen, handleBack);
   // Block 2 — Translate is universal: every message (incoming AND outgoing)
@@ -262,9 +365,10 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       }),
     );
 
-    setMessages((prev) => prev.map((message) => translated.find((item) => item.id === message.id) || message));
+    setMessages((prev) =>
+      prev.map((message) => translated.find((item) => item.id === message.id) || message),
+    );
   };
-
 
   // P2P lifecycle (edit / delete / pin) — source of truth
   useEffect(() => {
@@ -333,7 +437,11 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
         setPeerStatus(getPresenceStatus(chatId));
       }
     });
-    return () => { unsub(); clearInterval(interval); offRtc(); };
+    return () => {
+      unsub();
+      clearInterval(interval);
+      offRtc();
+    };
   }, [chatId]);
 
   // Spec §2 — Click-away listener for the header ⋯ menu. Any pointer event
@@ -348,7 +456,9 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       if (target && node.contains(target)) return;
       setHeaderMenuOpen(false);
     };
-    const onEsc = (e: KeyboardEvent) => { if (e.key === "Escape") setHeaderMenuOpen(false); };
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setHeaderMenuOpen(false);
+    };
     document.addEventListener("mousedown", handler, true);
     document.addEventListener("touchstart", handler, true);
     document.addEventListener("keydown", onEsc);
@@ -363,7 +473,8 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     const loadMessages = async () => {
       const stored = await getMessagesForChat(chatId);
       if (stored.length === 0) setSessionStarted(true);
-      const nextMessages = stored.map((m) => {
+      const nextMessages = stored
+        .map((m) => {
           // Legacy migration: strip the deprecated 🔕 prefix and lift it to a typed flag.
           const rawText = m.text || "";
           const legacySilent = rawText.startsWith("🔕 ");
@@ -372,8 +483,11 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
             id: m.id,
             text: cleanText,
             sent: m.from === userId,
-            time: new Date(m.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-            status: m.status as any || "sent",
+            time: new Date(m.timestamp).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            status: (m.status as any) || "sent",
             media: (m as any).media,
             caption: (m as any).caption,
             deleteAt: (m as any).deleteAt,
@@ -394,7 +508,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       setChatMuted(!!preferences.mutedUntil && preferences.mutedUntil > Date.now());
       if (preferences.silentDefault) setSilent(true);
       if (preferences.oneTimeDefault) setOneTimeView(true);
-      
+
       for (const m of stored) {
         if (m.from !== userId && m.status !== "read") {
           updateMessageStatus(m.from, m.id, "read");
@@ -402,18 +516,20 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       }
     };
     loadMessages();
-    
+
     // БОСС: Усиленное подключение к пиру
     const peerId = `trivo-${chatId.replace(/[^a-zA-Z0-9]/g, "").substring(0, 20)}`;
     connectToPeer(peerId);
 
     const unsubStatus = listenForStatusUpdates(userId || "", (messageId, status) => {
       setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, status: status as any } : m))
+        prev.map((m) => (m.id === messageId ? { ...m, status: status as any } : m)),
       );
     });
 
-    return () => { unsubStatus(); };
+    return () => {
+      unsubStatus();
+    };
   }, [chatId, userId]);
 
   useEffect(() => {
@@ -454,17 +570,24 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
             const scanResult = simulateSecurityScan(media.name, false);
             if (!scanResult.safe) {
               blocked = true;
-              blockedMessage = getBlockedFileMessage(language, media.type === "image" ? "photo" : "file");
+              blockedMessage = getBlockedFileMessage(
+                language,
+                media.type === "image" ? "photo" : "file",
+              );
             }
             // Lazy-resolve the Trivo file: fetch with x-api-key, replace the
             // remote placeholder URL with a local blob URL, then re-render.
             if (!blocked && media.fileId) {
-              ensureMediaUrl(media).then((resolved) => {
-                if (!resolved) return;
-                setMessages((prev) => prev.map((m) =>
-                  m.id === msg.id ? { ...m, media: { ...resolved } as MediaAttachment } : m,
-                ));
-              }).catch(() => {});
+              ensureMediaUrl(media)
+                .then((resolved) => {
+                  if (!resolved) return;
+                  setMessages((prev) =>
+                    prev.map((m) =>
+                      m.id === msg.id ? { ...m, media: { ...resolved } as MediaAttachment } : m,
+                    ),
+                  );
+                })
+                .catch(() => {});
             }
           }
 
@@ -473,8 +596,11 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
             {
               id: msg.id,
               text: msg.text,
-               sent: msg.from === userId,
-              time: new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              sent: msg.from === userId,
+              time: new Date(msg.timestamp).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
               status: "delivered",
               media,
               blocked,
@@ -489,9 +615,24 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
         });
         setSessionStarted(false);
         if (msg.from !== userId) {
-          setMessages((prev) => prev.map((item) => item.id === msg.id ? { ...item, translating: true, translateError: false } : item));
+          setMessages((prev) =>
+            prev.map((item) =>
+              item.id === msg.id ? { ...item, translating: true, translateError: false } : item,
+            ),
+          );
           translateIncomingMessage(msg.text).then((translatedText) => {
-            setMessages((prev) => prev.map((item) => item.id === msg.id ? { ...item, translatedText: translatedText || null, translating: false, translateError: !translatedText } : item));
+            setMessages((prev) =>
+              prev.map((item) =>
+                item.id === msg.id
+                  ? {
+                      ...item,
+                      translatedText: translatedText || null,
+                      translating: false,
+                      translateError: !translatedText,
+                    }
+                  : item,
+              ),
+            );
           });
           // Strict silent flag honored — suppress notification ping when set.
           if (!(msg as any).silent) {
@@ -539,7 +680,6 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       el.scrollTop = el.scrollHeight;
     }
   }, [messages]);
-
 
   // Apply lifecycle:
   //  - Keep deleted-for-me messages visible (rendered as a "You deleted this
@@ -598,7 +738,9 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   const searchMatches = useMemo(
     () =>
       filteredMessages.filter(
-        (message) => searchQuery.trim() && getEffectiveText(message).text.toLowerCase().includes(searchQuery.trim().toLowerCase()),
+        (message) =>
+          searchQuery.trim() &&
+          getEffectiveText(message).text.toLowerCase().includes(searchQuery.trim().toLowerCase()),
       ),
     [filteredMessages, searchQuery, getEffectiveText],
   );
@@ -610,7 +752,11 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     node?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [activeMatchIndex, searchMatches]);
 
-  const sendMessage = async (override?: { text?: string; silent?: boolean; skipClear?: boolean }) => {
+  const sendMessage = async (override?: {
+    text?: string;
+    silent?: boolean;
+    skipClear?: boolean;
+  }) => {
     const sourceText = override?.text ?? input;
     const isSilent = override?.silent ?? silent;
     if (!sourceText.trim() || !userId) return;
@@ -671,13 +817,20 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     // БОСС: Сразу добавляем в список, чтобы не было задержки
     setMessages((prev) => [
       ...prev,
-      { id: msg.id, text: currentInput, sent: true, time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), status: "pending", deleteAt: msg.deleteAt, silent: isSilent || undefined },
+      {
+        id: msg.id,
+        text: currentInput,
+        sent: true,
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        status: "pending",
+        deleteAt: msg.deleteAt,
+        silent: isSilent || undefined,
+      },
     ]);
 
     // Outgoing bubbles never show a translation plate (V6 UX spec §1).
     // The sender either ships the original text (toggle OFF) or the
     // translated text (toggle ON) — there is nothing extra to display.
-
 
     if (!override?.skipClear) {
       setInput("");
@@ -687,22 +840,20 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     setSessionStarted(false);
 
     const peerId = `trivo-${chatId.replace(/[^a-zA-Z0-9]/g, "").substring(0, 20)}`;
-    
+
     // БОСС: Пробуем отправить P2P, если не вышло — кидаем в облако
     try {
       const sentP2P = await sendP2PMessage(peerId, msg);
-      
+
       if (!sentP2P) {
         // Если P2P не сработал, кладём в локальную очередь доставки
         await bufferMessageInCloud(chatId, msg);
         // Как только попало в облако — это уже успех, убираем часики
-        setMessages((prev) =>
-          prev.map((m) => (m.id === msg.id ? { ...m, status: "sent" } : m))
-        );
+        setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, status: "sent" } : m)));
       } else {
         // P2P сработал мгновенно
         setMessages((prev) =>
-          prev.map((m) => (m.id === msg.id ? { ...m, status: "delivered" } : m))
+          prev.map((m) => (m.id === msg.id ? { ...m, status: "delivered" } : m)),
         );
       }
     } catch (e) {
@@ -765,7 +916,10 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
         id: botMsg.id,
         text: reply,
         sent: false,
-        time: new Date(botMsg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        time: new Date(botMsg.timestamp).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
         status: "delivered",
       },
     ]);
@@ -817,7 +971,11 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   };
   const handleCancelUpload = () => {
     uploadCancelledRef.current = true;
-    try { uploadCancelRef.current?.(); } catch { /* ignore */ }
+    try {
+      uploadCancelRef.current?.();
+    } catch {
+      /* ignore */
+    }
     endUpload();
     toast({ title: t("uploadCancelled") || "Upload cancelled" });
   };
@@ -887,7 +1045,11 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
 
     // 1 GB ceiling — matches the Trivo server's max upload size.
     if (file.size > TRIVO_MAX_UPLOAD_BYTES) {
-      toast({ title: t("fileTooLarge") || `File too large (max ${formatFileSize(TRIVO_MAX_UPLOAD_BYTES)})`, variant: "destructive" });
+      toast({
+        title:
+          t("fileTooLarge") || `File too large (max ${formatFileSize(TRIVO_MAX_UPLOAD_BYTES)})`,
+        variant: "destructive",
+      });
       return;
     }
 
@@ -896,7 +1058,11 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       file = await stripExifMetadata(file);
       const scanResult = simulateSecurityScan(file.name, false);
       if (!scanResult.safe) {
-        toast({ title: getBlockedFileMessage(language, file.type.startsWith("image") ? "photo" : "file").footer, variant: "destructive" });
+        toast({
+          title: getBlockedFileMessage(language, file.type.startsWith("image") ? "photo" : "file")
+            .footer,
+          variant: "destructive",
+        });
         endUpload();
         return;
       }
@@ -1004,10 +1170,14 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
 
   // Purge one-time media: remove from local DB + memory, mark message as consumed.
   const purgeOneTimeMedia = async (msg: Message) => {
-    try { await dbDelete("messages", msg.id); } catch { /* ignore */ }
-    setMessages((prev) => prev.map((m) =>
-      m.id === msg.id ? { ...m, media: undefined, oneTimeConsumed: true } : m,
-    ));
+    try {
+      await dbDelete("messages", msg.id);
+    } catch {
+      /* ignore */
+    }
+    setMessages((prev) =>
+      prev.map((m) => (m.id === msg.id ? { ...m, media: undefined, oneTimeConsumed: true } : m)),
+    );
   };
 
   // Pre-train the offline NLP model in the background as soon as the built-in
@@ -1027,18 +1197,22 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     language === "ru"
       ? `${SUPPORT_BOT_NAME} печатает…`
       : language === "kk"
-      ? `${SUPPORT_BOT_NAME} жазып отыр…`
-      : `${SUPPORT_BOT_NAME} is typing…`;
+        ? `${SUPPORT_BOT_NAME} жазып отыр…`
+        : `${SUPPORT_BOT_NAME} is typing…`;
   const statusLabel = botTyping
     ? typingLabel
     : peerStatus === "online"
       ? t("online")
       : peerStatus === "away"
-      ? t("away")
-      : lastSeenLabel || t("offline");
+        ? t("away")
+        : lastSeenLabel || t("offline");
   const statusColor = botTyping
     ? "text-[#00FFFF]"
-    : peerStatus === "online" ? "text-primary" : peerStatus === "away" ? "text-yellow-500" : "text-muted-foreground";
+    : peerStatus === "online"
+      ? "text-primary"
+      : peerStatus === "away"
+        ? "text-yellow-500"
+        : "text-muted-foreground";
   const selectedMessages = filteredMessages.filter((message) => selectedIds.includes(message.id));
   const allowCopy =
     selectedMessages.length > 0 &&
@@ -1052,7 +1226,11 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   const singleSelIsTombstone = singleSel ? getEffectiveText(singleSel).isTombstone : false;
   // Edit only own, text-only, non-tombstone messages.
   const allowEdit =
-    !!singleSel && singleSel.sent && !singleSel.media && !singleSelIsTombstone && !!getEffectiveText(singleSel).text;
+    !!singleSel &&
+    singleSel.sent &&
+    !singleSel.media &&
+    !singleSelIsTombstone &&
+    !!getEffectiveText(singleSel).text;
   const allowPin = !!singleSel && !singleSelIsTombstone;
   const isPinnedSel = !!singleSel && !!singleSelLifecycle?.pinnedAt;
   // Ownership gate: trash icon visible ONLY when every selected message
@@ -1159,7 +1337,6 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     node?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
-
   if (callType) {
     return <CallScreen name={name} type={callType} onEnd={() => setCallType(null)} />;
   }
@@ -1172,7 +1349,9 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           <div className="bg-destructive/10 backdrop-blur-md p-4 text-center space-y-2">
             <ShieldAlert size={28} className="text-destructive mx-auto" />
             <p className="text-xs font-semibold text-destructive">{msg.blockedMessage.title}</p>
-            <p className="text-[10px] text-destructive/70 font-bold uppercase">{msg.blockedMessage.footer}</p>
+            <p className="text-[10px] text-destructive/70 font-bold uppercase">
+              {msg.blockedMessage.footer}
+            </p>
           </div>
         </div>
       );
@@ -1211,15 +1390,31 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
 
     if (media.type === "image") {
       if (!shouldAutoDownload("image")) {
-        return <TapToDownload label={media.name || t("image")} sizeBytes={media.size} render={() => (
-          <a href={media.url} target="_blank" rel="noopener noreferrer" className="block">
-            <img src={media.url} alt={media.name} className="rounded-xl max-w-full max-h-[240px] object-cover" loading="lazy" />
-          </a>
-        )} />;
+        return (
+          <TapToDownload
+            label={media.name || t("image")}
+            sizeBytes={media.size}
+            render={() => (
+              <a href={media.url} target="_blank" rel="noopener noreferrer" className="block">
+                <img
+                  src={media.url}
+                  alt={media.name}
+                  className="rounded-xl max-w-full max-h-[240px] object-cover"
+                  loading="lazy"
+                />
+              </a>
+            )}
+          />
+        );
       }
       return (
         <a href={media.url} target="_blank" rel="noopener noreferrer" className="block">
-          <img src={media.url} alt={media.name} className="rounded-xl max-w-full max-h-[240px] object-cover" loading="lazy" />
+          <img
+            src={media.url}
+            alt={media.name}
+            className="rounded-xl max-w-full max-h-[240px] object-cover"
+            loading="lazy"
+          />
         </a>
       );
     }
@@ -1227,13 +1422,26 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       return <AudioWaveformPlayer src={media.url} name={media.name} sent={msg.sent} />;
     }
     return (
-      <button onClick={() => { setPendingDownload(media.url); setScanOverlay(true); }} className="flex items-center gap-2 hover:opacity-80 transition-opacity text-left w-full">
+      <button
+        onClick={() => {
+          setPendingDownload(media.url);
+          setScanOverlay(true);
+        }}
+        className="flex items-center gap-2 hover:opacity-80 transition-opacity text-left w-full"
+      >
         <FileText size={20} className={msg.sent ? "text-primary-foreground/80" : "text-primary"} />
         <div className="min-w-0 flex-1">
           <p className="text-xs font-medium truncate">{media.name}</p>
-          <p className={`text-[10px] ${msg.sent ? "text-primary-foreground/60" : "text-muted-foreground"}`}>{formatFileSize(media.size)}</p>
+          <p
+            className={`text-[10px] ${msg.sent ? "text-primary-foreground/60" : "text-muted-foreground"}`}
+          >
+            {formatFileSize(media.size)}
+          </p>
         </div>
-        <Download size={14} className={`shrink-0 ${msg.sent ? "text-primary-foreground/60" : "text-muted-foreground"}`} />
+        <Download
+          size={14}
+          className={`shrink-0 ${msg.sent ? "text-primary-foreground/60" : "text-muted-foreground"}`}
+        />
       </button>
     );
   };
@@ -1252,9 +1460,14 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           isPinned={isPinnedSel}
           allowReply={allowReply}
           allowDelete={allowDelete}
-          onClose={() => { setSelectedIds([]); setDeleteSheetOpen(false); }}
+          onClose={() => {
+            setSelectedIds([]);
+            setDeleteSheetOpen(false);
+          }}
           onCopy={async () => {
-            await navigator.clipboard.writeText(selectedMessages.map((message) => getEffectiveText(message).text).join("\n"));
+            await navigator.clipboard.writeText(
+              selectedMessages.map((message) => getEffectiveText(message).text).join("\n"),
+            );
             toast({ title: "Copied" });
             setSelectedIds([]);
           }}
@@ -1272,9 +1485,17 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
             const media = first.media;
             try {
               if (media) {
-                await Share.share({ title: media.name, text: first.caption || "", url: media.url, dialogTitle: "Share" });
+                await Share.share({
+                  title: media.name,
+                  text: first.caption || "",
+                  url: media.url,
+                  dialogTitle: "Share",
+                });
               } else {
-                const text = selectedMessages.map((m) => getEffectiveText(m).text).filter(Boolean).join("\n\n");
+                const text = selectedMessages
+                  .map((m) => getEffectiveText(m).text)
+                  .filter(Boolean)
+                  .join("\n\n");
                 if (!text) return;
                 await Share.share({ text, dialogTitle: "Share" });
               }
@@ -1289,146 +1510,327 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           onDelete={() => setDeleteSheetOpen(true)}
         />
       ) : (
-      <div className="header-safe-zone glass-panel rounded-none border-x-0 border-t-0 px-3 pb-2 header-bar-56 gap-3 z-10 shrink-0 flex items-center">
-        <button onClick={onBack} className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors shrink-0">
-          <ArrowLeft size={20} className="text-foreground" />
-        </button>
-        <button
-          type="button"
-          onClick={() => setProfileOpen(true)}
-          className="flex items-center gap-3 flex-1 min-w-0 text-left rounded-lg hover:bg-secondary/40 transition-colors px-1 py-0.5"
-          aria-label={t("openChatProfile")}
-        >
-        <div className="relative shrink-0">
-            <DefaultAvatar size={36} />
-            <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background ${peerStatus === "online" ? "bg-primary" : peerStatus === "away" ? "bg-yellow-500" : "bg-muted-foreground/40"}`} />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5">
-              <p className="font-semibold text-sm text-foreground truncate">{name}</p>
-              {disappearingDuration !== "off" && (
-                <TimerReset size={12} className="text-[#00FFFF] shrink-0" style={{ filter: "drop-shadow(0 0 4px rgba(0,255,255,0.6))" }} aria-label="Disappearing messages active" />
-              )}
-            </div>
-            <p className={`text-[11px] ${statusColor}`}>{statusLabel}</p>
-          </div>
-        </button>
-        {/* V6 §2 — Header icon row. Padding tightened p-2 → p-1.5 (≈25%) to
-            reclaim space for the new Translator master toggle. */}
-        <button onClick={() => setCallType("audio")} className="p-1.5 rounded-lg hover:bg-secondary/50 text-muted-foreground shrink-0" aria-label="Voice call"><Phone size={20} /></button>
-        <button onClick={() => setCallType("video")} className="p-1.5 rounded-lg hover:bg-secondary/50 text-muted-foreground shrink-0" aria-label="Video call"><Video size={20} /></button>
-        {/* Spec §3 — Header search icon removed (duplicate of menu entry). Search remains accessible via the ⋯ menu below. */}
-        <button
-          type="button"
-          onClick={() => setTranslatorActive((v) => !v)}
-          aria-pressed={translatorActive}
-          aria-label={translatorActive ? "Disable Mirror-Inverse translator" : "Enable Mirror-Inverse translator"}
-          title={translatorActive ? "Translator: ON (Mirror-Inverse)" : "Translator: OFF"}
-          className={`p-1.5 rounded-lg shrink-0 transition-all duration-200 ${
-            translatorActive
-              ? "text-[#00FFFF] bg-[#00FFFF]/10"
-              : "text-muted-foreground hover:bg-secondary/50"
-          }`}
-          style={
-            translatorActive
-              ? { boxShadow: "0 0 10px rgba(0,255,255,0.85), 0 0 22px rgba(0,255,255,0.45), inset 0 0 6px rgba(0,255,255,0.35)" }
-              : undefined
-          }
-        >
-          <Languages size={18} />
-        </button>
-        
-        <div className="relative shrink-0" ref={headerMenuRef}>
+        <div className="header-safe-zone glass-panel rounded-none border-x-0 border-t-0 px-3 pb-2 header-bar-56 gap-3 z-10 shrink-0 flex items-center">
+          <button
+            onClick={onBack}
+            className="p-1.5 rounded-lg hover:bg-secondary/50 transition-colors shrink-0"
+          >
+            <ArrowLeft size={20} className="text-foreground" />
+          </button>
           <button
             type="button"
-            onClick={() => setHeaderMenuOpen((v) => !v)}
-            className="p-1.5 rounded-lg hover:bg-secondary/50 text-muted-foreground"
-            aria-label={t("more")}
-            aria-expanded={headerMenuOpen}
+            onClick={() => setProfileOpen(true)}
+            className="flex items-center gap-3 flex-1 min-w-0 text-left rounded-lg hover:bg-secondary/40 transition-colors px-1 py-0.5"
+            aria-label={t("openChatProfile")}
           >
-            <MoreVertical size={18} />
+            <div className="relative shrink-0">
+              <DefaultAvatar size={36} />
+              <div
+                className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-background ${peerStatus === "online" ? "bg-primary" : peerStatus === "away" ? "bg-yellow-500" : "bg-muted-foreground/40"}`}
+              />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1.5">
+                <p className="font-semibold text-sm text-foreground truncate">{name}</p>
+                {disappearingDuration !== "off" && (
+                  <TimerReset
+                    size={12}
+                    className="text-[#00FFFF] shrink-0"
+                    style={{ filter: "drop-shadow(0 0 4px rgba(0,255,255,0.6))" }}
+                    aria-label="Disappearing messages active"
+                  />
+                )}
+              </div>
+              <p className={`text-[11px] ${statusColor}`}>{statusLabel}</p>
+            </div>
           </button>
-          <AnimatePresence>
-            {headerMenuOpen && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.94, y: -4 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.94, y: -4 }}
-                transition={{ duration: 0.14 }}
-                className="absolute right-0 top-10 min-w-[230px] rounded-xl border border-[#00FFFF]/30 bg-black z-40 py-1"
-                style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.6), 0 0 12px rgba(0,255,255,0.2)" }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button
-                  type="button"
-                  onClick={() => { setSilent((s) => !s); setHeaderMenuOpen(false); toast({ title: silent ? t("silentSendOff") : t("silentSendOn") }); }}
-                  className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5"
-                >
-                  <BellOff size={16} className={silent ? "text-[#00FFFF]" : "text-muted-foreground"} />
-                  <span className="flex-1 text-left">{t("silentSend")}</span>
-                  <span className={`text-[10px] uppercase tracking-wider font-bold ${silent ? "text-[#00FFFF]" : "text-muted-foreground"}`}>{silent ? t("on") : t("off")}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setOneTimeView((v) => !v); setHeaderMenuOpen(false); toast({ title: oneTimeView ? t("oneTimeViewOff") : t("oneTimeViewOn") }); }}
-                  className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5"
-                >
-                  <Eye size={16} className={oneTimeView ? "text-[#00FFFF]" : "text-muted-foreground"} />
-                  <span className="flex-1 text-left">{t("oneTimeView")}</span>
-                  <span className={`text-[10px] uppercase tracking-wider font-bold ${oneTimeView ? "text-[#00FFFF]" : "text-muted-foreground"}`}>{oneTimeView ? t("on") : t("off")}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setHeaderMenuOpen(false); setDisappearingModalOpen(true); }}
-                  className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5"
-                >
-                  <TimerReset size={16} className={disappearingDuration !== "off" ? "text-[#00FFFF]" : "text-muted-foreground"} />
-                  <span className="flex-1 text-left">{t("disappearingMessages")}</span>
-                  <span className={`text-[10px] uppercase tracking-wider font-bold ${disappearingDuration !== "off" ? "text-[#00FFFF]" : "text-muted-foreground"}`}>{disappearingDuration === "off" ? t("off") : disappearingDuration.toUpperCase()}</span>
-                </button>
-                <button type="button" onClick={() => { setHeaderMenuOpen(false); setSearchOpen(true); }} className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5">
-                  <Search size={16} className="text-muted-foreground" /><span className="flex-1 text-left">{t("search")}</span>
-                </button>
-                <button type="button" onClick={async () => {
-                  if (chatMuted) {
-                    // Already muted -> the row acts as a direct unmute switch.
-                    setHeaderMenuOpen(false);
-                    await updateChatPreferences(chatId, { mutedUntil: null });
-                    setChatMuted(false);
-                    toast({ title: t("unmute") });
-                    return;
+          {/* V6 §2 — Header icon row. Padding tightened p-2 → p-1.5 (≈25%) to
+            reclaim space for the new Translator master toggle. */}
+          <button
+            onClick={() => setCallType("audio")}
+            className="p-1.5 rounded-lg hover:bg-secondary/50 text-muted-foreground shrink-0"
+            aria-label="Voice call"
+          >
+            <Phone size={20} />
+          </button>
+          <button
+            onClick={() => setCallType("video")}
+            className="p-1.5 rounded-lg hover:bg-secondary/50 text-muted-foreground shrink-0"
+            aria-label="Video call"
+          >
+            <Video size={20} />
+          </button>
+          {/* Spec §3 — Header search icon removed (duplicate of menu entry). Search remains accessible via the ⋯ menu below. */}
+          <button
+            type="button"
+            onClick={() => setTranslatorActive((v) => !v)}
+            aria-pressed={translatorActive}
+            aria-label={
+              translatorActive
+                ? "Disable Mirror-Inverse translator"
+                : "Enable Mirror-Inverse translator"
+            }
+            title={translatorActive ? "Translator: ON (Mirror-Inverse)" : "Translator: OFF"}
+            className={`p-1.5 rounded-lg shrink-0 transition-all duration-200 ${
+              translatorActive
+                ? "text-[#00FFFF] bg-[#00FFFF]/10"
+                : "text-muted-foreground hover:bg-secondary/50"
+            }`}
+            style={
+              translatorActive
+                ? {
+                    boxShadow:
+                      "0 0 10px rgba(0,255,255,0.85), 0 0 22px rgba(0,255,255,0.45), inset 0 0 6px rgba(0,255,255,0.35)",
                   }
-                  setHeaderMenuOpen(false);
-                  setMuteOpen(true);
-                }} className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5">
-                  <VolumeX size={16} className={chatMuted ? "text-yellow-400" : "text-muted-foreground"} /><span className="flex-1 text-left">{chatMuted ? t("unmute") : t("mute")}</span>
-                </button>
-                <button type="button" onClick={async () => { const next = !chatBlocked; setChatBlocked(next); await updateChatPreferences(chatId, { blocked: next }); if (next) await blockUser(chatId); else await unblockUser(chatId); setHeaderMenuOpen(false); toast({ title: next ? t("blockedToast") : t("unblockedToast") }); }} className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5">
-                  <Ban size={16} className={chatBlocked ? "text-red-400" : "text-muted-foreground"} /><span className="flex-1 text-left">{chatBlocked ? t("unblock") : t("block")}</span>
-                </button>
-                <button type="button" onClick={async () => { const next = !chatFavorite; setChatFavorite(next); await updateChatPreferences(chatId, { favorite: next }); const starred = (await dbGet<string[]>("settings", "starred-chats")) || []; await dbPut("settings", "starred-chats", next ? Array.from(new Set([...starred, chatId])) : starred.filter((s) => s !== chatId)); setHeaderMenuOpen(false); }} className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5">
-                  {chatFavorite ? <StarOff size={16} className="text-[#00FFFF]" /> : <Star size={16} className="text-muted-foreground" />}<span className="flex-1 text-left">{chatFavorite ? t("removeFromFavorites") : t("addToFavorites")}</span>
-                </button>
-                <button type="button" onClick={async () => { const next = !chatArchived; setChatArchived(next); await updateChatPreferences(chatId, { archived: next }); setHeaderMenuOpen(false); toast({ title: next ? t("movedToArchive") : t("movedFromArchive") }); }} className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5">
-                  {chatArchived ? <ArchiveRestore size={16} className="text-[#00FFFF]" /> : <Archive size={16} className="text-muted-foreground" />}<span className="flex-1 text-left">{chatArchived ? t("unarchiveAction") : t("archiveAction")}</span>
-                </button>
-                <button type="button" onClick={() => { setHeaderMenuOpen(false); setAssignOpen(true); }} className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5">
-                  <FolderPlus size={16} className="text-[#00FFFF]" /><span className="flex-1 text-left">{t("groups")}</span>
-                </button>
-                <button type="button" onClick={async () => { setHeaderMenuOpen(false); await clearMessagesForChat(chatId); setMessages([]); toast({ title: t("chatCleared") }); }} className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5">
-                  <Trash2 size={16} className="text-orange-400" /><span className="flex-1 text-left">{t("clearChat")}</span>
-                </button>
-                <button type="button" onClick={() => { setHeaderMenuOpen(false); setShowReport(true); }} className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-destructive hover:bg-white/5">
-                  <Flag size={16} /><span className="flex-1 text-left">{t("reportUser")}</span>
-                </button>
-                <button type="button" onClick={async () => { setHeaderMenuOpen(false); await clearMessagesForChat(chatId); try { await dbDelete("contacts", chatId); } catch { /* ignore */ } toast({ title: t("friendRemoved") }); onBack(); }} className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-destructive hover:bg-white/5">
-                  <UserMinus size={16} /><span className="flex-1 text-left">{t("deleteFriend")}</span>
-                </button>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                : undefined
+            }
+          >
+            <Languages size={18} />
+          </button>
+
+          <div className="relative shrink-0" ref={headerMenuRef}>
+            <button
+              type="button"
+              onClick={() => setHeaderMenuOpen((v) => !v)}
+              className="p-1.5 rounded-lg hover:bg-secondary/50 text-muted-foreground"
+              aria-label={t("more")}
+              aria-expanded={headerMenuOpen}
+            >
+              <MoreVertical size={18} />
+            </button>
+            <AnimatePresence>
+              {headerMenuOpen && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.94, y: -4 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.94, y: -4 }}
+                  transition={{ duration: 0.14 }}
+                  className="absolute right-0 top-10 min-w-[230px] rounded-xl border border-[#00FFFF]/30 bg-black z-40 py-1"
+                  style={{ boxShadow: "0 8px 24px rgba(0,0,0,0.6), 0 0 12px rgba(0,255,255,0.2)" }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSilent((s) => !s);
+                      setHeaderMenuOpen(false);
+                      toast({ title: silent ? t("silentSendOff") : t("silentSendOn") });
+                    }}
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5"
+                  >
+                    <BellOff
+                      size={16}
+                      className={silent ? "text-[#00FFFF]" : "text-muted-foreground"}
+                    />
+                    <span className="flex-1 text-left">{t("silentSend")}</span>
+                    <span
+                      className={`text-[10px] uppercase tracking-wider font-bold ${silent ? "text-[#00FFFF]" : "text-muted-foreground"}`}
+                    >
+                      {silent ? t("on") : t("off")}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOneTimeView((v) => !v);
+                      setHeaderMenuOpen(false);
+                      toast({ title: oneTimeView ? t("oneTimeViewOff") : t("oneTimeViewOn") });
+                    }}
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5"
+                  >
+                    <Eye
+                      size={16}
+                      className={oneTimeView ? "text-[#00FFFF]" : "text-muted-foreground"}
+                    />
+                    <span className="flex-1 text-left">{t("oneTimeView")}</span>
+                    <span
+                      className={`text-[10px] uppercase tracking-wider font-bold ${oneTimeView ? "text-[#00FFFF]" : "text-muted-foreground"}`}
+                    >
+                      {oneTimeView ? t("on") : t("off")}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHeaderMenuOpen(false);
+                      setDisappearingModalOpen(true);
+                    }}
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5"
+                  >
+                    <TimerReset
+                      size={16}
+                      className={
+                        disappearingDuration !== "off" ? "text-[#00FFFF]" : "text-muted-foreground"
+                      }
+                    />
+                    <span className="flex-1 text-left">{t("disappearingMessages")}</span>
+                    <span
+                      className={`text-[10px] uppercase tracking-wider font-bold ${disappearingDuration !== "off" ? "text-[#00FFFF]" : "text-muted-foreground"}`}
+                    >
+                      {disappearingDuration === "off"
+                        ? t("off")
+                        : disappearingDuration.toUpperCase()}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHeaderMenuOpen(false);
+                      setSearchOpen(true);
+                    }}
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5"
+                  >
+                    <Search size={16} className="text-muted-foreground" />
+                    <span className="flex-1 text-left">{t("search")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (chatMuted) {
+                        // Already muted -> the row acts as a direct unmute switch.
+                        setHeaderMenuOpen(false);
+                        await updateChatPreferences(chatId, { mutedUntil: null });
+                        setChatMuted(false);
+                        toast({ title: t("unmute") });
+                        return;
+                      }
+                      setHeaderMenuOpen(false);
+                      setMuteOpen(true);
+                    }}
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5"
+                  >
+                    <VolumeX
+                      size={16}
+                      className={chatMuted ? "text-yellow-400" : "text-muted-foreground"}
+                    />
+                    <span className="flex-1 text-left">{chatMuted ? t("unmute") : t("mute")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const next = !chatBlocked;
+                      setChatBlocked(next);
+                      await updateChatPreferences(chatId, { blocked: next });
+                      if (next) await blockUser(chatId);
+                      else await unblockUser(chatId);
+                      setHeaderMenuOpen(false);
+                      toast({ title: next ? t("blockedToast") : t("unblockedToast") });
+                    }}
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5"
+                  >
+                    <Ban
+                      size={16}
+                      className={chatBlocked ? "text-red-400" : "text-muted-foreground"}
+                    />
+                    <span className="flex-1 text-left">
+                      {chatBlocked ? t("unblock") : t("block")}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const next = !chatFavorite;
+                      setChatFavorite(next);
+                      await updateChatPreferences(chatId, { favorite: next });
+                      const starred = (await dbGet<string[]>("settings", "starred-chats")) || [];
+                      await dbPut(
+                        "settings",
+                        "starred-chats",
+                        next
+                          ? Array.from(new Set([...starred, chatId]))
+                          : starred.filter((s) => s !== chatId),
+                      );
+                      setHeaderMenuOpen(false);
+                    }}
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5"
+                  >
+                    {chatFavorite ? (
+                      <StarOff size={16} className="text-[#00FFFF]" />
+                    ) : (
+                      <Star size={16} className="text-muted-foreground" />
+                    )}
+                    <span className="flex-1 text-left">
+                      {chatFavorite ? t("removeFromFavorites") : t("addToFavorites")}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const next = !chatArchived;
+                      setChatArchived(next);
+                      await updateChatPreferences(chatId, { archived: next });
+                      setHeaderMenuOpen(false);
+                      toast({ title: next ? t("movedToArchive") : t("movedFromArchive") });
+                    }}
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5"
+                  >
+                    {chatArchived ? (
+                      <ArchiveRestore size={16} className="text-[#00FFFF]" />
+                    ) : (
+                      <Archive size={16} className="text-muted-foreground" />
+                    )}
+                    <span className="flex-1 text-left">
+                      {chatArchived ? t("unarchiveAction") : t("archiveAction")}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHeaderMenuOpen(false);
+                      setAssignOpen(true);
+                    }}
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5"
+                  >
+                    <FolderPlus size={16} className="text-[#00FFFF]" />
+                    <span className="flex-1 text-left">{t("groups")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setHeaderMenuOpen(false);
+                      await clearMessagesForChat(chatId);
+                      setMessages([]);
+                      toast({ title: t("chatCleared") });
+                    }}
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5"
+                  >
+                    <Trash2 size={16} className="text-orange-400" />
+                    <span className="flex-1 text-left">{t("clearChat")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHeaderMenuOpen(false);
+                      setShowReport(true);
+                    }}
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-destructive hover:bg-white/5"
+                  >
+                    <Flag size={16} />
+                    <span className="flex-1 text-left">{t("reportUser")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setHeaderMenuOpen(false);
+                      await clearMessagesForChat(chatId);
+                      try {
+                        await dbDelete("contacts", chatId);
+                      } catch {
+                        /* ignore */
+                      }
+                      toast({ title: t("friendRemoved") });
+                      onBack();
+                    }}
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-destructive hover:bg-white/5"
+                  >
+                    <UserMinus size={16} />
+                    <span className="flex-1 text-left">{t("deleteFriend")}</span>
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
-      </div>
       )}
 
       {searchOpen && (
@@ -1436,10 +1838,25 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           value={searchQuery}
           resultCount={searchMatches.length}
           activeIndex={Math.min(activeMatchIndex, Math.max(searchMatches.length - 1, 0))}
-          onChange={(value) => { setSearchQuery(value); setActiveMatchIndex(0); }}
-          onNext={() => setActiveMatchIndex((prev) => searchMatches.length ? (prev + 1) % searchMatches.length : 0)}
-          onPrev={() => setActiveMatchIndex((prev) => searchMatches.length ? (prev - 1 + searchMatches.length) % searchMatches.length : 0)}
-          onClose={() => { setSearchOpen(false); setSearchQuery(""); setActiveMatchIndex(0); }}
+          onChange={(value) => {
+            setSearchQuery(value);
+            setActiveMatchIndex(0);
+          }}
+          onNext={() =>
+            setActiveMatchIndex((prev) =>
+              searchMatches.length ? (prev + 1) % searchMatches.length : 0,
+            )
+          }
+          onPrev={() =>
+            setActiveMatchIndex((prev) =>
+              searchMatches.length ? (prev - 1 + searchMatches.length) % searchMatches.length : 0,
+            )
+          }
+          onClose={() => {
+            setSearchOpen(false);
+            setSearchQuery("");
+            setActiveMatchIndex(0);
+          }}
         />
       )}
 
@@ -1450,7 +1867,9 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
             preview={pinnedPreview}
             label={t("pinnedMessage")}
             onJump={() => jumpToMessage(pinnedMessageId)}
-            onUnpin={() => userId && fsUnpinMessage(userId, chatId, pinnedMessageId).catch(() => {})}
+            onUnpin={() =>
+              userId && fsUnpinMessage(userId, chatId, pinnedMessageId).catch(() => {})
+            }
           />
         )}
       </AnimatePresence>
@@ -1479,192 +1898,241 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           </div>
         ))}
         <AnimatePresence initial={false}>
-        {filteredMessages.map((msg) => {
-          const eff = getEffectiveText(msg);
-          const isMatch = !!searchQuery.trim() && eff.text.toLowerCase().includes(searchQuery.trim().toLowerCase());
-          const isActiveMatch = searchMatches[activeMatchIndex]?.id === msg.id;
-          const isSelected = selectedIds.includes(msg.id);
-          const isPinnedHere = pinnedMessageId === msg.id;
-          const msgUrl = !eff.isTombstone ? extractFirstUrl(eff.text) : null;
-          const reactionAgg = aggregateReactions(reactions[msg.id]);
-          return (
-          <motion.div
-            key={msg.id}
-            layout
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
-            className={`flex ${msg.sent ? "justify-end" : "justify-start"}`}
-          >
-            <div className="relative max-w-[75%]">
-              <ReactionsBar
-                visible={reactionTarget === msg.id}
-                onPick={(emoji) => onPickReaction(msg.id, emoji)}
-                onDismiss={() => setReactionTarget(null)}
-                align={msg.sent ? "end" : "start"}
-              />
-            <motion.div
-              layout
-              ref={(node) => { messageRefs.current[msg.id] = node; }}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                // Spec §1 — long-press / right-click exclusively triggers the
-                // app's selection action bar. The native partial-copy menu is
-                // suppressed via user-select: none on the bubble.
-                setSelectedIds((prev) =>
-                  prev.includes(msg.id) ? prev.filter((id) => id !== msg.id) : [...prev, msg.id],
-                );
-              }}
-              onPointerDown={(e) => {
-                if (selectedIds.length > 0) return;
-                const startX = e.clientX;
-                const startY = e.clientY;
-                const target = e.currentTarget as HTMLDivElement & {
-                  __trivoLPTimer?: number;
-                  __trivoLPMove?: (ev: PointerEvent) => void;
-                  __trivoLPEnd?: () => void;
-                  __trivoLPFired?: boolean;
-                };
-                target.__trivoLPFired = false;
-                if (target.__trivoLPTimer) window.clearTimeout(target.__trivoLPTimer);
-                const cleanup = () => {
-                  if (target.__trivoLPTimer) {
-                    window.clearTimeout(target.__trivoLPTimer);
-                    target.__trivoLPTimer = undefined;
-                  }
-                  if (target.__trivoLPMove) {
-                    target.removeEventListener("pointermove", target.__trivoLPMove);
-                    target.__trivoLPMove = undefined;
-                  }
-                  if (target.__trivoLPEnd) {
-                    target.removeEventListener("pointerup", target.__trivoLPEnd);
-                    target.removeEventListener("pointercancel", target.__trivoLPEnd);
-                    target.__trivoLPEnd = undefined;
-                  }
-                };
-                const onMove = (ev: PointerEvent) => {
-                  if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > 10) cleanup();
-                };
-                target.__trivoLPMove = onMove;
-                target.__trivoLPEnd = cleanup;
-                target.addEventListener("pointermove", onMove);
-                target.addEventListener("pointerup", cleanup);
-                target.addEventListener("pointercancel", cleanup);
-                target.__trivoLPTimer = window.setTimeout(() => {
-                  target.__trivoLPTimer = undefined;
-                  cleanup();
-                  // Spec §1 — long-press exclusively opens the app's CAB and
-                  // the selection must PERSIST until the user explicitly
-                  // dismisses (Back/Close/Action). Mark that long-press fired
-                  // so the synthetic click that follows pointerup does NOT
-                  // re-toggle (which previously dropped the selection).
-                  target.__trivoLPFired = true;
-                  setSelectedIds((prev) => (prev.includes(msg.id) ? prev : [...prev, msg.id]));
-                }, 380);
-              }}
-              onClick={(e) => {
-                const target = e.currentTarget as HTMLDivElement & { __trivoLPFired?: boolean };
-                if (target.__trivoLPFired) {
-                  // Suppress the synthetic click that follows a long-press so
-                  // the just-opened selection bar stays on screen.
-                  target.__trivoLPFired = false;
-                  e.stopPropagation();
-                  e.preventDefault();
-                  return;
-                }
-                if (selectedIds.length > 0) {
-                  e.stopPropagation();
-                  setSelectedIds((prev) =>
-                    prev.includes(msg.id) ? prev.filter((id) => id !== msg.id) : [...prev, msg.id],
-                  );
-                  return;
-                }
-                handleBubbleTap(msg.id);
-              }}
-              style={{
-                userSelect: "none",
-                WebkitUserSelect: "none",
-                WebkitTouchCallout: "none",
-                // Selection highlight is applied inline so it always wins over
-                // the bubble's own background utility and PERSISTS until the
-                // user explicitly dismisses the action bar.
-                ...(isSelected
-                  ? {
-                      backgroundColor: "hsl(var(--primary) / 0.28)",
-                      borderColor: "hsl(var(--primary) / 0.65)",
-                      boxShadow: "0 0 0 2px hsl(var(--primary) / 0.55)",
-                    }
-                  : null),
-              }}
-              className={`px-3.5 py-2 rounded-2xl border flex flex-col transition-colors ${msg.sent ? "bg-primary text-primary-foreground rounded-br-md border-primary/20" : "glass-panel-sm rounded-bl-md border-border/30"} ${isActiveMatch ? "ring-2 ring-primary" : isMatch ? "ring-1 ring-border" : ""} ${eff.isTombstone ? "opacity-70 italic" : ""}`}
-            >
-              {msg.media && !eff.isTombstone && renderMediaBubble(msg)}
-              {eff.text && (
-                <p className="text-sm leading-relaxed break-words">
-                  <RichText text={eff.text} />
-                </p>
-              )}
-              {msgUrl && <LinkPreviewCard url={msgUrl} />}
-              {msg.caption && !eff.isTombstone && <p className="text-sm leading-relaxed break-words mt-2">{msg.caption}</p>}
-              {/* Block 2 — Universal translation: render the plate for ANY
+          {filteredMessages.map((msg) => {
+            const eff = getEffectiveText(msg);
+            const isMatch =
+              !!searchQuery.trim() &&
+              eff.text.toLowerCase().includes(searchQuery.trim().toLowerCase());
+            const isActiveMatch = searchMatches[activeMatchIndex]?.id === msg.id;
+            const isSelected = selectedIds.includes(msg.id);
+            const isPinnedHere = pinnedMessageId === msg.id;
+            const msgUrl = !eff.isTombstone ? extractFirstUrl(eff.text) : null;
+            const reactionAgg = aggregateReactions(reactions[msg.id]);
+            return (
+              <motion.div
+                key={msg.id}
+                layout
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.22, ease: [0.32, 0.72, 0, 1] }}
+                className={`flex ${msg.sent ? "justify-end" : "justify-start"}`}
+              >
+                <div className="relative max-w-[75%]">
+                  <ReactionsBar
+                    visible={reactionTarget === msg.id}
+                    onPick={(emoji) => onPickReaction(msg.id, emoji)}
+                    onDismiss={() => setReactionTarget(null)}
+                    align={msg.sent ? "end" : "start"}
+                  />
+                  <motion.div
+                    layout
+                    ref={(node) => {
+                      messageRefs.current[msg.id] = node;
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      // Spec §1 — long-press / right-click exclusively triggers the
+                      // app's selection action bar. The native partial-copy menu is
+                      // suppressed via user-select: none on the bubble.
+                      setSelectedIds((prev) =>
+                        prev.includes(msg.id)
+                          ? prev.filter((id) => id !== msg.id)
+                          : [...prev, msg.id],
+                      );
+                    }}
+                    onPointerDown={(e) => {
+                      if (selectedIds.length > 0) return;
+                      const startX = e.clientX;
+                      const startY = e.clientY;
+                      const target = e.currentTarget as HTMLDivElement & {
+                        __trivoLPTimer?: number;
+                        __trivoLPMove?: (ev: PointerEvent) => void;
+                        __trivoLPEnd?: () => void;
+                        __trivoLPFired?: boolean;
+                      };
+                      target.__trivoLPFired = false;
+                      if (target.__trivoLPTimer) window.clearTimeout(target.__trivoLPTimer);
+                      const cleanup = () => {
+                        if (target.__trivoLPTimer) {
+                          window.clearTimeout(target.__trivoLPTimer);
+                          target.__trivoLPTimer = undefined;
+                        }
+                        if (target.__trivoLPMove) {
+                          target.removeEventListener("pointermove", target.__trivoLPMove);
+                          target.__trivoLPMove = undefined;
+                        }
+                        if (target.__trivoLPEnd) {
+                          target.removeEventListener("pointerup", target.__trivoLPEnd);
+                          target.removeEventListener("pointercancel", target.__trivoLPEnd);
+                          target.__trivoLPEnd = undefined;
+                        }
+                      };
+                      const onMove = (ev: PointerEvent) => {
+                        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > 10) cleanup();
+                      };
+                      target.__trivoLPMove = onMove;
+                      target.__trivoLPEnd = cleanup;
+                      target.addEventListener("pointermove", onMove);
+                      target.addEventListener("pointerup", cleanup);
+                      target.addEventListener("pointercancel", cleanup);
+                      target.__trivoLPTimer = window.setTimeout(() => {
+                        target.__trivoLPTimer = undefined;
+                        cleanup();
+                        // Spec §1 — long-press exclusively opens the app's CAB and
+                        // the selection must PERSIST until the user explicitly
+                        // dismisses (Back/Close/Action). Mark that long-press fired
+                        // so the synthetic click that follows pointerup does NOT
+                        // re-toggle (which previously dropped the selection).
+                        target.__trivoLPFired = true;
+                        setSelectedIds((prev) =>
+                          prev.includes(msg.id) ? prev : [...prev, msg.id],
+                        );
+                      }, 380);
+                    }}
+                    onClick={(e) => {
+                      const target = e.currentTarget as HTMLDivElement & {
+                        __trivoLPFired?: boolean;
+                      };
+                      if (target.__trivoLPFired) {
+                        // Suppress the synthetic click that follows a long-press so
+                        // the just-opened selection bar stays on screen.
+                        target.__trivoLPFired = false;
+                        e.stopPropagation();
+                        e.preventDefault();
+                        return;
+                      }
+                      if (selectedIds.length > 0) {
+                        e.stopPropagation();
+                        setSelectedIds((prev) =>
+                          prev.includes(msg.id)
+                            ? prev.filter((id) => id !== msg.id)
+                            : [...prev, msg.id],
+                        );
+                        return;
+                      }
+                      handleBubbleTap(msg.id);
+                    }}
+                    style={{
+                      userSelect: "none",
+                      WebkitUserSelect: "none",
+                      WebkitTouchCallout: "none",
+                      // Selection highlight is applied inline so it always wins over
+                      // the bubble's own background utility and PERSISTS until the
+                      // user explicitly dismisses the action bar.
+                      ...(isSelected
+                        ? {
+                            backgroundColor: "hsl(var(--primary) / 0.28)",
+                            borderColor: "hsl(var(--primary) / 0.65)",
+                            boxShadow: "0 0 0 2px hsl(var(--primary) / 0.55)",
+                          }
+                        : null),
+                    }}
+                    className={`px-3.5 py-2 rounded-2xl border flex flex-col transition-colors ${msg.sent ? "bg-primary text-primary-foreground rounded-br-md border-primary/20" : "glass-panel-sm rounded-bl-md border-border/30"} ${isActiveMatch ? "ring-2 ring-primary" : isMatch ? "ring-1 ring-border" : ""} ${eff.isTombstone ? "opacity-70 italic" : ""}`}
+                  >
+                    {msg.media && !eff.isTombstone && renderMediaBubble(msg)}
+                    {eff.text && (
+                      <p className="text-sm leading-relaxed break-words">
+                        <RichText text={eff.text} />
+                      </p>
+                    )}
+                    {msgUrl && <LinkPreviewCard url={msgUrl} />}
+                    {msg.caption && !eff.isTombstone && (
+                      <p className="text-sm leading-relaxed break-words mt-2">{msg.caption}</p>
+                    )}
+                    {/* Block 2 — Universal translation: render the plate for ANY
                   message (sent or received) once a translation exists. */}
-              {/* Per V6 UX spec: translation plate is rendered ONLY on
+                    {/* Per V6 UX spec: translation plate is rendered ONLY on
                   incoming bubbles (left side). Outgoing messages already
                   ship the translated form when the master toggle is ON. */}
-              {!eff.isTombstone && !msg.sent && (msg.translatedText || msg.translating || msg.translateError) && (
-                <TranslationPlate
-                  translatedText={msg.translatedText || ""}
-                  sent={false}
-                  translating={msg.translating}
-                  error={msg.translateError && !msg.translatedText}
-                  onRetry={() => {
-                    setMessages((prev) => prev.map((it) => it.id === msg.id ? { ...it, translating: true, translateError: false } : it));
-                    translateIncomingMessage(msg.text).then((translatedText) => {
-                      setMessages((prev) => prev.map((it) => it.id === msg.id ? { ...it, translatedText: translatedText || null, translating: false, translateError: !translatedText } : it));
-                    });
-                  }}
-                />
-              )}
-              {reactionAgg.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-1.5">
-                  {reactionAgg.map((r) => (
-                    <motion.span
-                      key={r.emoji}
-                      initial={{ scale: 0.6, opacity: 0 }}
-                      animate={{ scale: 1, opacity: 1 }}
-                      transition={{ type: "spring", stiffness: 320, damping: 16 }}
-                      className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] bg-black border border-[#00FFFF]/45"
-                      style={{ boxShadow: "0 0 6px rgba(0,255,255,0.35)" }}
+                    {!eff.isTombstone &&
+                      !msg.sent &&
+                      (msg.translatedText || msg.translating || msg.translateError) && (
+                        <TranslationPlate
+                          translatedText={msg.translatedText || ""}
+                          sent={false}
+                          translating={msg.translating}
+                          error={msg.translateError && !msg.translatedText}
+                          onRetry={() => {
+                            setMessages((prev) =>
+                              prev.map((it) =>
+                                it.id === msg.id
+                                  ? { ...it, translating: true, translateError: false }
+                                  : it,
+                              ),
+                            );
+                            translateIncomingMessage(msg.text).then((translatedText) => {
+                              setMessages((prev) =>
+                                prev.map((it) =>
+                                  it.id === msg.id
+                                    ? {
+                                        ...it,
+                                        translatedText: translatedText || null,
+                                        translating: false,
+                                        translateError: !translatedText,
+                                      }
+                                    : it,
+                                ),
+                              );
+                            });
+                          }}
+                        />
+                      )}
+                    {reactionAgg.length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {reactionAgg.map((r) => (
+                          <motion.span
+                            key={r.emoji}
+                            initial={{ scale: 0.6, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ type: "spring", stiffness: 320, damping: 16 }}
+                            className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] bg-black border border-[#00FFFF]/45"
+                            style={{ boxShadow: "0 0 6px rgba(0,255,255,0.35)" }}
+                          >
+                            <span>{r.emoji}</span>
+                            {r.count > 1 && (
+                              <span className="text-[#00FFFF] font-semibold">{r.count}</span>
+                            )}
+                          </motion.span>
+                        ))}
+                      </div>
+                    )}
+                    <div
+                      className={`flex items-center gap-1 justify-end mt-1 ${msg.sent ? "text-primary-foreground/60" : "text-muted-foreground"}`}
                     >
-                      <span>{r.emoji}</span>
-                      {r.count > 1 && <span className="text-[#00FFFF] font-semibold">{r.count}</span>}
-                    </motion.span>
-                  ))}
+                      {isPinnedHere && !eff.isTombstone && (
+                        <Pin
+                          size={10}
+                          className={msg.sent ? "text-primary-foreground/70" : "text-primary"}
+                        />
+                      )}
+                      {eff.isEdited && <span className="text-[10px] italic">{t("edited")}</span>}
+                      {msg.silent && !eff.isTombstone && (
+                        <BellOff
+                          size={10}
+                          className={
+                            msg.sent ? "text-primary-foreground/70" : "text-muted-foreground"
+                          }
+                        />
+                      )}
+                      <span className="text-[10px]">{msg.time}</span>
+                      {msg.sent &&
+                        !eff.isTombstone &&
+                        (msg.status === "pending" ? (
+                          <Clock size={11} className="animate-pulse" />
+                        ) : msg.status === "sent" ? (
+                          <Check size={12} />
+                        ) : msg.status === "delivered" ? (
+                          <CheckCheck size={12} />
+                        ) : (
+                          <CheckCheck size={12} className="text-blue-400" />
+                        ))}
+                    </div>
+                  </motion.div>
                 </div>
-              )}
-              <div className={`flex items-center gap-1 justify-end mt-1 ${msg.sent ? "text-primary-foreground/60" : "text-muted-foreground"}`}>
-                {isPinnedHere && !eff.isTombstone && (
-                  <Pin size={10} className={msg.sent ? "text-primary-foreground/70" : "text-primary"} />
-                )}
-                {eff.isEdited && (
-                  <span className="text-[10px] italic">{t("edited")}</span>
-                )}
-                {msg.silent && !eff.isTombstone && (
-                  <BellOff size={10} className={msg.sent ? "text-primary-foreground/70" : "text-muted-foreground"} />
-                )}
-                <span className="text-[10px]">{msg.time}</span>
-                {msg.sent && !eff.isTombstone && (
-                  msg.status === "pending" ? <Clock size={11} className="animate-pulse" /> :
-                  msg.status === "sent" ? <Check size={12} /> :
-                  msg.status === "delivered" ? <CheckCheck size={12} /> :
-                  <CheckCheck size={12} className="text-blue-400" />
-                )}
-              </div>
-            </motion.div>
-            </div>
-          </motion.div>
-        )})}
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
         {botTyping && (
           <div className="flex justify-start">
@@ -1674,9 +2142,18 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
             >
               <span className="text-[11px] text-[#00FFFF]">{typingLabel}</span>
               <span className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-[#00FFFF] animate-bounce" style={{ animationDelay: "0ms" }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-[#00FFFF] animate-bounce" style={{ animationDelay: "120ms" }} />
-                <span className="w-1.5 h-1.5 rounded-full bg-[#00FFFF] animate-bounce" style={{ animationDelay: "240ms" }} />
+                <span
+                  className="w-1.5 h-1.5 rounded-full bg-[#00FFFF] animate-bounce"
+                  style={{ animationDelay: "0ms" }}
+                />
+                <span
+                  className="w-1.5 h-1.5 rounded-full bg-[#00FFFF] animate-bounce"
+                  style={{ animationDelay: "120ms" }}
+                />
+                <span
+                  className="w-1.5 h-1.5 rounded-full bg-[#00FFFF] animate-bounce"
+                  style={{ animationDelay: "240ms" }}
+                />
               </span>
             </div>
           </div>
@@ -1696,12 +2173,17 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           >
             <Pin size={14} className="text-primary rotate-45" />
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] uppercase tracking-wide text-primary font-semibold">{t("editMessage")}</p>
+              <p className="text-[10px] uppercase tracking-wide text-primary font-semibold">
+                {t("editMessage")}
+              </p>
               <p className="text-xs text-muted-foreground truncate">{input}</p>
             </div>
             <button
               type="button"
-              onClick={() => { setEditingId(null); setInput(""); }}
+              onClick={() => {
+                setEditingId(null);
+                setInput("");
+              }}
               className="p-1.5 rounded-md hover:bg-secondary/50 text-muted-foreground"
               aria-label={t("cancelEdit")}
             >
@@ -1744,8 +2226,14 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
         value={input}
         onValueChange={setInput}
         onSubmit={() => sendMessage()}
-        onToggleEmoji={() => { setShowEmoji(!showEmoji); setShowAttach(false); }}
-        onToggleAttach={() => { setShowAttach(!showAttach); setShowEmoji(false); }}
+        onToggleEmoji={() => {
+          setShowEmoji(!showEmoji);
+          setShowAttach(false);
+        }}
+        onToggleAttach={() => {
+          setShowAttach(!showAttach);
+          setShowEmoji(false);
+        }}
         onVoiceRecorded={handleVoiceRecorded}
         placeholder={t("typeMessage")}
         silent={silent}
@@ -1828,14 +2316,27 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           </motion.div>
         )}
       </AnimatePresence>
-      
+
       <ReportMenu userId={chatId} open={showReport} onClose={() => setShowReport(false)} />
-      <SecurityScanOverlay visible={scanOverlay} onComplete={() => { setScanOverlay(false); if (pendingDownload) { window.open(pendingDownload, "_blank"); setPendingDownload(null); } }} />
+      <SecurityScanOverlay
+        visible={scanOverlay}
+        onComplete={() => {
+          setScanOverlay(false);
+          if (pendingDownload) {
+            window.open(pendingDownload, "_blank");
+            setPendingDownload(null);
+          }
+        }}
+      />
       <ForwardMediaSheet
         open={forwardSheetOpen}
         media={forwardingMedia}
         text={forwardingText}
-        onClose={() => { setForwardSheetOpen(false); setForwardingMedia(null); setForwardingText(""); }}
+        onClose={() => {
+          setForwardSheetOpen(false);
+          setForwardingMedia(null);
+          setForwardingText("");
+        }}
         onSubmit={async (targetChatId, caption) => {
           if (!userId) return;
           if (!forwardingMedia && !forwardingText.trim()) return;
@@ -1855,8 +2356,15 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           const peerId = `trivo-${targetChatId.replace(/[^a-zA-Z0-9]/g, "").substring(0, 20)}`;
           const sent = await sendP2PMessage(peerId, payload);
           if (!sent) await bufferMessageInCloud(targetChatId, payload);
-          const lastMessage = forwardingMedia ? (caption || forwardingMedia.name) : forwardingText;
-          await saveChatMeta({ friendId: targetChatId, friendName: targetChatId.substring(0, 8), lastMessage, lastMessageTime: Date.now(), unread: 0, started: true });
+          const lastMessage = forwardingMedia ? caption || forwardingMedia.name : forwardingText;
+          await saveChatMeta({
+            friendId: targetChatId,
+            friendName: targetChatId.substring(0, 8),
+            lastMessage,
+            lastMessageTime: Date.now(),
+            unread: 0,
+            started: true,
+          });
           setForwardSheetOpen(false);
           setForwardingMedia(null);
           setForwardingText("");
@@ -1868,7 +2376,9 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
         open={muteOpen}
         onClose={() => setMuteOpen(false)}
         onMute={async (duration: string) => {
-          await updateChatPreferences(chatId, { mutedUntil: getMuteUntil(duration as DisappearingDuration | "always") });
+          await updateChatPreferences(chatId, {
+            mutedUntil: getMuteUntil(duration as DisappearingDuration | "always"),
+          });
           setChatMuted(true);
           setMuteOpen(false);
         }}
@@ -1896,9 +2406,13 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       <OneTimeViewer
         open={!!viewerMessage}
         url={viewerMessage?.media?.url || ""}
-        mediaType={(viewerMessage?.media?.type === "image" ? "image" :
-          viewerMessage?.roundVideo || viewerMessage?.media?.mimeType?.startsWith("video") ? "video" :
-          viewerMessage?.media?.type || "file") as "image" | "video" | "audio" | "file"}
+        mediaType={
+          (viewerMessage?.media?.type === "image"
+            ? "image"
+            : viewerMessage?.roundVideo || viewerMessage?.media?.mimeType?.startsWith("video")
+              ? "video"
+              : viewerMessage?.media?.type || "file") as "image" | "video" | "audio" | "file"
+        }
         onClose={() => setViewerMessage(null)}
         onConsumed={() => {
           if (viewerMessage) void purgeOneTimeMedia(viewerMessage);
@@ -1906,7 +2420,14 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       />
       <SelectiveCopySheet
         open={!!copyTarget}
-        text={copyTarget ? getEffectiveText(messages.find((m) => m.id === copyTarget) || ({ id: "", text: "", sent: false, time: "", status: "sent" } as Message)).text : ""}
+        text={
+          copyTarget
+            ? getEffectiveText(
+                messages.find((m) => m.id === copyTarget) ||
+                  ({ id: "", text: "", sent: false, time: "", status: "sent" } as Message),
+              ).text
+            : ""
+        }
         onClose={() => setCopyTarget(null)}
       />
       <DisappearingMessagesModal
@@ -1916,9 +2437,10 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           await updateChatPreferences(chatId, { disappearingDuration: duration });
           setDisappearingDuration(duration);
           setDisappearingModalOpen(false);
-          const label = duration === "off"
-            ? t("disappearingOff")
-            : `${t("disappearingOn")} — ${duration.toUpperCase()}`;
+          const label =
+            duration === "off"
+              ? t("disappearingOff")
+              : `${t("disappearingOn")} — ${duration.toUpperCase()}`;
           setSystemBubbles((prev) => [
             ...prev,
             {

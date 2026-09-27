@@ -20,12 +20,7 @@ interface UseVoiceRecorderReturn {
 }
 
 const pickMimeType = (): string => {
-  const candidates = [
-    "audio/webm;codecs=opus",
-    "audio/webm",
-    "audio/mp4",
-    "audio/ogg;codecs=opus",
-  ];
+  const candidates = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
   for (const m of candidates) {
     if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported?.(m)) return m;
   }
@@ -58,7 +53,11 @@ export function useVoiceRecorder(opts: UseVoiceRecorderOptions = {}): UseVoiceRe
   // Always release mic if component unmounts mid-recording.
   useEffect(() => {
     return () => {
-      try { recorderRef.current?.stop(); } catch { /* ignore */ }
+      try {
+        recorderRef.current?.stop();
+      } catch {
+        /* ignore */
+      }
       cleanupStream();
     };
   }, [cleanupStream]);
@@ -77,7 +76,9 @@ export function useVoiceRecorder(opts: UseVoiceRecorderOptions = {}): UseVoiceRe
       streamRef.current = stream;
 
       const mimeType = pickMimeType();
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
       recorderRef.current = recorder;
       chunksRef.current = [];
       cancelledRef.current = false;
@@ -98,7 +99,10 @@ export function useVoiceRecorder(opts: UseVoiceRecorderOptions = {}): UseVoiceRe
         const type = recorder.mimeType || "audio/webm";
         const blob = new Blob(chunksRef.current, { type });
         const ext = type.includes("mp4") ? "m4a" : type.includes("ogg") ? "ogg" : "webm";
-        const file = new File([blob], `voice-${Date.now()}.${ext}`, { type, lastModified: Date.now() });
+        const file = new File([blob], `voice-${Date.now()}.${ext}`, {
+          type,
+          lastModified: Date.now(),
+        });
         setState("idle");
         setDurationMs(0);
         resolver?.(file);
@@ -145,7 +149,11 @@ export function useVoiceRecorder(opts: UseVoiceRecorderOptions = {}): UseVoiceRe
     cancelledRef.current = true;
     const recorder = recorderRef.current;
     if (recorder && recorder.state !== "inactive") {
-      try { recorder.stop(); } catch { /* ignore */ }
+      try {
+        recorder.stop();
+      } catch {
+        /* ignore */
+      }
     } else {
       cleanupStream();
       setState("idle");

@@ -1,14 +1,38 @@
-import { Star, Check, CheckCheck, MoreVertical, VolumeX, Trash2, Ban, TimerReset, Archive, ArchiveRestore, ChevronDown } from "lucide-react";
+import {
+  Star,
+  Check,
+  CheckCheck,
+  MoreVertical,
+  VolumeX,
+  Trash2,
+  Ban,
+  TimerReset,
+  Archive,
+  ArchiveRestore,
+  ChevronDown,
+} from "lucide-react";
 import { motion, AnimatePresence, useMotionValue, useTransform, type PanInfo } from "framer-motion";
 import { useState, useEffect, useRef } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import DefaultAvatar from "./DefaultAvatar";
 import MuteModal from "./MuteModal";
 import DisappearingMessagesModal from "./DisappearingMessagesModal";
-import { getAllChatMetas, getChatMeta, saveChatMeta, clearMessagesForChat, type ChatMeta } from "@/lib/p2p";
+import {
+  getAllChatMetas,
+  getChatMeta,
+  saveChatMeta,
+  clearMessagesForChat,
+  type ChatMeta,
+} from "@/lib/p2p";
 import { dbGet, dbPut, dbDelete } from "@/lib/storage";
 import { isTrivoSupport, SUPPORT_BOT_NAME } from "@/lib/mock-peer";
-import { getChatPreferences, getMuteUntil, isMuted, updateChatPreferences, type DisappearingDuration } from "@/lib/chat-preferences";
+import {
+  getChatPreferences,
+  getMuteUntil,
+  isMuted,
+  updateChatPreferences,
+  type DisappearingDuration,
+} from "@/lib/chat-preferences";
 import { blockUser, unblockUser, submitReport } from "@/lib/report";
 import { toast } from "@/hooks/use-toast";
 import ContactAssignSheet from "./ContactAssignSheet";
@@ -64,8 +88,22 @@ interface ChatRowProps {
 }
 
 const ChatRow = ({
-  chat, view, onOpen, onArchive, onUnarchive, onToggleStar, onMenu, onCloseMenu, menuOpen,
-  onMute, onClearChat, onToggleBlock, onToggleFavorite, onDeleteFriend, onAssign, onReport,
+  chat,
+  view,
+  onOpen,
+  onArchive,
+  onUnarchive,
+  onToggleStar,
+  onMenu,
+  onCloseMenu,
+  menuOpen,
+  onMute,
+  onClearChat,
+  onToggleBlock,
+  onToggleFavorite,
+  onDeleteFriend,
+  onAssign,
+  onReport,
 }: ChatRowProps) => {
   const { t } = useLanguage();
   const x = useMotionValue(0);
@@ -126,7 +164,12 @@ const ChatRow = ({
             <div className="flex items-center gap-1.5">
               <span className="font-semibold text-foreground truncate">{chat.name}</span>
               {chat.disappearing && (
-                <TimerReset size={12} className="text-[#00FFFF] shrink-0" style={{ filter: "drop-shadow(0 0 4px rgba(0,255,255,0.6))" }} aria-label={t("disappearingMessages")} />
+                <TimerReset
+                  size={12}
+                  className="text-[#00FFFF] shrink-0"
+                  style={{ filter: "drop-shadow(0 0 4px rgba(0,255,255,0.6))" }}
+                  aria-label={t("disappearingMessages")}
+                />
               )}
               <div className="ml-auto flex items-center gap-1 shrink-0">
                 {chat.muted && <VolumeX size={12} className="text-muted-foreground" />}
@@ -156,7 +199,11 @@ const ChatRow = ({
               <button onClick={onToggleStar} className="p-1">
                 <Star
                   size={16}
-                  className={chat.starred ? "fill-primary text-primary drop-shadow-[0_0_4px_hsl(var(--neon-glow)/0.5)]" : "text-muted-foreground/40"}
+                  className={
+                    chat.starred
+                      ? "fill-primary text-primary drop-shadow-[0_0_4px_hsl(var(--neon-glow)/0.5)]"
+                      : "text-muted-foreground/40"
+                  }
                 />
               </button>
               {chat.unread > 0 && (
@@ -178,7 +225,12 @@ const ChatRow = ({
       <ContactActionsMenu
         open={menuOpen}
         onClose={onCloseMenu}
-        state={{ muted: chat.muted, blocked: chat.blocked, favorite: chat.starred, archived: view === "archive" || chat.archived }}
+        state={{
+          muted: chat.muted,
+          blocked: chat.blocked,
+          favorite: chat.starred,
+          archived: view === "archive" || chat.archived,
+        }}
         onMute={onMute}
         onToggleBlock={onToggleBlock}
         onToggleFavorite={onToggleFavorite}
@@ -208,25 +260,31 @@ const ChatList = ({ onOpenChat, activeFolderId, isSystemFolder }: ChatListProps)
     const loadChats = async () => {
       const metas = await getAllChatMetas();
       const starred = (await dbGet<string[]>("settings", "starred-chats")) || [];
-      const chatList: Chat[] = await Promise.all(metas.map(async (m: ChatMeta) => {
-        const preferences = await getChatPreferences(m.friendId);
-        return {
-          id: m.friendId,
-          name: isTrivoSupport(m.friendId) ? SUPPORT_BOT_NAME : m.friendName,
-          avatar: m.friendAvatar || null,
-          lastMessage: m.lastMessage || (t("e2eSessionStarted") || "E2E Encrypted Session Started"),
-          time: m.lastMessageTime
-            ? new Date(m.lastMessageTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-            : "",
-          unread: m.unread,
-          starred: starred.includes(m.friendId) || !!preferences.favorite,
-          status: "sent" as const,
-          muted: isMuted(preferences.mutedUntil),
-          blocked: !!preferences.blocked,
-          archived: !!preferences.archived,
-          disappearing: !!preferences.disappearingDuration && preferences.disappearingDuration !== "off",
-        };
-      }));
+      const chatList: Chat[] = await Promise.all(
+        metas.map(async (m: ChatMeta) => {
+          const preferences = await getChatPreferences(m.friendId);
+          return {
+            id: m.friendId,
+            name: isTrivoSupport(m.friendId) ? SUPPORT_BOT_NAME : m.friendName,
+            avatar: m.friendAvatar || null,
+            lastMessage: m.lastMessage || t("e2eSessionStarted") || "E2E Encrypted Session Started",
+            time: m.lastMessageTime
+              ? new Date(m.lastMessageTime).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })
+              : "",
+            unread: m.unread,
+            starred: starred.includes(m.friendId) || !!preferences.favorite,
+            status: "sent" as const,
+            muted: isMuted(preferences.mutedUntil),
+            blocked: !!preferences.blocked,
+            archived: !!preferences.archived,
+            disappearing:
+              !!preferences.disappearingDuration && preferences.disappearingDuration !== "off",
+          };
+        }),
+      );
       setChats(chatList);
     };
     loadChats();
@@ -265,7 +323,8 @@ const ChatList = ({ onOpenChat, activeFolderId, isSystemFolder }: ChatListProps)
     setChats((prev) => prev.map((c) => (c.id === id ? { ...c, blocked: !c.blocked } : c)));
     const nextBlocked = !chats.find((c) => c.id === id)?.blocked;
     await updateChatPreferences(id, { blocked: nextBlocked });
-    if (nextBlocked) await blockUser(id); else await unblockUser(id);
+    if (nextBlocked) await blockUser(id);
+    else await unblockUser(id);
     setMenuOpen(null);
   };
 
@@ -277,7 +336,9 @@ const ChatList = ({ onOpenChat, activeFolderId, isSystemFolder }: ChatListProps)
   const handleMute = (duration: string) => {
     if (muteTarget) {
       setChats((prev) => prev.map((c) => (c.id === muteTarget ? { ...c, muted: true } : c)));
-      void updateChatPreferences(muteTarget, { mutedUntil: getMuteUntil(duration as DisappearingDuration | "always") });
+      void updateChatPreferences(muteTarget, {
+        mutedUntil: getMuteUntil(duration as DisappearingDuration | "always"),
+      });
     }
     setMuteTarget(null);
     setMenuOpen(null);
@@ -308,7 +369,10 @@ const ChatList = ({ onOpenChat, activeFolderId, isSystemFolder }: ChatListProps)
   const onWheel = (e: React.WheelEvent) => {
     if (view !== "main") return;
     const el = scrollRef.current;
-    if (!el || el.scrollTop > 0) { setPullProgress(0); return; }
+    if (!el || el.scrollTop > 0) {
+      setPullProgress(0);
+      return;
+    }
     if (e.deltaY < 0) {
       setPullProgress((p) => Math.min(1, p + Math.abs(e.deltaY) / REVEAL_THRESHOLD));
     }
@@ -343,16 +407,21 @@ const ChatList = ({ onOpenChat, activeFolderId, isSystemFolder }: ChatListProps)
     // a stale membership set while the new folder loads.
     setFolderChatIds(new Set());
     import("@/lib/folder-assignments").then(({ getChatsInFolder, onAssignmentsChange }) => {
-      const refresh = () => getChatsInFolder(activeFolderId).then((ids) => { if (!cancelled) setFolderChatIds(new Set(ids)); });
+      const refresh = () =>
+        getChatsInFolder(activeFolderId).then((ids) => {
+          if (!cancelled) setFolderChatIds(new Set(ids));
+        });
       refresh();
       const unsub = onAssignmentsChange(refresh);
       return unsub;
     });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, [activeFolderId, isSystemFolder]);
 
   const folderFiltered = folderChatIds ? chats.filter((c) => folderChatIds.has(c.id)) : chats;
-  const visible = folderFiltered.filter((c) => view === "archive" ? c.archived : !c.archived);
+  const visible = folderFiltered.filter((c) => (view === "archive" ? c.archived : !c.archived));
   const archivedCount = chats.filter((c) => c.archived).length;
   const sorted = [...visible].sort((a, b) => {
     if (a.starred && !b.starred) return -1;
@@ -367,9 +436,7 @@ const ChatList = ({ onOpenChat, activeFolderId, isSystemFolder }: ChatListProps)
           <h1 className="text-2xl font-bold gradient-text">{t("chats")}</h1>
         </div>
         <div className="flex-1 flex items-center justify-center px-8">
-          <p className="text-sm text-muted-foreground text-center">
-            {t("noActiveChats")}
-          </p>
+          <p className="text-sm text-muted-foreground text-center">{t("noActiveChats")}</p>
         </div>
       </div>
     );
@@ -452,7 +519,7 @@ const ChatList = ({ onOpenChat, activeFolderId, isSystemFolder }: ChatListProps)
                   // Spec §2 — Mark-as-Read: immediately reset the unread count
                   // in BOTH local state and persistent meta so the badge does
                   // not reappear on the next 3s refresh poll.
-                  setChats((prev) => prev.map((c) => c.id === chat.id ? { ...c, unread: 0 } : c));
+                  setChats((prev) => prev.map((c) => (c.id === chat.id ? { ...c, unread: 0 } : c)));
                   const existing = await getChatMeta(chat.id);
                   if (existing) {
                     await saveChatMeta({ ...existing, unread: 0 });
@@ -462,15 +529,44 @@ const ChatList = ({ onOpenChat, activeFolderId, isSystemFolder }: ChatListProps)
                 onArchive={() => archiveChat(chat.id)}
                 onUnarchive={() => unarchiveChat(chat.id)}
                 onToggleStar={(e) => toggleStar(e, chat.id)}
-                onMenu={(e) => { e.stopPropagation(); setMenuOpen(menuOpen === chat.id ? null : chat.id); }}
+                onMenu={(e) => {
+                  e.stopPropagation();
+                  setMenuOpen(menuOpen === chat.id ? null : chat.id);
+                }}
                 onCloseMenu={() => setMenuOpen(null)}
-                onMute={() => { void handleMuteMenu(chat.id); }}
-                onClearChat={async () => { await clearMessagesForChat(chat.id); clearChat(chat.id); toast({ title: t("chatCleared") }); }}
+                onMute={() => {
+                  void handleMuteMenu(chat.id);
+                }}
+                onClearChat={async () => {
+                  await clearMessagesForChat(chat.id);
+                  clearChat(chat.id);
+                  toast({ title: t("chatCleared") });
+                }}
                 onToggleBlock={() => toggleBlock(chat.id)}
-                onToggleFavorite={() => { const fake = { stopPropagation() {} } as React.MouseEvent; toggleStar(fake, chat.id); setMenuOpen(null); }}
-                onDeleteFriend={async () => { await clearMessagesForChat(chat.id); try { await dbDelete("contacts", chat.id); } catch { /* ignore */ } deleteChat(chat.id); toast({ title: "Друг удалён" }); }}
-                onAssign={() => { setAssignTarget({ id: chat.id, name: chat.name }); setMenuOpen(null); }}
-                onReport={async () => { await submitReport(chat.id, "harassment"); setMenuOpen(null); toast({ title: t("reportSubmitted"), description: t("autoBlockedDesc") }); }}
+                onToggleFavorite={() => {
+                  const fake = { stopPropagation() {} } as React.MouseEvent;
+                  toggleStar(fake, chat.id);
+                  setMenuOpen(null);
+                }}
+                onDeleteFriend={async () => {
+                  await clearMessagesForChat(chat.id);
+                  try {
+                    await dbDelete("contacts", chat.id);
+                  } catch {
+                    /* ignore */
+                  }
+                  deleteChat(chat.id);
+                  toast({ title: "Друг удалён" });
+                }}
+                onAssign={() => {
+                  setAssignTarget({ id: chat.id, name: chat.name });
+                  setMenuOpen(null);
+                }}
+                onReport={async () => {
+                  await submitReport(chat.id, "harassment");
+                  setMenuOpen(null);
+                  toast({ title: t("reportSubmitted"), description: t("autoBlockedDesc") });
+                }}
               />
             </motion.div>
           ))}
@@ -484,7 +580,11 @@ const ChatList = ({ onOpenChat, activeFolderId, isSystemFolder }: ChatListProps)
         )}
       </div>
       <MuteModal open={!!muteTarget} onClose={() => setMuteTarget(null)} onMute={handleMute} />
-      <DisappearingMessagesModal open={!!disappearingTarget} onClose={() => setDisappearingTarget(null)} onSelect={handleDisappearing} />
+      <DisappearingMessagesModal
+        open={!!disappearingTarget}
+        onClose={() => setDisappearingTarget(null)}
+        onSelect={handleDisappearing}
+      />
       <ContactAssignSheet
         open={!!assignTarget}
         chatId={assignTarget?.id || null}

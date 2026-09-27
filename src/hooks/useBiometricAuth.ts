@@ -70,8 +70,6 @@ export function useBiometricAuth() {
     };
   }, []);
 
-
-
   const checkAvailability = async () => {
     if (!isNative()) {
       setIsAvailable(false);
@@ -118,7 +116,6 @@ export function useBiometricAuth() {
       setIsLocked(false);
     }
   }, [isEnabled, authenticate]);
-
 
   return { isAvailable, isEnabled, isLocked, toggle, authenticate };
 }

@@ -31,7 +31,9 @@ const actionTransition = { duration: 0.16, ease: "easeOut" } as const;
 
 const formatDuration = (ms: number) => {
   const totalSec = Math.floor(ms / 1000);
-  const m = Math.floor(totalSec / 60).toString().padStart(2, "0");
+  const m = Math.floor(totalSec / 60)
+    .toString()
+    .padStart(2, "0");
   const s = (totalSec % 60).toString().padStart(2, "0");
   return `${m}:${s}`;
 };
@@ -58,17 +60,29 @@ const MessageInput = ({
   // first tap; while recording, the SAME button morphs into a Send (stop +
   // upload) action and a sibling Trash button cancels without sending.
   // No long-press / pointer-capture gymnastics — every tap is honored.
-  const { state: recState, durationMs, start, stop, cancel } = useVoiceRecorder({
+  const {
+    state: recState,
+    durationMs,
+    start,
+    stop,
+    cancel,
+  } = useVoiceRecorder({
     onError: () => {
-      toast({ title: t("micPermissionDenied") || "Microphone permission denied", variant: "destructive" });
+      toast({
+        title: t("micPermissionDenied") || "Microphone permission denied",
+        variant: "destructive",
+      });
     },
   });
-  const isRecording = recState === "recording" || recState === "requesting" || recState === "stopping";
+  const isRecording =
+    recState === "recording" || recState === "requesting" || recState === "stopping";
 
   // Safety: if the picker/keyboard steals focus while recording, hard-cancel.
   useEffect(() => {
     if (!isRecording) return;
-    const onVis = () => { if (document.hidden) cancel(); };
+    const onVis = () => {
+      if (document.hidden) cancel();
+    };
     document.addEventListener("visibilitychange", onVis);
     return () => document.removeEventListener("visibilitychange", onVis);
   }, [isRecording, cancel]);
@@ -146,9 +160,13 @@ const MessageInput = ({
                 animate={{ scale: [1, 1.25, 1], opacity: [0.7, 1, 0.7] }}
                 transition={{ duration: 1.1, repeat: Infinity }}
                 className="w-2.5 h-2.5 rounded-full bg-emerald-400"
-                style={{ boxShadow: "0 0 12px rgb(52 211 153 / 0.8), 0 0 24px rgb(52 211 153 / 0.4)" }}
+                style={{
+                  boxShadow: "0 0 12px rgb(52 211 153 / 0.8), 0 0 24px rgb(52 211 153 / 0.4)",
+                }}
               />
-              <span className="text-xs font-mono tabular-nums text-emerald-400">{formatDuration(durationMs)}</span>
+              <span className="text-xs font-mono tabular-nums text-emerald-400">
+                {formatDuration(durationMs)}
+              </span>
               <span className="flex-1 text-[11px] truncate text-muted-foreground">
                 {t("recordingRelease") || "Tap send to finish, trash to cancel"}
               </span>
@@ -171,10 +189,20 @@ const MessageInput = ({
           </button>
         ) : (
           <>
-            <button type="button" onClick={onToggleEmoji} className="p-2 text-muted-foreground" aria-label="Emoji">
+            <button
+              type="button"
+              onClick={onToggleEmoji}
+              className="p-2 text-muted-foreground"
+              aria-label="Emoji"
+            >
               <Smile size={20} />
             </button>
-            <button type="button" onClick={onToggleAttach} className="p-2 text-muted-foreground" aria-label="Attachment">
+            <button
+              type="button"
+              onClick={onToggleAttach}
+              className="p-2 text-muted-foreground"
+              aria-label="Attachment"
+            >
               <Paperclip size={20} />
             </button>
           </>
@@ -238,14 +266,23 @@ const MessageInput = ({
                   if (!onSchedule) return;
                   const target = e.currentTarget;
                   const t = window.setTimeout(() => onSchedule(), 500);
-                  const clear = () => { window.clearTimeout(t); target.removeEventListener("pointerup", clear); target.removeEventListener("pointerleave", clear); target.removeEventListener("pointercancel", clear); };
+                  const clear = () => {
+                    window.clearTimeout(t);
+                    target.removeEventListener("pointerup", clear);
+                    target.removeEventListener("pointerleave", clear);
+                    target.removeEventListener("pointercancel", clear);
+                  };
                   target.addEventListener("pointerup", clear);
                   target.addEventListener("pointerleave", clear);
                   target.addEventListener("pointercancel", clear);
                 }}
                 className="absolute inset-0 flex items-center justify-center rounded-xl bg-primary text-primary-foreground"
                 style={silent ? { boxShadow: "0 0 12px rgb(0 255 255 / 0.55)" } : undefined}
-                aria-label={silent ? "Send silently (long-press to schedule)" : "Send message (long-press to schedule)"}
+                aria-label={
+                  silent
+                    ? "Send silently (long-press to schedule)"
+                    : "Send message (long-press to schedule)"
+                }
                 title={onSchedule ? "Hold to schedule" : undefined}
               >
                 {silent ? <BellOff size={18} /> : <Send size={18} />}
@@ -267,7 +304,10 @@ const MessageInput = ({
                 }`}
                 style={
                   isRecording
-                    ? { boxShadow: "0 0 16px rgb(16 185 129 / 0.7), 0 0 32px rgb(16 185 129 / 0.35)" }
+                    ? {
+                        boxShadow:
+                          "0 0 16px rgb(16 185 129 / 0.7), 0 0 32px rgb(16 185 129 / 0.35)",
+                      }
                     : undefined
                 }
                 aria-label={isRecording ? "Tap to send recording" : "Tap to start recording"}

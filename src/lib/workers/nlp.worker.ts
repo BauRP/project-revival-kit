@@ -9,9 +9,7 @@ type Request =
   | { id: number; type: "warmup" }
   | { id: number; type: "reply"; text: string; lang?: BotLang };
 
-type Response =
-  | { id: number; ok: true; reply: string }
-  | { id: number; ok: false; error: string };
+type Response = { id: number; ok: true; reply: string } | { id: number; ok: false; error: string };
 
 self.onmessage = async (event: MessageEvent<Request>) => {
   const req = event.data;
@@ -19,7 +17,11 @@ self.onmessage = async (event: MessageEvent<Request>) => {
   try {
     if (req.type === "warmup") {
       await warmup();
-      (self as unknown as Worker).postMessage({ id: req.id, ok: true, reply: "" } satisfies Response);
+      (self as unknown as Worker).postMessage({
+        id: req.id,
+        ok: true,
+        reply: "",
+      } satisfies Response);
       return;
     }
     const reply = await resolveReply(req.text, req.lang);

@@ -127,7 +127,11 @@ export function signDataAsync(data: string, secretKey: string): Promise<string> 
 export function generateIdentityKeysAsync(): Promise<IdentityKeys> {
   const w = getWorker();
   if (!w) {
-    return Promise.reject(new Error("Secure crypto worker is unavailable; identity generation was not run on the UI thread"));
+    return Promise.reject(
+      new Error(
+        "Secure crypto worker is unavailable; identity generation was not run on the UI thread",
+      ),
+    );
   }
   return dispatch<IdentityKeys>("keygen", {}, () => {
     throw new Error("Crypto worker timed out; refusing main-thread identity generation");
@@ -149,10 +153,8 @@ export function encryptMessageAsync(
   recipientPublicKey: string,
   senderSecretKey: string,
 ): Promise<{ ciphertext: string; nonce: string }> {
-  return dispatch(
-    "encrypt",
-    { plaintext, recipientPublicKey, senderSecretKey },
-    () => encryptMessage(plaintext, recipientPublicKey, senderSecretKey),
+  return dispatch("encrypt", { plaintext, recipientPublicKey, senderSecretKey }, () =>
+    encryptMessage(plaintext, recipientPublicKey, senderSecretKey),
   );
 }
 
@@ -162,10 +164,8 @@ export function decryptMessageAsync(
   senderPublicKey: string,
   recipientSecretKey: string,
 ): Promise<string> {
-  return dispatch(
-    "decrypt",
-    { ciphertext, nonce, senderPublicKey, recipientSecretKey },
-    () => decryptMessage(ciphertext, nonce, senderPublicKey, recipientSecretKey),
+  return dispatch("decrypt", { ciphertext, nonce, senderPublicKey, recipientSecretKey }, () =>
+    decryptMessage(ciphertext, nonce, senderPublicKey, recipientSecretKey),
   );
 }
 

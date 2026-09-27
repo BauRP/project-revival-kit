@@ -11,11 +11,7 @@
 //  AddFriend.tsx) keep working without changes.
 // ============================================================================
 
-import {
-  sendTrivoTextMessage,
-  onTrivoMessage,
-  initTrivoServer,
-} from "../trivo-server";
+import { sendTrivoTextMessage, onTrivoMessage, initTrivoServer } from "../trivo-server";
 import { dbPut, dbGet, dbGetAll } from "../storage";
 import { dxdb } from "../dexie-db";
 import type { P2PMessage, ChatMeta } from "../p2p";
@@ -179,10 +175,7 @@ export async function purgeExpiredBufferedMessagesForAllUsers(): Promise<number>
  * Buffer a message locally for an offline recipient. The WebRTC engine drains
  * the queue automatically as soon as the peer comes online.
  */
-export async function bufferMessageInCloud(
-  recipientId: string,
-  msg: P2PMessage,
-): Promise<void> {
+export async function bufferMessageInCloud(recipientId: string, msg: P2PMessage): Promise<void> {
   await dxdb.pending_messages.put({
     id: msg.id,
     targetUserId: recipientId,

@@ -64,7 +64,9 @@ export class SupportBot {
     }
   }
 
-  private post(message: { type: "warmup" } | { type: "reply"; text: string; lang?: BotLang }): Promise<string> | null {
+  private post(
+    message: { type: "warmup" } | { type: "reply"; text: string; lang?: BotLang },
+  ): Promise<string> | null {
     const worker = this.getWorker();
     if (!worker) return null;
     const id = ++this.seq;

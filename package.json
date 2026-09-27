@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build && rm -rf dist && mkdir -p dist && (cp -R .output/public/* dist/ 2>/dev/null || cp -R dist/client/* dist/ 2>/dev/null || true)",
+    "build": "vite build && rm -rf .web-stage && mv dist/client .web-stage && rm -rf dist && mv .web-stage dist",
     "build:dev": "vite build --mode development",
     "preview": "vite preview",
     "capacitor:sync": "npx cap sync android",
@@ -100,7 +100,7 @@
   "devDependencies": {
     "@capacitor/cli": "8.5.0",
     "@eslint/js": "^9.32.0",
-    "@lovable.dev/vite-tanstack-config": "2.13.1",
+    "@lovable.dev/vite-tanstack-config": "2.23.1",
     "@types/node": "^22.16.5",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",

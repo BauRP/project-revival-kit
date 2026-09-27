@@ -44,7 +44,10 @@ for (const file of walk(ROOT)) {
     // "/./assets/x" and '/./_build/x' → "./assets/x"
     .replaceAll("/./", "./")
     // ("/assets/… | "/_build/… | "/favicon.ico → relative
-    .replace(/(["'(])\/(assets\/|_build\/|_serverFn\/|favicon\.ico|robots\.txt|placeholder\.svg)/g, "$1./$2");
+    .replace(
+      /(["'(])\/(assets\/|_build\/|_serverFn\/|favicon\.ico|robots\.txt|placeholder\.svg)/g,
+      "$1./$2",
+    );
   if (after !== before) {
     writeFileSync(file, after);
     touched += 1;

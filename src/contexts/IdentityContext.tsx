@@ -21,14 +21,12 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
   const [identity, setIdentity] = useState<IdentityKeys | null>(null);
   const [userId, setUserId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [stealthMode, setStealthMode] = useState(
-    () => safeStorage.get("trivo-stealth") === "true",
-  );
+  const [stealthMode, setStealthMode] = useState(() => safeStorage.get("trivo-stealth") === "true");
 
   useEffect(() => {
     let cancelled = false;
     let initTimer: number | undefined;
-    
+
     const initIdentity = async () => {
       try {
         const keys = await getOrCreateIdentity();
@@ -45,7 +43,6 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
         } catch (error) {
           console.warn("[trivo] public-key cache unavailable:", error);
         }
-
       } catch (error) {
         console.error("Критическая ошибка инициализации личности:", error);
         if (!cancelled) setIsLoading(false);
@@ -85,7 +82,15 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <IdentityContext.Provider
-      value={{ identity, userId, fingerprint, isLoading, stealthMode, toggleStealth, deleteAccount }}
+      value={{
+        identity,
+        userId,
+        fingerprint,
+        isLoading,
+        stealthMode,
+        toggleStealth,
+        deleteAccount,
+      }}
     >
       {children}
     </IdentityContext.Provider>

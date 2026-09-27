@@ -22,9 +22,7 @@ export interface TranslateTextInput {
   targetLanguage: string;
 }
 
-export type TranslateTextResult =
-  | { ok: true; translated: string }
-  | { ok: false; error: string };
+export type TranslateTextResult = { ok: true; translated: string } | { ok: false; error: string };
 
 const langName = (code: string) => LANG_NAMES[code] || code;
 

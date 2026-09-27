@@ -75,7 +75,11 @@ const Item = ({
       destructive ? "text-destructive" : "text-foreground"
     }`}
   >
-    <span className={active ? "text-[#00FFFF]" : destructive ? "text-destructive" : "text-muted-foreground"}>
+    <span
+      className={
+        active ? "text-[#00FFFF]" : destructive ? "text-destructive" : "text-muted-foreground"
+      }
+    >
       {icon}
     </span>
     <span className="flex-1 text-left">{label}</span>
@@ -165,7 +169,9 @@ const ContactActionsMenu = ({
           />
           <Item
             icon={state.archived ? <ArchiveRestore size={16} /> : <Archive size={16} />}
-            label={state.archived ? t("unarchiveAction") || "Unarchive" : t("archiveAction") || "Archive"}
+            label={
+              state.archived ? t("unarchiveAction") || "Unarchive" : t("archiveAction") || "Archive"
+            }
             active={state.archived}
             onClick={onToggleArchive}
           />
