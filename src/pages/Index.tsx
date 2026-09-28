@@ -324,7 +324,7 @@ const Index = () => {
         className="flex-1 min-h-0 overflow-hidden"
         style={{ paddingBottom: getBottomNavOffset() }}
       >
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={activeTab}
             initial={{ opacity: 0, y: 8 }}

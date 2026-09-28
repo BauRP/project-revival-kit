@@ -60,8 +60,8 @@ export function renderErrorPage(): string {
       <h1>Something went wrong</h1>
       <p>The app could not be started on the server. Your local messages and keys are untouched — they never leave this device.</p>
       <div class="row">
-        <a class="btn primary" href="" target="_self">Refresh</a>
-        <a class="btn" href="./" target="_self">Go home</a>
+        <a class="btn primary" href="/?recover=1" target="_self">Refresh</a>
+        <a class="btn" href="/" target="_self">Go home</a>
       </div>
     </main>
   </body>
