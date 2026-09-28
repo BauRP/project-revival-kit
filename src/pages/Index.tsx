@@ -1,5 +1,4 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import BottomNav from "@/components/BottomNav";
 import ChatList from "@/components/ChatList";
 import ChatRoom from "@/components/ChatRoom";
@@ -324,15 +323,7 @@ const Index = () => {
         className="flex-1 min-h-0 overflow-hidden"
         style={{ paddingBottom: getBottomNavOffset() }}
       >
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.div
-            key={activeTab}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.15 }}
-            className="h-full overflow-y-auto scrollbar-hide"
-          >
+        <div key={activeTab} className="h-full overflow-y-auto scrollbar-hide">
             {activeTab === "chats" && (
               <div className="flex flex-col h-full">
                 <TabbedWorkspace onActiveFolderChange={(f) => setActiveFolder(f)} />
@@ -349,8 +340,7 @@ const Index = () => {
             {activeTab === "friends" && <FriendsList onOpenChat={handleOpenChat} />}
             {activeTab === "security" && <SecurityDashboard />}
             {activeTab === "profile" && <ProfilePage />}
-          </motion.div>
-        </AnimatePresence>
+        </div>
       </div>
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
       <FloatingVideoHost
