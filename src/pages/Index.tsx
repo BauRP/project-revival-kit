@@ -119,11 +119,8 @@ const Index = () => {
           } catch (err) {
             console.warn("[trivo] initTrivoServer failed:", err);
           }
-          try {
-            void initPeer(userId).catch((err) => console.warn("[trivo] initPeer failed:", err));
-          } catch (err) {
-            console.warn("[trivo] initPeer threw synchronously:", err);
-          }
+          // Tor (Stage B) is started by <TransportStatusChip>, after the UI is
+          // idle and visible, so no JNI/foreground-service work happens here.
           try {
             stopPresence = startPresence(userId);
           } catch (err) {

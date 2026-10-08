@@ -75,6 +75,15 @@ public class TorTransportPlugin extends Plugin {
         if (secretKey != null && !secretKey.isEmpty()) {
             intent.putExtra(TorOnionService.EXTRA_SECRET_KEY, secretKey);
         }
+        // A dataSync foreground service may only be started while the app is
+        // visible (API 31+). The JS layer starts Tor after first paint and only
+        // while the document is visible; double-check here and reject instead
+        // of attempting an invalid start.
+        if (getActivity() == null || getActivity().isFinishing()
+                || !getActivity().hasWindowFocus() && !getActivity().getWindow().getDecorView().isShown()) {
+            call.reject("FOREGROUND_REQUIRED", "Tor can only be started while the app is open");
+            return;
+        }
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 getContext().startForegroundService(intent);
@@ -82,29 +91,16 @@ public class TorTransportPlugin extends Plugin {
                 getContext().startService(intent);
             }
         } catch (Throwable startFailure) {
-            // Android 12+ (and strictly enforced on API 34/36) throws
-            // ForegroundServiceStartNotAllowedException when the process is not in a
-            // valid state to promote a service to the foreground (e.g. cold-started
-            // from the background). Degrade to a background start instead of failing.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-                    && startFailure instanceof android.app.ForegroundServiceStartNotAllowedException) {
-                Log.w(TAG, "Foreground start not allowed, retrying as background service",
-                        startFailure);
-                try {
-                    getContext().startService(intent);
-                } catch (Throwable backgroundFailure) {
-                    Log.e(TAG, "Background Tor service start failed", backgroundFailure);
-                    call.reject(
-                            "Tor transport cannot start while the app is in the background",
-                            backgroundFailure.getMessage());
-                    return;
-                }
-            } else {
-                Log.e(TAG, "Unable to start Tor foreground service", startFailure);
-                call.reject("Unable to start Tor foreground service", startFailure.getMessage());
-                return;
-            }
+            // ForegroundServiceStartNotAllowedException (API 31+) or a
+            // SecurityException for a missing FGS type permission. A background
+            // service would be killed within a minute on API 26+, so do not
+            // pretend — report the rejection so the UI can offer a retry.
+            Log.e(TAG, "Unable to start Tor foreground service", startFailure);
+            call.reject("FOREGROUND_START_REJECTED",
+                    startFailure.getClass().getSimpleName() + ": " + startFailure.getMessage());
+            return;
         }
+
 
         io.execute(() -> {
             // Wait (bounded) for tor to bootstrap and publish the onion service.
