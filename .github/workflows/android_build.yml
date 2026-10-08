@@ -28,34 +28,11 @@ jobs:
         run: |
           npm install --legacy-peer-deps
 
-      - name: Build Web Assets & Diagnose
+      - name: Build Web Assets
         run: |
-          echo "Запускаю строгую сборку Vite..."
           CAP_BUILD=1 npm run build
-          
-          echo "=== НАЧАЛО ДИАГНОСТИКИ И ИСПРАВЛЕНИЯ ==="
-          echo "1. Ищем, где сгенерировался index.html:"
-          find . -name "index.html" -not -path "*/node_modules/*" -not -path "*/android/*" -not -path "*/.git/*"
-          
-          echo "2. Гарантируем, что файлы скопированы в mobile_dist:"
-          mkdir -p mobile_dist
-          if [ ! -f "mobile_dist/index.html" ]; then
-            echo "ВНИМАНИЕ: index.html не найден в mobile_dist! Копирую вручную..."
-            if [ -d "dist/client" ] && [ -f "dist/client/index.html" ]; then
-              cp -R dist/client/* mobile_dist/
-              echo "Успешно скопировано из dist/client/"
-            elif [ -d "dist" ] && [ -f "dist/index.html" ]; then
-              cp -R dist/* mobile_dist/
-              echo "Успешно скопировано из dist/"
-            else
-              echo "КРИТИЧЕСКАЯ ОШИБКА: веб-интерфейс (index.html) не собрался вообще!"
-              exit 1
-            fi
-          fi
-          
-          echo "3. Проверяем содержимое папки mobile_dist:"
-          ls -la mobile_dist/
-          echo "=== КОНЕЦ ДИАГНОСТИКИ ==="
+          node scripts/fix-relative-assets.mjs
+          node scripts/verify-web-dir.mjs
 
       - name: Bootstrap Gradle Wrapper JAR
         run: |

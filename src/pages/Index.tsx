@@ -12,7 +12,6 @@ import FloatingVideoHost from "@/components/FloatingVideoHost";
 import { useIdentity } from "@/contexts/IdentityContext";
 import { useLanguage } from "@/contexts/LanguageContext";
 import {
-  initPeer,
   onP2PMessage,
   onConnectionChange,
   flushPendingMessages,
@@ -22,6 +21,7 @@ import {
   type P2PMessage,
 } from "@/lib/p2p";
 import { initTrivoServer } from "@/lib/trivo-server";
+import { TransportStatusChip } from "@/components/TransportStatusChip";
 import { executePanic, createPanicLongPress } from "@/lib/panic";
 import { startPresence, setInvisibleMode } from "@/lib/presence";
 import {
@@ -119,11 +119,8 @@ const Index = () => {
           } catch (err) {
             console.warn("[trivo] initTrivoServer failed:", err);
           }
-          try {
-            void initPeer(userId).catch((err) => console.warn("[trivo] initPeer failed:", err));
-          } catch (err) {
-            console.warn("[trivo] initPeer threw synchronously:", err);
-          }
+          // Tor (Stage B) is started by <TransportStatusChip>, after the UI is
+          // idle and visible, so no JNI/foreground-service work happens here.
           try {
             stopPresence = startPresence(userId);
           } catch (err) {
@@ -327,6 +324,11 @@ const Index = () => {
             {activeTab === "chats" && (
               <div className="flex flex-col h-full">
                 <TabbedWorkspace onActiveFolderChange={(f) => setActiveFolder(f)} />
+                {userId && (
+                  <div className="flex justify-end px-3 py-1">
+                    <TransportStatusChip userId={userId} />
+                  </div>
+                )}
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <ChatList
                     onOpenChat={handleOpenChat}
