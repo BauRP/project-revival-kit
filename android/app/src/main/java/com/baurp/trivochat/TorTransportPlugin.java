@@ -80,7 +80,8 @@ public class TorTransportPlugin extends Plugin {
         // while the document is visible; double-check here and reject instead
         // of attempting an invalid start.
         if (getActivity() == null || getActivity().isFinishing()
-                || !getActivity().hasWindowFocus() && !getActivity().getWindow().getDecorView().isShown()) {
+                || !getActivity().getLifecycle().getCurrentState()
+                        .isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)) {
             call.reject("FOREGROUND_REQUIRED", "Tor can only be started while the app is open");
             return;
         }
