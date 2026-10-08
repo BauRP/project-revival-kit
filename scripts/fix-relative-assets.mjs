@@ -12,7 +12,7 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-const ROOT = resolve(process.cwd(), "dist");
+const ROOT = resolve(process.cwd(), "dist/client");
 const TEXT = new Set([".html", ".js", ".mjs", ".css", ".json", ".map"]);
 
 /** Files that must keep absolute URLs (none today, kept for clarity). */
