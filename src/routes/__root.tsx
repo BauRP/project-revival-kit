@@ -52,7 +52,7 @@ export const Route = createRootRoute({
  * React tree (including a failed lazy chunk for the legacy app shell) before
  * it can reach h3 and become an opaque 500.
  */
-function RootErrorComponent({ error }: { error: Error }) {
+function RootErrorComponent({ error }: import("@tanstack/react-router").ErrorComponentProps) {
   console.error("[trivo] route error boundary:", error);
   const router = useRouter();
 
