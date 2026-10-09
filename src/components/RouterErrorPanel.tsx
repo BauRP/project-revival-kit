@@ -6,7 +6,8 @@ import { goHome } from "@/lib/home-navigation";
  * Kept in its own module so `src/router.tsx` exports only non-component
  * values (Vite Fast Refresh requirement: react-refresh/only-export-components).
  */
-export default function RouterErrorPanel({ error, reset }: import("@tanstack/react-router").ErrorComponentProps) {
+export default function RouterErrorPanel({ error: rawError, reset }: import("@tanstack/react-router").ErrorComponentProps) {
+  const error = rawError instanceof Error ? rawError : new Error(String(rawError));
   const router = useRouter();
 
   return (
