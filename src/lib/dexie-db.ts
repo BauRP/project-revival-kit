@@ -1,41 +1,57 @@
 // Dexie.js local database — the only persistent store for the Trivo P2P stack.
-// Tables:
-//   - contacts          : userId → publicKey + lastSeen
-//   - pending_messages  : outbound queue waiting for a peer to come online
-//   - blobs             : binary payloads keyed by fileId
-//   - lifecycle         : per-chat edit/delete/pin mirror
+// Every peer is keyed by its full `.onion` address.
+//   - contacts  : onion → local display name + last seen
+//   - messages  : chat messages (single source of truth for message state)
+//   - outbox    : sealed (ciphertext-only) frames awaiting a DELIVERED_ACK
+//   - inbox_raw : sealed inbound frames not yet committed to `messages`
+//   - blobs     : binary payloads keyed by fileId
+//   - lifecycle : per-chat edit/delete/pin mirror
 
 import Dexie, { type Table } from "dexie";
 
 export interface ContactRecord {
-  userId: string;
-  signingKey: string;
-  exchangeKey: string;
-  updatedAt: number;
-  /** Unix-ms timestamp of last verified online presence (set on ping/pong + close). */
+  onion: string;
+  displayName?: string;
   lastSeen?: number;
-  /** v3 hidden-service hostname this contact is reachable at (`<56>.onion`). */
-  onionAddress?: string;
+  addedAt: number;
 }
 
-export type PendingPayloadKind =
+export type OutboxKind =
   | "text_message"
   | "friend_request"
   | "friend_request_status"
   | "message_status"
   | "message_lifecycle";
 
-export interface PendingMessageRecord {
+export interface OutboxRecord {
+  /** Payload id — identical to the message id for text messages. */
   id: string;
-  targetUserId: string;
-  senderUserId: string;
-  kind: PendingPayloadKind;
-  payload: Record<string, unknown>;
-  blobFileId?: string;
-  /** Pre-built, pre-signed onion frame (JSON) so retries never re-sign. */
-  frame?: string;
+  peer: string;
+  kind: OutboxKind;
+  /** Sealed frame JSON (ciphertext only). */
+  frame: string;
+  /** pending = never shipped, sent = reached remote socket, failed = last attempt failed. */
+  status: "pending" | "sent" | "failed";
+  attempts: number;
+  nextAttemptAt: number;
   createdAt: number;
-  status: "queued" | "in_flight" | "delivered" | "failed";
+  updatedAt: number;
+}
+
+export interface InboxRawRecord {
+  id: string;
+  raw: string;
+  receivedAt: number;
+}
+
+export interface StoredMessage {
+  id: string;
+  from: string;
+  to: string;
+  text: string;
+  timestamp: number;
+  status: "pending" | "sent" | "delivered" | "read";
+  [key: string]: unknown;
 }
 
 export interface BlobRecord {
@@ -57,29 +73,28 @@ export interface LifecycleRecord {
 
 class TrivoDexie extends Dexie {
   contacts!: Table<ContactRecord, string>;
-  pending_messages!: Table<PendingMessageRecord, string>;
+  messages!: Table<StoredMessage, string>;
+  outbox!: Table<OutboxRecord, string>;
+  inbox_raw!: Table<InboxRawRecord, string>;
   blobs!: Table<BlobRecord, string>;
   lifecycle!: Table<LifecycleRecord, string>;
 
   constructor() {
     super("trivo-p2p");
-    this.version(1).stores({
-      contacts: "&userId, updatedAt",
-      pending_messages: "&id, targetUserId, status, createdAt",
-      blobs: "&fileId, storedAt",
-      lifecycle: "&key, chatKey, messageId, updatedAt",
-    });
-    // v2 adds lastSeen index on contacts (additive — no data migration needed).
-    this.version(2).stores({
-      contacts: "&userId, updatedAt, lastSeen",
+    this.version(3).stores({
+      contacts: "&userId, updatedAt, lastSeen, onionAddress",
       pending_messages: "&id, targetUserId, status, createdAt",
       blobs: "&fileId, storedAt, size",
       lifecycle: "&key, chatKey, messageId, updatedAt",
     });
-    // v3 indexes the onion address so peers can be resolved by hostname too.
-    this.version(3).stores({
-      contacts: "&userId, updatedAt, lastSeen, onionAddress",
-      pending_messages: "&id, targetUserId, status, createdAt",
+    // v4 drops the userId-keyed directory and the plaintext pending queue.
+    this.version(4).stores({ contacts: null, pending_messages: null });
+    // v5 re-creates contacts keyed by onion and adds the transactional tables.
+    this.version(5).stores({
+      contacts: "&onion, lastSeen",
+      messages: "&id, from, to, timestamp",
+      outbox: "&id, peer, status, nextAttemptAt, createdAt",
+      inbox_raw: "&id, receivedAt",
       blobs: "&fileId, storedAt, size",
       lifecycle: "&key, chatKey, messageId, updatedAt",
     });
@@ -88,118 +103,37 @@ class TrivoDexie extends Dexie {
 
 export const dxdb = new TrivoDexie();
 
-// ─── Contact directory ────────────────────────────────────────
+// ─── Contacts (onion → display name) ──────────────────────────
 
-export async function saveContactKeys(
-  userId: string,
-  signingKey: string,
-  exchangeKey: string,
-): Promise<void> {
-  if (!userId || !signingKey || !exchangeKey) return;
-  const existing = await dxdb.contacts.get(userId);
+export async function upsertContact(onion: string, displayName?: string): Promise<void> {
+  if (!onion) return;
+  const existing = await dxdb.contacts.get(onion);
   await dxdb.contacts.put({
-    userId,
-    signingKey,
-    exchangeKey,
-    updatedAt: Date.now(),
+    onion,
+    displayName: displayName ?? existing?.displayName,
     lastSeen: existing?.lastSeen,
+    addedAt: existing?.addedAt ?? Date.now(),
   });
 }
 
-export async function getContactKeys(userId: string): Promise<ContactRecord | undefined> {
-  return dxdb.contacts.get(userId);
-}
-
-export async function setContactLastSeen(userId: string, ts: number = Date.now()): Promise<void> {
-  if (!userId) return;
-  const existing = await dxdb.contacts.get(userId);
-  if (!existing) {
-    await dxdb.contacts.put({
-      userId,
-      signingKey: "",
-      exchangeKey: "",
-      updatedAt: Date.now(),
-      lastSeen: ts,
-    });
-    return;
-  }
-  await dxdb.contacts.put({ ...existing, lastSeen: ts });
-}
-
-export async function setContactOnion(userId: string, onionAddress: string): Promise<void> {
-  if (!userId || !onionAddress) return;
-  const existing = await dxdb.contacts.get(userId);
+export async function setContactLastSeen(onion: string, ts: number = Date.now()): Promise<void> {
+  if (!onion) return;
+  const existing = await dxdb.contacts.get(onion);
   await dxdb.contacts.put({
-    userId,
-    signingKey: existing?.signingKey || "",
-    exchangeKey: existing?.exchangeKey || "",
-    updatedAt: Date.now(),
-    lastSeen: existing?.lastSeen,
-    onionAddress,
+    onion,
+    displayName: existing?.displayName,
+    addedAt: existing?.addedAt ?? ts,
+    lastSeen: ts,
   });
-}
-
-export async function getContactOnion(userId: string): Promise<string | null> {
-  const rec = await dxdb.contacts.get(userId);
-  return rec?.onionAddress ?? null;
-}
-
-/** Reverse lookup: which contact owns this onion hostname. */
-export async function getContactByOnion(onionAddress: string): Promise<ContactRecord | undefined> {
-  if (!onionAddress) return undefined;
-  return dxdb.contacts.where("onionAddress").equals(onionAddress).first();
 }
 
 export async function getAllContacts(): Promise<ContactRecord[]> {
   return dxdb.contacts.toArray();
 }
 
-export async function getContactLastSeen(userId: string): Promise<number | null> {
-  const rec = await dxdb.contacts.get(userId);
+export async function getContactLastSeen(onion: string): Promise<number | null> {
+  const rec = await dxdb.contacts.get(onion);
   return rec?.lastSeen ?? null;
-}
-
-// ─── Pending queue ────────────────────────────────────────────
-
-export async function enqueuePending(
-  record: Omit<PendingMessageRecord, "createdAt" | "status">,
-): Promise<void> {
-  await dxdb.pending_messages.put({
-    ...record,
-    createdAt: Date.now(),
-    status: "queued",
-  });
-}
-
-export async function getPendingFor(targetUserId: string): Promise<PendingMessageRecord[]> {
-  const list = await dxdb.pending_messages.where("targetUserId").equals(targetUserId).toArray();
-  return list
-    .filter((r) => r.status === "queued" || r.status === "in_flight")
-    .sort((a, b) => a.createdAt - b.createdAt);
-}
-
-/** Every frame still awaiting delivery, oldest first, across all peers. */
-export async function getAllQueuedPending(): Promise<PendingMessageRecord[]> {
-  const list = await dxdb.pending_messages.toArray();
-  return list
-    .filter((r) => r.status === "queued" || r.status === "in_flight")
-    .sort((a, b) => a.createdAt - b.createdAt);
-}
-
-export async function markPendingDelivered(id: string): Promise<void> {
-  await dxdb.pending_messages.delete(id);
-}
-
-export async function markPendingFailed(id: string): Promise<void> {
-  const rec = await dxdb.pending_messages.get(id);
-  if (!rec) return;
-  await dxdb.pending_messages.put({ ...rec, status: "failed" });
-}
-
-export async function setPendingInFlight(id: string): Promise<void> {
-  const rec = await dxdb.pending_messages.get(id);
-  if (!rec) return;
-  await dxdb.pending_messages.put({ ...rec, status: "in_flight" });
 }
 
 // ─── Blob store ───────────────────────────────────────────────
@@ -310,10 +244,11 @@ export function stopMediaCacheMonitor(): void {
 // ─── Backup / restore dumps ──────────────────────────────────
 
 export interface DexieDump {
-  schemaVersion: 2;
+  schemaVersion: 3;
   createdAt: number;
   contacts: ContactRecord[];
-  pending_messages: PendingMessageRecord[];
+  messages: StoredMessage[];
+  outbox: OutboxRecord[];
   lifecycle: LifecycleRecord[];
   /** Blobs are base64-encoded so the dump can live as a single JSON string. */
   blobs: Array<Omit<BlobRecord, "data"> & { dataB64: string }>;
@@ -340,9 +275,10 @@ function base64ToBlob(b64: string, mime: string): Blob {
 }
 
 export async function exportDexieDump(): Promise<DexieDump> {
-  const [contacts, pending_messages, lifecycle, blobs] = await Promise.all([
+  const [contacts, messages, outbox, lifecycle, blobs] = await Promise.all([
     dxdb.contacts.toArray(),
-    dxdb.pending_messages.toArray(),
+    dxdb.messages.toArray(),
+    dxdb.outbox.toArray(),
     dxdb.lifecycle.toArray(),
     dxdb.blobs.toArray(),
   ]);
@@ -357,31 +293,34 @@ export async function exportDexieDump(): Promise<DexieDump> {
     })),
   );
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     createdAt: Date.now(),
     contacts,
-    pending_messages,
+    messages,
+    outbox,
     lifecycle,
     blobs: blobsEncoded,
   };
 }
 
 export async function importDexieDump(dump: DexieDump): Promise<void> {
-  if (!dump || dump.schemaVersion !== 2) {
+  if (!dump || dump.schemaVersion !== 3) {
     throw new Error("Backup schema version mismatch");
   }
   await dxdb.transaction(
     "rw",
-    [dxdb.contacts, dxdb.pending_messages, dxdb.lifecycle, dxdb.blobs],
+    [dxdb.contacts, dxdb.messages, dxdb.outbox, dxdb.lifecycle, dxdb.blobs],
     async () => {
       await Promise.all([
         dxdb.contacts.clear(),
-        dxdb.pending_messages.clear(),
+        dxdb.messages.clear(),
+        dxdb.outbox.clear(),
         dxdb.lifecycle.clear(),
         dxdb.blobs.clear(),
       ]);
       await dxdb.contacts.bulkPut(dump.contacts || []);
-      await dxdb.pending_messages.bulkPut(dump.pending_messages || []);
+      await dxdb.messages.bulkPut(dump.messages || []);
+      await dxdb.outbox.bulkPut(dump.outbox || []);
       await dxdb.lifecycle.bulkPut(dump.lifecycle || []);
       const blobRows: BlobRecord[] = (dump.blobs || []).map((b) => ({
         fileId: b.fileId,
