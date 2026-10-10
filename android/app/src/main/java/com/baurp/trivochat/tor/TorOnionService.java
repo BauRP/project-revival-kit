@@ -32,7 +32,6 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -95,13 +94,10 @@ public class TorOnionService extends Service {
     public volatile int localServicePort = 0;
     public volatile String lastError = null;
 
-    private OnionFrameQueue outbox;
-    private OnionFrameQueue inbox;
-    private OnionFrameQueue delivered;
+    private volatile boolean initFailed = false;
 
     private final ExecutorService workers = Executors.newCachedThreadPool();
     private final AtomicBoolean listenerLoopRunning = new AtomicBoolean(false);
-    private final AtomicBoolean retryLoopRunning = new AtomicBoolean(false);
 
     private ServerSocket serverSocket;
     private TorControlConnection control;
@@ -119,9 +115,6 @@ public class TorOnionService extends Service {
         super.onCreate();
         instance = this;
         try {
-            outbox = new OnionFrameQueue(this, "outbox");
-            inbox = new OnionFrameQueue(this, "inbox");
-            delivered = new OnionFrameQueue(this, "delivered");
             createChannel();
             acquireWakeLock();
             registerTorStatusReceiver();
@@ -130,6 +123,7 @@ public class TorOnionService extends Service {
                     + startupFailure.getClass().getSimpleName()
                     + ": "
                     + String.valueOf(startupFailure.getMessage());
+            initFailed = true;
             Log.e(TAG, lastError, startupFailure);
         }
     }
@@ -158,12 +152,11 @@ public class TorOnionService extends Service {
                 String key = intent.getStringExtra(EXTRA_SECRET_KEY);
                 if (key != null && !key.isEmpty()) requestedSecretKey = key;
             }
-            if (lastError != null && outbox == null) {
+            if (initFailed) {
                 updateNotification("Tor transport unavailable");
                 return START_NOT_STICKY;
             }
             bindTor();
-            startRetryLoop();
             return START_STICKY;
         } catch (Throwable startupFailure) {
             lastError = "Tor startup failed: "
@@ -192,7 +185,6 @@ public class TorOnionService extends Service {
         running = false;
         bootstrapped = false;
         listenerLoopRunning.set(false);
-        retryLoopRunning.set(false);
         closeServerSocket();
         try {
             if (control != null && onionAddress != null) {
@@ -561,9 +553,9 @@ public class TorOnionService extends Service {
                 }
             }
             if (!handedToWebView) {
-                // WebView is dead: keep the frame until the UI comes back.
-                inbox.push(frame);
-                updateNotification("New encrypted message");
+                // No JS layer alive: the frame is dropped. The sender keeps it in
+                // its Dexie outbox and retries until it receives a DELIVERED_ACK.
+                Log.i(TAG, "inbound frame dropped: WebView not attached");
             }
         } catch (IOException e) {
             Log.w(TAG, "inbound frame rejected: " + e.getMessage());
@@ -608,58 +600,6 @@ public class TorOnionService extends Service {
             }
         }
         return Socks5Client.probe(socksPort, host, port, DIAL_TIMEOUT_MS);
-    }
-
-    public void enqueue(String id, String onion, String frame) {
-        outbox.put(id, onion, frame);
-    }
-
-    public boolean dequeue(String id) {
-        return outbox.remove(id);
-    }
-
-    public List<String> drainInbox() {
-        return inbox.drainFrames();
-    }
-
-    public List<String> drainDeliveredIds() {
-        return delivered.drainIds();
-    }
-
-    private void startRetryLoop() {
-        if (!retryLoopRunning.compareAndSet(false, true)) return;
-        workers.execute(() -> {
-            while (retryLoopRunning.get()) {
-                try {
-                    flushOutboxOnce();
-                    Thread.sleep(RETRY_INTERVAL_MS);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    return;
-                } catch (Exception e) {
-                    Log.w(TAG, "retry loop error: " + e.getMessage());
-                }
-            }
-        });
-    }
-
-    private void flushOutboxOnce() {
-        if (!bootstrapped) return;
-        long now = System.currentTimeMillis();
-        for (OnionFrameQueue.Entry entry : outbox.due(now)) {
-            boolean ok = sendNow(entry.onion, entry.frame);
-            if (ok) {
-                outbox.remove(entry.id);
-                // Record it so the WebView can clear its IndexedDB mirror.
-                delivered.put(entry.id, entry.onion, "");
-            } else {
-                outbox.backoff(entry.id);
-            }
-        }
-        int pending = outbox.size();
-        updateNotification(pending > 0
-                ? "Online · " + pending + " message(s) queued"
-                : (onionAddress == null ? "Connecting…" : "Online · " + shortOnion(onionAddress)));
     }
 
     private void publishStatus() {
