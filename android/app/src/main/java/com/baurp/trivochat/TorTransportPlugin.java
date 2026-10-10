@@ -5,14 +5,12 @@ import android.os.Build;
 import android.util.Log;
 
 import com.baurp.trivochat.tor.TorOnionService;
-import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
-import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -160,42 +158,8 @@ public class TorTransportPlugin extends Plugin {
                 return;
             }
             boolean ok = svc.sendNow(onion, frame);
-            if (!ok && id != null && !id.isEmpty()) {
-                // Hand it to the native outbox so retries continue in background.
-                svc.enqueue(id, onion, frame);
-            }
             res.put("delivered", ok);
             if (!ok) res.put("reason", svc.bootstrapped ? "peer offline" : "tor not bootstrapped");
-            call.resolve(res);
-        });
-    }
-
-    @PluginMethod
-    public void enqueue(PluginCall call) {
-        final String id = call.getString("id", "");
-        final String onion = call.getString("onion", "");
-        final String frame = call.getString("frame", "");
-        io.execute(() -> {
-            TorOnionService svc = TorOnionService.get();
-            JSObject res = new JSObject();
-            if (svc == null || id == null || id.isEmpty()) {
-                res.put("queued", false);
-                call.resolve(res);
-                return;
-            }
-            svc.enqueue(id, onion, frame);
-            res.put("queued", true);
-            call.resolve(res);
-        });
-    }
-
-    @PluginMethod
-    public void dequeue(PluginCall call) {
-        final String id = call.getString("id", "");
-        io.execute(() -> {
-            TorOnionService svc = TorOnionService.get();
-            JSObject res = new JSObject();
-            res.put("removed", svc != null && id != null && svc.dequeue(id));
             call.resolve(res);
         });
     }
@@ -210,36 +174,6 @@ public class TorTransportPlugin extends Plugin {
             JSObject res = new JSObject();
             res.put("reachable", reachable);
             res.put("rttMs", System.currentTimeMillis() - started);
-            call.resolve(res);
-        });
-    }
-
-    @PluginMethod
-    public void drainInbound(PluginCall call) {
-        io.execute(() -> {
-            TorOnionService svc = TorOnionService.get();
-            JSArray arr = new JSArray();
-            if (svc != null) {
-                List<String> frames = svc.drainInbox();
-                for (String f : frames) arr.put(f);
-            }
-            JSObject res = new JSObject();
-            res.put("frames", arr);
-            call.resolve(res);
-        });
-    }
-
-    @PluginMethod
-    public void drainDelivered(PluginCall call) {
-        io.execute(() -> {
-            TorOnionService svc = TorOnionService.get();
-            JSArray arr = new JSArray();
-            if (svc != null) {
-                List<String> ids = svc.drainDeliveredIds();
-                for (String id : ids) arr.put(id);
-            }
-            JSObject res = new JSObject();
-            res.put("ids", arr);
             call.resolve(res);
         });
     }
