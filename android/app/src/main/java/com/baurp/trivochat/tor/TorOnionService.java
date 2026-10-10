@@ -49,8 +49,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
  *      so the .onion address is the device's stable identity.
  *   3. Accept inbound streams on the hidden service port and buffer every
  *      frame for the WebView (delivered live when it is awake).
- *   4. Retry the native outbox every 5 s so queued messages are delivered even
- *      while the UI process is gone.
+ *   4. No native queue: Dexie (JS) is the single outbox; retries and
+ *      DELIVERED_ACK handling live in src/lib/onion-engine.ts.
  */
 public class TorOnionService extends Service {
 
@@ -64,7 +64,6 @@ public class TorOnionService extends Service {
 
     /** Virtual port every Trivo onion service listens on. */
     public static final int VIRTUAL_PORT = 8443;
-    public static final long RETRY_INTERVAL_MS = 5_000L;
     private static final int DIAL_TIMEOUT_MS = 90_000;
 
     public interface Listener {
