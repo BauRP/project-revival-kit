@@ -10,6 +10,7 @@
 
 import nacl from "tweetnacl";
 import { encodeBase64, decodeBase64, encodeUTF8, decodeUTF8 } from "tweetnacl-util";
+import { sealFrame, openFrame, type SealedFrame } from "../envelope";
 
 export type CryptoJobKind =
   | "sign"
@@ -18,7 +19,9 @@ export type CryptoJobKind =
   | "decrypt"
   | "parse"
   | "stringify"
-  | "keygen";
+  | "keygen"
+  | "seal"
+  | "open";
 
 export interface CryptoJob {
   id: number;
@@ -86,6 +89,10 @@ function run(kind: CryptoJobKind, p: Record<string, unknown>): unknown {
       if (!opened) throw new Error("Decryption failed — invalid key or tampered data");
       return encodeUTF8(opened);
     }
+    case "seal":
+      return sealFrame(p.inner, String(p.from), String(p.to), String(p.secretKey));
+    case "open":
+      return openFrame(p.frame as SealedFrame, String(p.self), String(p.secretKey));
     case "parse":
       return JSON.parse(String(p.raw));
     case "stringify":

@@ -16,6 +16,7 @@ import {
   generateIdentityKeysSync,
   type IdentityKeys,
 } from "./crypto";
+import { sealFrame, openFrame, type SealedFrame } from "./envelope";
 import type { CryptoJobKind, CryptoJobResult } from "./workers/crypto.worker";
 
 type Pending = {
@@ -190,4 +191,25 @@ export function stringifyJsonAsync(value: unknown): Promise<string> {
     return Promise.reject(error instanceof Error ? error : new Error(String(error)));
   }
   return dispatch<string>("stringify", { value }, inline);
+}
+
+/** E2EE seal for Tor egress (worker, inline fallback). */
+export function sealFrameAsync(
+  inner: unknown,
+  from: string,
+  to: string,
+  secretKey: string,
+): Promise<SealedFrame> {
+  return dispatch("seal", { inner, from, to, secretKey }, () =>
+    sealFrame(inner, from, to, secretKey),
+  );
+}
+
+/** Verify + decrypt an inbound frame (worker, inline fallback). */
+export function openFrameAsync(
+  frame: SealedFrame,
+  self: string,
+  secretKey: string,
+): Promise<unknown> {
+  return dispatch("open", { frame, self, secretKey }, () => openFrame(frame, self, secretKey));
 }
