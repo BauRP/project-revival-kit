@@ -1,32 +1,26 @@
 // ============================================================================
-//  P2P messaging service — 100% peer-to-peer over Tor Hidden Services.
-//  ---------------------------------------------------------------------------
-//  Signalling: NONE. Every device hosts its own Tor v3 Onion Service.
-//  Transport : Tor circuit → peer hidden service (see onion-engine.ts),
-//              framed with Ed25519 signatures over the payload envelope.
-//  Persistence: Dexie pending_messages queue, mirrored into the native outbox
-//              so the Android foreground service retries while the app sleeps.
-//  No centralized server, no STUN, no TURN, no signalling of any kind.
+//  Messaging facade over the Tor onion engine.
+//  Peers are addressed only by `.onion`. Messages live in Dexie `messages`;
+//  the engine owns the sealed outbox and the DELIVERED_ACK lifecycle.
 // ============================================================================
 
-import { dbDelete, dbGet, dbPut, dbGetAll } from "./storage";
+import { dbGet, dbGetAll, dbPut } from "./storage";
+import { dxdb, upsertContact, type StoredMessage } from "./dexie-db";
 import {
-  rtcInit,
-  rtcDial,
-  rtcEnsureConnection,
-  rtcIsConnectedTo,
-  rtcOnConnectionChange,
-  rtcRegisterIncomingListener,
+  onionEnsureConnection,
+  onionIsConnectedTo,
+  onionOnConnectionChange,
+  onionOnDelivery,
+  onionRegisterIncomingListener,
+  onionSendDispatch,
 } from "./onion-engine";
-import { enqueuePending, markPendingDelivered, getPendingFor } from "./dexie-db";
+import { isValidOnion } from "./onion-id";
 
 export interface P2PMessage {
   id: string;
   from: string;
   to: string;
   text: string;
-  ciphertext?: string;
-  nonce?: string;
   timestamp: number;
   status: "pending" | "sent" | "delivered" | "read";
   media?: {
@@ -56,158 +50,93 @@ export interface ChatMeta {
   started: boolean;
 }
 
-// ─── External listener registries (preserved API) ────────────
+const messageListeners = new Set<(msg: P2PMessage) => void>();
 
-const messageListeners: Set<(msg: P2PMessage) => void> = new Set();
-const connectionListeners: Set<(peerId: string, connected: boolean) => void> = new Set();
-
-// Bridge: every inbound dispatch frame of kind "text_message" surfaces as a P2PMessage.
-rtcRegisterIncomingListener((payload: any) => {
-  if (!payload || payload.type !== "text_message") return;
-  const msg: P2PMessage = {
-    id: payload.id,
-    from: payload.from,
-    to: payload.to,
-    text: payload.text || "",
-    ciphertext: payload.ciphertext,
-    nonce: payload.nonce,
-    timestamp: payload.timestamp || Date.now(),
-    status: "delivered",
-    media: payload.media,
-    caption: payload.caption,
-    deleteAt: payload.deleteAt,
-    silent: payload.silent,
-    oneTimeView: payload.oneTimeView,
-    roundVideo: payload.roundVideo,
-    scheduledAt: payload.scheduledAt,
-  };
-  if (!msg.id || !msg.from) return;
-  void saveMessage(msg);
+// The engine only surfaces a text_message after it is committed to Dexie.
+onionRegisterIncomingListener((payload) => {
+  if (payload.type !== "text_message" || !payload.id || !payload.from) return;
+  const { type: _t, ...rest } = payload;
+  void _t;
+  const msg = { ...rest, status: "delivered" } as unknown as P2PMessage;
   messageListeners.forEach((cb) => {
     try {
       cb(msg);
-    } catch {
-      /* swallow */
+    } catch (e) {
+      console.warn("[p2p] listener failed", e);
     }
   });
 });
-
-// Bridge connection events into the legacy API.
-rtcOnConnectionChange((userId, connected) => {
-  connectionListeners.forEach((cb) => {
-    try {
-      cb(userId, connected);
-    } catch {
-      /* swallow */
-    }
-  });
-});
-
-// ─── Bootstrap ───────────────────────────────────────────────
-
-export async function initPeer(userId: string): Promise<string> {
-  return rtcInit(userId);
-}
 
 // ─── Outbound ────────────────────────────────────────────────
 
-export async function sendP2PMessage(toPeerId: string, message: P2PMessage): Promise<boolean> {
-  // Try to bring the connection up (no-op if already verified).
-  const live = await rtcEnsureConnection(toPeerId).catch(() => false);
-
-  if (live && rtcIsConnectedTo(toPeerId)) {
-    // sendTrivoTextMessage is the canonical dispatch surface (lives in
-    // trivo-server.ts and routes through the WebRTC engine).
-    const { sendTrivoTextMessage } = await import("./trivo-server");
-    const ok = sendTrivoTextMessage({
-      type: "text_message",
-      ...message,
-    } as unknown as Record<string, unknown>);
-    if (ok) {
-      message.status = "sent";
-      await saveMessage(message);
-      return true;
-    }
-  }
-
-  // Persist and queue for later drain.
-  message.status = "pending";
-  await saveMessage(message);
-  await enqueuePending({
-    id: message.id,
-    targetUserId: toPeerId,
-    senderUserId: message.from,
-    kind: "text_message",
-    payload: { type: "text_message", ...message } as unknown as Record<string, unknown>,
-    blobFileId: message.media?.fileId,
-  });
-  return false;
+/**
+ * Store the message locally ('pending') and hand it to the sealed outbox.
+ * Returns true when the peer's hidden service accepted the bytes ('sent');
+ * 'delivered' arrives later via onDeliveryUpdate.
+ */
+export async function sendP2PMessage(toOnion: string, message: P2PMessage): Promise<boolean> {
+  if (!isValidOnion(toOnion)) throw new Error("Recipient is not a valid .onion address");
+  const stored: P2PMessage = { ...message, to: toOnion, status: "pending" };
+  if (stored.media?.url?.startsWith("blob:")) stored.media = { ...stored.media };
+  await saveLocalMessage(stored);
+  const { url: _u, ...mediaNoUrl } = stored.media || ({} as NonNullable<P2PMessage["media"]>);
+  void _u;
+  const wire = { ...stored, media: stored.media ? { ...mediaNoUrl, url: "" } : undefined };
+  return onionSendDispatch(toOnion, { type: "text_message", ...wire } as Record<string, unknown>);
 }
 
-export function connectToPeer(peerId: string): null {
-  // Backwards-compat shim: the WebRTC engine dials lazily on send.
-  void rtcDial(peerId).catch(() => {});
-  return null;
+export function connectToPeer(onion: string): void {
+  if (isValidOnion(onion)) void onionEnsureConnection(onion).catch(() => false);
 }
 
-export async function flushPendingMessages(peerId: string): Promise<void> {
-  // The engine drains automatically on verify, but ChatRoom may call us
-  // explicitly. Re-attempt any text_message envelopes for this peer.
-  const queued = await getPendingFor(peerId);
-  if (queued.length === 0) return;
-  if (!rtcIsConnectedTo(peerId)) {
-    await rtcEnsureConnection(peerId).catch(() => false);
-  }
-  if (!rtcIsConnectedTo(peerId)) return;
-  const { sendTrivoTextMessage } = await import("./trivo-server");
-  for (const rec of queued) {
-    const ok = sendTrivoTextMessage(rec.payload);
-    if (!ok) return;
-    await markPendingDelivered(rec.id);
-    if (rec.kind === "text_message") {
-      const msg = rec.payload as unknown as P2PMessage;
-      if (msg?.id) {
-        const existing = await dbGet<P2PMessage>("messages", msg.id);
-        if (existing) {
-          existing.status = "sent";
-          await dbPut("messages", msg.id, existing);
-        }
-      }
-    }
-  }
+// ─── Local persistence (Dexie) ───────────────────────────────
+
+export async function saveLocalMessage(msg: P2PMessage): Promise<void> {
+  await dxdb.messages.put(msg as unknown as StoredMessage);
 }
 
-// ─── Local persistence ───────────────────────────────────────
-
-async function saveMessage(msg: P2PMessage): Promise<void> {
-  await dbPut("messages", msg.id, msg);
+export async function deleteLocalMessage(id: string): Promise<void> {
+  await dxdb.messages.delete(id);
 }
 
 export async function purgeExpiredLocalMessages(): Promise<number> {
-  const all = await dbGetAll<P2PMessage>("messages");
-  const expired = all.filter((m) => !!m.deleteAt && m.deleteAt <= Date.now());
-  await Promise.all(expired.map((m) => dbDelete("messages", m.id)));
+  const now = Date.now();
+  const expired = await dxdb.messages
+    .filter((m) => typeof m.deleteAt === "number" && (m.deleteAt as number) <= now)
+    .primaryKeys();
+  await dxdb.transaction("rw", [dxdb.messages, dxdb.outbox], async () => {
+    await dxdb.messages.bulkDelete(expired);
+    await dxdb.outbox.bulkDelete(expired);
+  });
   return expired.length;
 }
 
-export async function clearMessagesForChat(friendId: string): Promise<void> {
-  const all = await dbGetAll<P2PMessage>("messages");
-  const related = all.filter((m) => m.from === friendId || m.to === friendId);
-  await Promise.all(related.map((m) => dbDelete("messages", m.id)));
+export async function clearMessagesForChat(peer: string): Promise<void> {
+  const ids = await dxdb.messages.filter((m) => m.from === peer || m.to === peer).primaryKeys();
+  await dxdb.messages.bulkDelete(ids);
 }
 
-export async function getMessagesForChat(friendId: string): Promise<P2PMessage[]> {
-  const all = await dbGetAll<P2PMessage>("messages");
-  return all
-    .filter((m) => m.from === friendId || m.to === friendId)
-    .filter((m) => !m.deleteAt || m.deleteAt > Date.now())
+export async function getMessagesForChat(peer: string): Promise<P2PMessage[]> {
+  const now = Date.now();
+  const rows = await dxdb.messages.filter((m) => m.from === peer || m.to === peer).toArray();
+  return (rows as unknown as P2PMessage[])
+    .filter((m) => !m.deleteAt || m.deleteAt > now)
     .sort((a, b) => a.timestamp - b.timestamp);
 }
 
-// ─── Chat metadata ───────────────────────────────────────────
+/** One-time move of messages from the legacy key-value DB into Dexie. */
+export async function migrateLegacyMessages(): Promise<void> {
+  if (await dbGet<boolean>("settings", "messages-migrated-to-dexie")) return;
+  const legacy = await dbGetAll<P2PMessage>("messages");
+  if (legacy.length) await dxdb.messages.bulkPut(legacy as unknown as StoredMessage[]);
+  await dbPut("settings", "messages-migrated-to-dexie", true);
+}
+
+// ─── Chat metadata (display name → Dexie contacts) ───────────
 
 export async function saveChatMeta(meta: ChatMeta): Promise<void> {
   await dbPut("contacts", meta.friendId, meta);
+  if (isValidOnion(meta.friendId)) await upsertContact(meta.friendId, meta.friendName);
 }
 
 export async function getChatMeta(friendId: string): Promise<ChatMeta | undefined> {
@@ -218,31 +147,22 @@ export async function getAllChatMetas(): Promise<ChatMeta[]> {
   return dbGetAll<ChatMeta>("contacts");
 }
 
-// ─── Listener API (preserved) ────────────────────────────────
+// ─── Listener API ────────────────────────────────────────────
 
 export function onP2PMessage(cb: (msg: P2PMessage) => void): () => void {
   messageListeners.add(cb);
-  return () => {
-    messageListeners.delete(cb);
-  };
+  return () => void messageListeners.delete(cb);
 }
 
-export function onConnectionChange(cb: (peerId: string, connected: boolean) => void): () => void {
-  connectionListeners.add(cb);
-  return () => {
-    connectionListeners.delete(cb);
-  };
+export function onConnectionChange(cb: (peer: string, connected: boolean) => void): () => void {
+  return onionOnConnectionChange(cb);
 }
 
-export function getPeerId(): string | null {
-  // The engine owns this — leave null for legacy callers that only do truthy checks.
-  return null;
+/** 'sent' = remote socket accepted; 'delivered' = verified DELIVERED_ACK. */
+export function onDeliveryUpdate(cb: (messageId: string, state: "sent" | "delivered") => void): () => void {
+  return onionOnDelivery(cb);
 }
 
-export function isConnectedTo(peerId: string): boolean {
-  return rtcIsConnectedTo(peerId);
-}
-
-export function destroyPeer(): void {
-  // Engine retains its socket so other tabs/components keep working.
+export function isConnectedTo(peer: string): boolean {
+  return onionIsConnectedTo(peer);
 }
