@@ -1,84 +1,11 @@
-// Decentralized Base58 Identity System
-import nacl from "tweetnacl";
-import { decodeBase64 } from "tweetnacl-util";
-import bs58 from "bs58";
-import { dbGet, dbPut } from "./storage";
+// The user's only identifier is the v3 .onion address derived from their
+// locally generated Ed25519 key. No accounts, phone numbers or servers.
+import { getOrCreateIdentity } from "./crypto";
+import { onionFromPublicKey, isValidOnion } from "./onion-id";
 
-const USER_ID_STORE = "identity";
-const USER_ID_KEY = "public-id";
-const USER_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-
-export function generateSecureUserId(length = 12): string {
-  const safeLength = Math.min(12, Math.max(10, length));
-
-  // A bounded retry prevents a defective WebView crypto provider from locking
-  // the UI forever if it repeatedly returns bytes that fail the format rule.
-  for (let attempt = 0; attempt < 128; attempt += 1) {
-    const random = crypto.getRandomValues(new Uint8Array(safeLength));
-    const candidate = Array.from(
-      random,
-      (value) => USER_ID_ALPHABET[value % USER_ID_ALPHABET.length],
-    ).join("");
-
-    if (/[A-Za-z]/.test(candidate) && /\d/.test(candidate)) {
-      return candidate;
-    }
-  }
-
-  throw new Error("Secure identity generation failed after 128 attempts");
-}
-
-/**
- * Generate a Base58-encoded User ID from the Ed25519 public key.
- * Босс: Улучшил конвертацию, чтобы на Android 16 не было вылетов.
- */
-export function publicKeyToBase58Id(publicKey: string): string {
-  try {
-    // `Buffer` does not exist inside the Android WebView — decoding must use a
-    // pure-JS base64 implementation, otherwise this throws on every launch.
-    const bytes = decodeBase64(publicKey);
-
-    // Создаем короткий, но уникальный хеш (20 байт)
-    const hash = nacl.hash(bytes).slice(0, 20);
-    return bs58.encode(hash);
-  } catch (error) {
-    console.error("Ошибка генерации ID:", error);
-    // Фолбек: если что-то пошло не так, возвращаем часть самого ключа в base58
-    return bs58.encode(new Uint8Array(10));
-  }
-}
-
-/**
- * Validate that a string looks like a valid Trivo Base58 ID.
- */
-export function isValidBase58Id(id: string): boolean {
-  if (!id || id.length < 15 || id.length > 50) return false;
-  try {
-    const decoded = bs58.decode(id);
-    return decoded.length >= 16; // Небольшой запас по длине для гибкости
-  } catch {
-    return false;
-  }
-}
-
-export function isValidUserId(id: string): boolean {
-  return /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z0-9]{10,12}$/.test(id);
-}
+export { isValidOnion };
 
 export async function getOrCreateUserId(): Promise<string> {
-  const existing = await dbGet<string>(USER_ID_STORE, USER_ID_KEY);
-  if (existing && isValidUserId(existing)) {
-    return existing;
-  }
-
-  const nextId = generateSecureUserId();
-  await dbPut(USER_ID_STORE, USER_ID_KEY, nextId);
-  return nextId;
-}
-
-/**
- * Get or create the local user's Base58 ID.
- */
-export async function getLocalBase58Id(): Promise<string> {
-  return getOrCreateUserId();
+  const keys = await getOrCreateIdentity();
+  return onionFromPublicKey(keys.signing.publicKey);
 }

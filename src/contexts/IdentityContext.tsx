@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
 import { getOrCreateIdentity, getKeyFingerprint, type IdentityKeys } from "@/lib/crypto";
 import { getOrCreateUserId } from "@/lib/identity";
-import { publishPublicKeys } from "@/lib/local-peer-cache";
+import { migrateLegacyMessages } from "@/lib/p2p";
+import { recoverInbox } from "@/lib/onion-engine";
 import { nukeAllData } from "@/lib/storage";
 import { safeStorage } from "@/lib/safe-storage";
 
@@ -37,11 +38,14 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
         setUserId(nextUserId);
         setIsLoading(false);
 
-        // Cache public keys locally after identity generation completes.
+        // Boot recovery: move legacy messages into Dexie, then commit any
+        // inbound frames left in inbox_raw by a crash or power loss.
         try {
-          publishPublicKeys(nextUserId, keys.signing.publicKey, keys.exchange.publicKey);
+          await migrateLegacyMessages();
+          const recovered = await recoverInbox();
+          if (recovered > 0) console.info(`[trivo] recovered ${recovered} inbound frame(s)`);
         } catch (error) {
-          console.warn("[trivo] public-key cache unavailable:", error);
+          console.warn("[trivo] inbox recovery failed:", error);
         }
       } catch (error) {
         console.error("Критическая ошибка инициализации личности:", error);

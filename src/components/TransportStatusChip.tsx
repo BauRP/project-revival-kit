@@ -19,7 +19,7 @@ export function TransportStatusChip({ userId }: { userId: string }) {
     setBusy(true);
     setError(null);
     try {
-      await onionInit(userId);
+      await onionInit();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

@@ -1,130 +1,14 @@
 // ============================================================================
-//  Trivo Elite — ZERO-SERVER local shim.
-//  ---------------------------------------------------------------------------
-//  The dedicated ngrok Node.js backend has been removed. This file preserves
-//  the public API consumed by the rest of the app (uploadFileToTrivo,
-//  downloadFromTrivo, ensureMediaUrl, sendTrivoTextMessage, onTrivoMessage,
-//  initTrivoServer, isTrivoConnected, TRIVO_MAX_UPLOAD_BYTES) but every byte
-//  is now handled locally through Dexie + the WebRTC P2P engine.
-//
-//  - "uploads" simply persist the blob in Dexie and return a stable fileId.
-//  - "downloads" read from Dexie; if missing, request it from the peer over
-//    the open RTCDataChannel.
-//  - "text" frames are routed through the P2P engine; if the peer isn't live
-//    they go into the Dexie pending_messages queue and drain on connect.
+//  Local media store. Uploads persist the blob in Dexie and return a stable
+//  fileId; downloads read Dexie first and otherwise pull the blob from a peer
+//  over the sealed Tor blob protocol (onion-engine.ts).
 // ============================================================================
 
-import {
-  enqueuePending,
-  getBlob,
-  putBlob,
-  startMediaCacheMonitor,
-  type PendingPayloadKind,
-} from "./dexie-db";
-import {
-  rtcSendDispatch,
-  rtcRequestBlob,
-  rtcIsConnectedTo,
-  rtcRegisterIncomingListener,
-} from "./onion-engine";
+import { getBlob, putBlob } from "./dexie-db";
+import { onionRequestBlob } from "./onion-engine";
 import { compressImageIfNeeded } from "./image-compress";
 
 export const TRIVO_MAX_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1 GB ceiling
-
-// ─── Inbound dispatch listeners (kept identical to old WS contract) ──
-
-type IncomingHandler = (payload: any) => void;
-const listeners = new Set<IncomingHandler>();
-
-export function onTrivoMessage(cb: IncomingHandler): () => void {
-  listeners.add(cb);
-  return () => {
-    listeners.delete(cb);
-  };
-}
-
-function dispatchInbound(payload: any): void {
-  if (!payload || typeof payload !== "object") return;
-  listeners.forEach((cb) => {
-    try {
-      cb(payload);
-    } catch {
-      /* swallow */
-    }
-  });
-}
-
-// The WebRTC engine forwards every "trivo_dispatch" frame here.
-rtcRegisterIncomingListener(dispatchInbound);
-
-// ─── Connection lifecycle (now a no-op — PeerJS owns it) ─────
-
-let currentUserId: string | null = null;
-
-export function initTrivoServer(userId: string): void {
-  if (userId) currentUserId = userId;
-  // Kick off the 3 GiB media-cache watchdog (idempotent — first call wins).
-  startMediaCacheMonitor();
-}
-
-export function isTrivoConnected(): boolean {
-  // Without a central server "connected" means we at least have an identity.
-  return !!currentUserId;
-}
-
-// ─── Outbound dispatch ───────────────────────────────────────
-
-const TRIVO_KIND_WHITELIST: PendingPayloadKind[] = [
-  "text_message",
-  "friend_request",
-  "friend_request_status",
-  "message_status",
-  "message_lifecycle",
-];
-
-function coerceKind(payload: Record<string, unknown>): PendingPayloadKind {
-  const t = typeof payload.type === "string" ? (payload.type as string) : "text_message";
-  return (TRIVO_KIND_WHITELIST as string[]).includes(t)
-    ? (t as PendingPayloadKind)
-    : "text_message";
-}
-
-/**
- * Send a frame to the peer. If a live RTCDataChannel exists the frame is
- * shipped immediately; otherwise it is persisted in the Dexie
- * pending_messages queue and the WebRTC engine drains it on (re)connect.
- *
- * Returns `true` when handed to the live channel, `false` when queued.
- */
-export function sendTrivoTextMessage(payload: Record<string, unknown>): boolean {
-  const envelope: Record<string, unknown> = {
-    ...payload,
-    type: typeof payload.type === "string" ? payload.type : "text_message",
-  };
-  const targetUserId = String((envelope.to as string | undefined) || "").trim();
-  const senderUserId = String((envelope.from as string | undefined) || currentUserId || "").trim();
-  if (!targetUserId) return false;
-
-  if (rtcIsConnectedTo(targetUserId)) {
-    const ok = rtcSendDispatch(targetUserId, envelope);
-    if (ok) return true;
-  }
-
-  // Queue for later drain.
-  const id =
-    (envelope.id as string | undefined) ||
-    `pend-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const media = envelope.media as { fileId?: string } | undefined;
-  void enqueuePending({
-    id,
-    targetUserId,
-    senderUserId,
-    kind: coerceKind(envelope),
-    payload: envelope,
-    blobFileId: typeof media?.fileId === "string" ? media.fileId : undefined,
-  });
-  return false;
-}
 
 // ─── File "upload" / "download" — local Dexie only ───────────
 
@@ -149,7 +33,7 @@ function makeFileId(): string {
 
 /**
  * Persist the file blob locally in Dexie and return a stable fileId.
- * Reports synthetic progress so existing UI (UploadOverlay) stays happy.
+ * Progress reflects the real chunked copy into the local store.
  */
 export function uploadFileToTrivo(
   file: File | Blob,
@@ -233,7 +117,7 @@ export function downloadFromTrivo(fileId: string): Promise<string> {
       return url;
     }
     // Try to pull it from any open peer connection that has it.
-    const ok = await rtcRequestBlob(fileId).catch(() => false);
+    const ok = await onionRequestBlob(fileId).catch(() => false);
     inFlight.delete(fileId);
     if (!ok) throw new Error(`Blob ${fileId} not available locally or via peer`);
     const fetched = await getBlob(fileId);
@@ -262,7 +146,7 @@ export async function ensureMediaUrl<T extends { fileId?: string; url?: string }
   if (!media.fileId) return media;
   try {
     const url = await downloadFromTrivo(media.fileId);
-    (media as any).url = url;
+    (media as { url?: string }).url = url;
   } catch (e) {
     console.warn("[trivo] ensureMediaUrl failed", e);
   }

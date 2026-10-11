@@ -14,21 +14,19 @@ import { useLanguage } from "@/contexts/LanguageContext";
 import {
   onP2PMessage,
   onConnectionChange,
-  flushPendingMessages,
+  connectToPeer,
   purgeExpiredLocalMessages,
   saveChatMeta,
   getChatMeta,
   type P2PMessage,
 } from "@/lib/p2p";
-import { initTrivoServer } from "@/lib/trivo-server";
+import { startMediaCacheMonitor } from "@/lib/dexie-db";
 import { TransportStatusChip } from "@/components/TransportStatusChip";
 import { executePanic, createPanicLongPress } from "@/lib/panic";
 import { startPresence, setInvisibleMode } from "@/lib/presence";
 import {
-  performStartupHandshake,
   listenForFriendRequests,
   acceptFriendRequest,
-  purgeExpiredBufferedMessagesForAllUsers,
 } from "@/lib/sync/peer-sync";
 import { initMockPeer } from "@/lib/mock-peer";
 import { isDuplicateMessage } from "@/lib/local-peer-cache";
@@ -115,9 +113,9 @@ const Index = () => {
           if (disposed) return;
 
           try {
-            initTrivoServer(userId);
+            startMediaCacheMonitor();
           } catch (err) {
-            console.warn("[trivo] initTrivoServer failed:", err);
+            console.warn("[trivo] media cache monitor failed:", err);
           }
           // Tor (Stage B) is started by <TransportStatusChip>, after the UI is
           // idle and visible, so no JNI/foreground-service work happens here.
@@ -131,15 +129,6 @@ const Index = () => {
             console.warn("[trivo] local support initialization failed:", err);
           });
 
-          void performStartupHandshake(userId)
-            .then((buffered) => {
-              if (!disposed && buffered.length > 0) {
-                toast.info(
-                  `${buffered.length} missed message${buffered.length > 1 ? "s" : ""} synced`,
-                );
-              }
-            })
-            .catch((err) => console.warn("[trivo] startup handshake failed:", err));
         }, 250);
       });
     });
@@ -156,7 +145,7 @@ const Index = () => {
           unread: 0,
           started: false,
         });
-        await acceptFriendRequest(req.from, userId);
+        await acceptFriendRequest(req.from);
         toast.info(`${req.fromName || "Someone"} added you as a friend`);
       }
     });
@@ -178,9 +167,7 @@ const Index = () => {
     });
 
     const unsubConn = onConnectionChange((peerId, connected) => {
-      if (connected) {
-        flushPendingMessages(peerId);
-      }
+      if (connected) connectToPeer(peerId);
     });
 
     return () => {
@@ -213,7 +200,6 @@ const Index = () => {
   useEffect(() => {
     const purgeExpired = async () => {
       await purgeExpiredLocalMessages();
-      await purgeExpiredBufferedMessagesForAllUsers();
     };
 
     purgeExpired().catch(() => {});

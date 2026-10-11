@@ -2,13 +2,14 @@
 //  Trivo Chat Elite — message lifecycle (edit / delete / pin), pure P2P
 //  ---------------------------------------------------------------------------
 //  Every remote HTTP call has been removed. Lifecycle mutations are now
-//  broadcast over the WebRTC dispatch channel and mirrored to Dexie so the
+//  sent through the sealed Tor outbox and mirrored to Dexie so the
 //  UI works offline and across reloads. Public API preserved 1:1:
 //  editMessage, deleteMessageForMe, deleteMessageForEveryone, pinMessage,
 //  unpinMessage, subscribeLifecycle, chatKey, MessageLifecycle.
 // ============================================================================
 
-import { sendTrivoTextMessage, onTrivoMessage } from "../trivo-server";
+import { onionRegisterIncomingListener, onionSendDispatch } from "../onion-engine";
+import { isValidOnion } from "../onion-id";
 import { getLifecycleMap, putLifecycle } from "../dexie-db";
 
 export interface MessageLifecycle {
@@ -68,16 +69,15 @@ function broadcastLifecycle(
   messageId: string,
   patch: Partial<MessageLifecycle>,
 ): void {
-  sendTrivoTextMessage({
+  if (!isValidOnion(peerId)) return; // local-only chats (support bot)
+  void onionSendDispatch(peerId, {
     type: "message_lifecycle",
     id: `lc-${messageId.replace(/\//g, "_")}-${Date.now()}`,
     chatKey: chatKey(selfId, peerId),
-    from: selfId,
-    to: peerId,
     messageId: messageId.replace(/\//g, "_"),
     patch,
     updatedAt: Date.now(),
-  } as unknown as Record<string, unknown>);
+  });
 }
 
 // ─── Mutations ──────────────────────────────────────────────
@@ -156,47 +156,18 @@ export function subscribeLifecycle(
     })
     .catch(() => {});
 
-  const off = onTrivoMessage((data) => {
-    if (cancelled) return;
-    if (!data || data.type !== "message_lifecycle") return;
-    if (data.chatKey !== key) return;
-    const patch = (data.patch || {}) as Record<string, unknown> & Partial<MessageLifecycle>;
-    (async () => {
-      const map = await readLocalMap(selfId, peerId);
-      const mid = String(data.messageId || "").replace(/\//g, "_");
-      if (!mid) return;
-      const prev = map[mid] || { messageId: mid };
-
-      let nextDeletedFor = prev.deletedFor || [];
-      if (typeof patch.addDeletedFor === "string") {
-        const set = new Set(nextDeletedFor);
-        set.add(patch.addDeletedFor as string);
-        nextDeletedFor = Array.from(set);
-      } else if (Array.isArray(patch.deletedFor)) {
-        nextDeletedFor = patch.deletedFor as string[];
-      }
-
-      const next: MessageLifecycle = {
-        ...prev,
-        ...patch,
-        messageId: mid,
-        deletedFor: nextDeletedFor,
-        updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : Date.now(),
-      };
-      if (patch.clearPin) {
-        next.pinnedAt = undefined;
-        next.pinnedBy = undefined;
-      }
-      await putLifecycle(key, mid, next as unknown as Record<string, unknown>);
-      const refreshed = await readLocalMap(selfId, peerId);
-      onUpdate(refreshed);
-    })().catch(() => {});
+  // The engine commits inbound lifecycle patches to Dexie before notifying.
+  const off = onionRegisterIncomingListener((data) => {
+    if (cancelled || data.type !== "message_lifecycle" || data.chatKey !== key) return;
+    readLocalMap(selfId, peerId)
+      .then((m) => {
+        if (!cancelled) onUpdate(m);
+      })
+      .catch(() => {});
   });
 
   return () => {
     cancelled = true;
-    try {
-      off();
-    } catch {}
+    off();
   };
 }
