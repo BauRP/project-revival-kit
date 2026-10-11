@@ -39,7 +39,7 @@ import DefaultAvatar from "./DefaultAvatar";
 import CallScreen from "./CallScreen";
 import ReportMenu from "./ReportMenu";
 import { uploadMedia, formatFileSize, type MediaAttachment } from "@/lib/media";
-import { ensureMediaUrl, TRIVO_MAX_UPLOAD_BYTES } from "@/lib/trivo-server";
+import { ensureMediaUrl, TRIVO_MAX_UPLOAD_BYTES } from "@/lib/media-store";
 import { subscribeToPresence, getPresenceStatus } from "@/lib/presence";
 import { rtcOnConnectionChange, rtcIsConnectedTo } from "@/lib/onion-engine";
 import { getContactLastSeen, setContactLastSeen } from "@/lib/dexie-db";

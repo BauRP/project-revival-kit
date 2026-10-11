@@ -1,7 +1,7 @@
 // Media upload service — now backed by the dedicated Trivo Node.js server.
 // All images are scrubbed of EXIF/GPS/metadata before upload (zero-knowledge privacy).
 import { scrubFile } from "./media-scrub";
-import { TRIVO_MAX_UPLOAD_BYTES, uploadFileToTrivo, type UploadProgress } from "./trivo-server";
+import { TRIVO_MAX_UPLOAD_BYTES, uploadFileToTrivo, type UploadProgress } from "./media-store";
 
 export interface MediaAttachment {
   id: string;

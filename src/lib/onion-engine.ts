@@ -25,7 +25,6 @@ import {
   getBlob,
   hasBlob,
   putBlob,
-  putLifecycle,
   setContactLastSeen,
   type OutboxKind,
   type OutboxRecord,
@@ -484,7 +483,6 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
     const out = await dbGet<Record<string, unknown>>("settings", `friend-req-out-${payload.from}`);
     if (out) await dbPut("settings", `friend-req-out-${payload.from}`, { ...out, status: "accepted" });
   }
-  void putLifecycle;
   return fresh;
 }
 
