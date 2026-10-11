@@ -1,5 +1,6 @@
 import { nukeAllData } from "./storage";
-import { destroyPeer } from "./p2p";
+import { onionShutdownNative } from "./onion-engine";
+import { dxdb } from "./dexie-db";
 import { goHome } from "./home-navigation";
 
 let panicActive = false;
@@ -9,7 +10,9 @@ export async function executePanic(): Promise<void> {
   panicActive = true;
 
   try {
-    destroyPeer();
+    await onionShutdownNative();
+    dxdb.close();
+    await dxdb.delete();
     await nukeAllData();
     goHome();
   } catch {

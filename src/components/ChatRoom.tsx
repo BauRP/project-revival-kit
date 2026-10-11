@@ -41,7 +41,7 @@ import ReportMenu from "./ReportMenu";
 import { uploadMedia, formatFileSize, type MediaAttachment } from "@/lib/media";
 import { ensureMediaUrl, TRIVO_MAX_UPLOAD_BYTES } from "@/lib/media-store";
 import { subscribeToPresence, getPresenceStatus } from "@/lib/presence";
-import { rtcOnConnectionChange, rtcIsConnectedTo } from "@/lib/onion-engine";
+import { onionOnConnectionChange, onionIsConnectedTo } from "@/lib/onion-engine";
 import { getContactLastSeen, setContactLastSeen } from "@/lib/dexie-db";
 import { toast } from "@/hooks/use-toast";
 import { generateUUIDv4, isDuplicateMessage } from "@/lib/local-peer-cache";
@@ -424,9 +424,9 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     }, 5000);
     // Real-time P2P online indicator overrides presence when an RTCDataChannel
     // is verified. On close we stamp lastSeen locally in Dexie and reflect it.
-    if (rtcIsConnectedTo(chatId)) setPeerStatus("online");
+    if (onionIsConnectedTo(chatId)) setPeerStatus("online");
     void getContactLastSeen(chatId).then((ts) => setLastSeen(ts));
-    const offRtc = rtcOnConnectionChange((uid, connected) => {
+    const offRtc = onionOnConnectionChange((uid, connected) => {
       if (uid !== chatId) return;
       if (connected) {
         setPeerStatus("online");
@@ -518,7 +518,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     loadMessages();
 
     // БОСС: Усиленное подключение к пиру
-    const peerId = `trivo-${chatId.replace(/[^a-zA-Z0-9]/g, "").substring(0, 20)}`;
+    const peerId = chatId;
     connectToPeer(peerId);
 
     const unsubStatus = listenForStatusUpdates(userId || "", (messageId, status) => {
@@ -839,7 +839,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     setShowEmoji(false);
     setSessionStarted(false);
 
-    const peerId = `trivo-${chatId.replace(/[^a-zA-Z0-9]/g, "").substring(0, 20)}`;
+    const peerId = chatId;
 
     // БОСС: Пробуем отправить P2P, если не вышло — кидаем в облако
     try {
@@ -1012,7 +1012,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
         media,
         deleteAt: getDeleteAt(Date.now(), disappearingDuration),
       };
-      const peerId = `trivo-${chatId.replace(/[^a-zA-Z0-9]/g, "").substring(0, 20)}`;
+      const peerId = chatId;
       const sent = await sendP2PMessage(peerId, msg as any);
       if (!sent) await bufferMessageInCloud(chatId, msg as any);
 
@@ -1084,7 +1084,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
         silent: silent || undefined,
       };
 
-      const peerId = `trivo-${chatId.replace(/[^a-zA-Z0-9]/g, "").substring(0, 20)}`;
+      const peerId = chatId;
       const sent = await sendP2PMessage(peerId, msg as any);
       if (!sent) {
         await bufferMessageInCloud(chatId, msg as any);
@@ -1138,7 +1138,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
         oneTimeView: isOneTime || undefined,
         silent: silent || undefined,
       };
-      const peerId = `trivo-${chatId.replace(/[^a-zA-Z0-9]/g, "").substring(0, 20)}`;
+      const peerId = chatId;
       const sentOk = await sendP2PMessage(peerId, msg as any);
       if (!sentOk) await bufferMessageInCloud(chatId, msg as any);
 
@@ -2353,7 +2353,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
             caption: forwardingMedia ? caption : undefined,
             deleteAt: getDeleteAt(Date.now(), targetPreferences.disappearingDuration || "off"),
           };
-          const peerId = `trivo-${targetChatId.replace(/[^a-zA-Z0-9]/g, "").substring(0, 20)}`;
+          const peerId = targetChatId;
           const sent = await sendP2PMessage(peerId, payload);
           if (!sent) await bufferMessageInCloud(targetChatId, payload);
           const lastMessage = forwardingMedia ? caption || forwardingMedia.name : forwardingText;

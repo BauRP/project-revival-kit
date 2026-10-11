@@ -4,9 +4,8 @@ import { useState, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useIdentity } from "@/contexts/IdentityContext";
 import { toast } from "sonner";
-import localPeerCache from "@/lib/local-peer-cache";
 import { saveChatMeta } from "@/lib/p2p";
-import { isValidUserId } from "@/lib/identity";
+import { isValidOnion } from "@/lib/onion-id";
 import { isUserBlocked, unblockUser } from "@/lib/report";
 import { sendFriendRequest, getOutgoingRequestStatus } from "@/lib/sync/peer-sync";
 import { getPresenceStatus } from "@/lib/presence";
@@ -33,10 +32,10 @@ const AddFriend = () => {
   };
 
   const handleAddFriend = async () => {
-    const trimmed = peerId.trim();
+    const trimmed = peerId.trim().toLowerCase();
     if (!trimmed) return;
 
-    if (!isValidUserId(trimmed)) {
+    if (!isValidOnion(trimmed)) {
       toast.error(t("invalidIdFormat"));
       return;
     }
@@ -61,7 +60,7 @@ const AddFriend = () => {
     if (!userId || !identity) return;
     setAddingStatus("adding");
 
-    const requestStatus = await getOutgoingRequestStatus(userId, friendId);
+    const requestStatus = await getOutgoingRequestStatus(friendId);
     if (requestStatus === "pending") {
       setAddingStatus("pending");
       toast.info("Friend request already pending");
@@ -70,33 +69,11 @@ const AddFriend = () => {
 
     const peerStatus = getPresenceStatus(friendId);
 
-    // Local relationship cache; the signed request itself travels over Tor.
-    localPeerCache
-      .get("trivo-friends")
-      .get(userId)
-      .get(friendId)
-      .put({
-        addedAt: Date.now(),
-        status: peerStatus === "online" ? "confirmed" : "pending",
-      });
-    localPeerCache
-      .get("trivo-friends")
-      .get(friendId)
-      .get(userId)
-      .put({
-        addedAt: Date.now(),
-        status: peerStatus === "online" ? "confirmed" : "pending",
-      });
-
     // Send friend request via the P2P engine + local queue for offline delivery
     await sendFriendRequest({
       from: userId,
       to: friendId,
-      fromName: userId,
-      signingKey: identity.signing.publicKey,
-      exchangeKey: identity.exchange.publicKey,
-      timestamp: Date.now(),
-      status: "pending",
+      fromName: "",
     });
 
     await saveChatMeta({
