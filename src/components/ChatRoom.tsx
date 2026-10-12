@@ -992,7 +992,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
 
   // Voice messages bypass EXIF scrub (audio has no EXIF) and the malware scan
   // (internal recording, not user-supplied). They flow through uploadMedia →
-  // Trivo server (/upload) → sendP2PMessage (WebSocket frame).
+  // Local media store → sendP2PMessage (sealed Tor outbox).
   const handleVoiceRecorded = async (file: File) => {
     if (!userId) return;
     beginUpload(file.name, file.size);

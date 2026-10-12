@@ -8,3 +8,6 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+- Peer identity is the v3 .onion derived from the user's Ed25519 key (src/lib/onion-id.ts); never introduce other peer IDs — the address itself authenticates the key.
+- Every Tor frame is sealed via src/lib/envelope.ts before TorTransport.send; queues (outbox, inbox_raw) live only in Dexie — native code keeps no message queue.
+- "Delivered" status comes only from the peer's DELIVERED_ACK, sent after its Dexie commit.
