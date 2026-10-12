@@ -75,9 +75,12 @@ onionRegisterIncomingListener((payload) => {
  * 'delivered' arrives later via onDeliveryUpdate.
  */
 export async function sendP2PMessage(toOnion: string, message: P2PMessage): Promise<boolean> {
-  if (!isValidOnion(toOnion)) throw new Error("Recipient is not a valid .onion address");
   const stored: P2PMessage = { ...message, to: toOnion, status: "pending" };
-  if (stored.media?.url?.startsWith("blob:")) stored.media = { ...stored.media };
+  // Local-only chats (built-in support bot) never touch the network.
+  if (!isValidOnion(toOnion)) {
+    await saveLocalMessage({ ...stored, status: "delivered" });
+    return false;
+  }
   await saveLocalMessage(stored);
   const { url: _u, ...mediaNoUrl } = stored.media || ({} as NonNullable<P2PMessage["media"]>);
   void _u;

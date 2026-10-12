@@ -1,6 +1,6 @@
 // Mock test peer for first-launch initialization
 import { dbGet, dbPut } from "./storage";
-import type { ChatMeta } from "./p2p";
+import { saveLocalMessage, type ChatMeta, type P2PMessage } from "./p2p";
 
 const MOCK_PEER_ID = "TRIVO_MOCK_PEER_999";
 const MOCK_INIT_KEY = "mock-peer-initialized";
@@ -83,7 +83,7 @@ export async function initMockPeer(language: string): Promise<boolean> {
     timestamp: Date.now(),
     status: "delivered",
   };
-  await dbPut("messages", welcomeMsg.id, welcomeMsg);
+  await saveLocalMessage(welcomeMsg as P2PMessage);
 
   await dbPut("settings", MOCK_INIT_KEY, true);
   return true;
