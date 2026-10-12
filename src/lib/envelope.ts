@@ -56,7 +56,11 @@ export function sealFrame(
 }
 
 /** Returns the decrypted inner object, or throws when forged / not for us. */
-export function openFrame(frame: SealedFrame, selfOnion: string, signingSecretB64: string): unknown {
+export function openFrame(
+  frame: SealedFrame,
+  selfOnion: string,
+  signingSecretB64: string,
+): unknown {
   if (!frame || frame.v !== 2) throw new Error("open: unsupported frame version");
   if (frame.to !== selfOnion) throw new Error("open: frame not addressed to this device");
   const senderEd = publicKeyFromOnion(frame.from);

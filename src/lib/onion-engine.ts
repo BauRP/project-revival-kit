@@ -14,11 +14,21 @@
 //    recoverInbox() replays leftovers after a crash.
 // ============================================================================
 
-import { TorTransport, isTorNativeAvailable, TOR_UNAVAILABLE_STATUS, type TorStatus } from "./tor-native";
+import {
+  TorTransport,
+  isTorNativeAvailable,
+  TOR_UNAVAILABLE_STATUS,
+  type TorStatus,
+} from "./tor-native";
 import { getOrCreateIdentity } from "./crypto";
 import { sealFrameAsync, openFrameAsync } from "./crypto-async";
 import type { SealedFrame } from "./envelope";
-import { isValidOnion, normalizeOnion, onionFromPublicKey, torServiceKeyFromSigningSecret } from "./onion-id";
+import {
+  isValidOnion,
+  normalizeOnion,
+  onionFromPublicKey,
+  torServiceKeyFromSigningSecret,
+} from "./onion-id";
 import {
   dxdb,
   getAllContacts,
@@ -103,7 +113,9 @@ export function onionRegisterIncomingListener(
   incomingDispatchListeners.add(cb);
   return () => void incomingDispatchListeners.delete(cb);
 }
-export function onionOnConnectionChange(cb: (peer: string, connected: boolean) => void): () => void {
+export function onionOnConnectionChange(
+  cb: (peer: string, connected: boolean) => void,
+): () => void {
   connectionListeners.add(cb);
   return () => void connectionListeners.delete(cb);
 }
@@ -207,7 +219,11 @@ async function seal(to: string, inner: InnerFrame): Promise<string> {
 async function ship(peer: string, sealed: string, id: string): Promise<boolean> {
   if (!isTorNativeAvailable() || !isValidOnion(peer)) return false;
   try {
-    const res = await TorTransport.send({ id, onion: `${peer}:${ONION_SERVICE_PORT}`, frame: sealed });
+    const res = await TorTransport.send({
+      id,
+      onion: `${peer}:${ONION_SERVICE_PORT}`,
+      frame: sealed,
+    });
     markReachable(peer, res.delivered);
     return res.delivered;
   } catch (e) {
@@ -217,7 +233,11 @@ async function ship(peer: string, sealed: string, id: string): Promise<boolean> 
   }
 }
 
-async function sendEphemeral(peer: string, kind: InnerKind, body: Record<string, unknown>): Promise<boolean> {
+async function sendEphemeral(
+  peer: string,
+  kind: InnerKind,
+  body: Record<string, unknown>,
+): Promise<boolean> {
   const id = `${kind}-${crypto.randomUUID()}`;
   return ship(peer, await seal(peer, { kind, id, body }), id);
 }
@@ -226,11 +246,14 @@ async function sendEphemeral(peer: string, kind: InnerKind, body: Record<string,
  * Durable dispatch: seal → persist in Dexie outbox ('pending') → attempt now.
  * Returns true when the remote hidden service accepted the bytes.
  */
-export async function onionSendDispatch(peer: string, payload: Record<string, unknown>): Promise<boolean> {
+export async function onionSendDispatch(
+  peer: string,
+  payload: Record<string, unknown>,
+): Promise<boolean> {
   const to = normalizeOnion(peer);
   if (!isValidOnion(to)) throw new Error(`Not a valid .onion address: ${peer}`);
   const id = String(payload.id || crypto.randomUUID());
-  const kind = (String(payload.type || "text_message") as OutboxKind);
+  const kind = String(payload.type || "text_message") as OutboxKind;
   const sealed = await seal(to, { kind: "dispatch", id, body: { payload: { ...payload, id } } });
   const now = Date.now();
   await dxdb.outbox.put({
@@ -364,7 +387,11 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
 
   switch (inner.kind) {
     case "dispatch": {
-      const payload = { ...(inner.body.payload as Record<string, unknown>), from, to: self };
+      const payload: Record<string, unknown> = {
+        ...(inner.body.payload as Record<string, unknown>),
+        from,
+        to: self,
+      };
       const committed = await commitDispatch(rawId, payload);
       await sendEphemeral(from, "ack", { ids: [String(payload.id)] }).catch(() => false);
       if (committed) safeEach(incomingDispatchListeners, payload);
@@ -378,7 +405,8 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
           if (!rec || rec.peer !== from) continue;
           await dxdb.outbox.delete(mid);
           const msg = await dxdb.messages.get(mid);
-          if (msg && msg.status !== "read") await dxdb.messages.update(mid, { status: "delivered" });
+          if (msg && msg.status !== "read")
+            await dxdb.messages.update(mid, { status: "delivered" });
         }
         await dxdb.inbox_raw.delete(rawId);
       });
@@ -460,12 +488,23 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         const key = `${ck}::${mid}`;
         const prev = (await dxdb.lifecycle.get(key))?.data || { messageId: mid };
         const patch = (payload.patch || {}) as Record<string, unknown>;
-        const next: Record<string, unknown> = { ...prev, ...patch, messageId: mid, updatedAt: payload.updatedAt };
+        const next: Record<string, unknown> = {
+          ...prev,
+          ...patch,
+          messageId: mid,
+          updatedAt: payload.updatedAt,
+        };
         if (patch.clearPin) {
           delete next.pinnedAt;
           delete next.pinnedBy;
         }
-        await dxdb.lifecycle.put({ key, chatKey: ck, messageId: mid, data: next, updatedAt: Date.now() });
+        await dxdb.lifecycle.put({
+          key,
+          chatKey: ck,
+          messageId: mid,
+          data: next,
+          updatedAt: Date.now(),
+        });
       }
       fresh = true;
     } else {
@@ -481,7 +520,8 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
   }
   if (type === "friend_request_status" && payload.status === "accepted") {
     const out = await dbGet<Record<string, unknown>>("settings", `friend-req-out-${payload.from}`);
-    if (out) await dbPut("settings", `friend-req-out-${payload.from}`, { ...out, status: "accepted" });
+    if (out)
+      await dbPut("settings", `friend-req-out-${payload.from}`, { ...out, status: "accepted" });
   }
   return fresh;
 }
@@ -545,7 +585,12 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
     if (part === undefined) return;
     ordered.push(base64ToBytes(part));
   }
-  await putBlob(fileId, new Blob(ordered as BlobPart[], { type: entry.mimeType }), entry.name, entry.mimeType);
+  await putBlob(
+    fileId,
+    new Blob(ordered as BlobPart[], { type: entry.mimeType }),
+    entry.name,
+    entry.mimeType,
+  );
   partialReceives.delete(fileId);
   const resolver = blobRequests.get(fileId);
   if (resolver) {
@@ -559,7 +604,9 @@ export function onionRequestBlob(fileId: string): Promise<boolean> {
   return new Promise<boolean>((resolve) => {
     blobRequests.set(fileId, resolve);
     void (async () => {
-      const contacts = (await getAllContacts()).sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
+      const contacts = (await getAllContacts()).sort(
+        (a, b) => (b.lastSeen || 0) - (a.lastSeen || 0),
+      );
       let asked = false;
       for (const c of contacts) {
         const partial = partialReceives.get(fileId);
@@ -600,7 +647,8 @@ async function pollTick(): Promise<void> {
       if (Date.now() - entry.updatedAt <= POLL_INTERVAL_MS * 2) continue;
       const missing: number[] = [];
       for (let i = 0; i < entry.totalChunks; i++) if (!entry.received.has(i)) missing.push(i);
-      if (missing.length) await sendEphemeral(entry.from, "blob_sync_request", { fileId: entry.fileId, missing });
+      if (missing.length)
+        await sendEphemeral(entry.from, "blob_sync_request", { fileId: entry.fileId, missing });
     }
     for (const [peer, ts] of reachability) {
       if (Date.now() - ts >= ONLINE_TTL_MS) {

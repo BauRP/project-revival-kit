@@ -55,15 +55,15 @@ import {
   getMessagesForChat,
   onP2PMessage,
   connectToPeer,
+  onDeliveryUpdate,
+  saveLocalMessage,
+  deleteLocalMessage,
   saveChatMeta,
   getChatMeta,
   type P2PMessage,
 } from "@/lib/p2p";
-import {
-  bufferMessageInCloud,
-  updateMessageStatus,
-  listenForStatusUpdates,
-} from "@/lib/sync/peer-sync";
+import { sendReadReceipt, listenForReadReceipts } from "@/lib/sync/peer-sync";
+import { isValidOnion } from "@/lib/onion-id";
 import {
   subscribeLifecycle,
   editMessage as fsEditMessage,
@@ -510,8 +510,8 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       if (preferences.oneTimeDefault) setOneTimeView(true);
 
       for (const m of stored) {
-        if (m.from !== userId && m.status !== "read") {
-          updateMessageStatus(m.from, m.id, "read");
+        if (m.from !== userId && m.status !== "read" && isValidOnion(m.from)) {
+          void sendReadReceipt(m.from, m.id).catch(() => undefined);
         }
       }
     };
@@ -521,14 +521,22 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     const peerId = chatId;
     connectToPeer(peerId);
 
-    const unsubStatus = listenForStatusUpdates(userId || "", (messageId, status) => {
+    // "sent" = peer's hidden service accepted the bytes; "delivered" only on
+    // the peer's signed DELIVERED_ACK; "read" on its read receipt.
+    const setStatus = (messageId: string, status: "sent" | "delivered" | "read") =>
       setMessages((prev) =>
-        prev.map((m) => (m.id === messageId ? { ...m, status: status as any } : m)),
+        prev.map((m) =>
+          m.id === messageId && (m.status !== "read" || status === "read")
+            ? { ...m, status: status as any }
+            : m,
+        ),
       );
-    });
+    const unsubDelivery = onDeliveryUpdate(setStatus);
+    const unsubRead = listenForReadReceipts((id) => setStatus(id, "read"));
 
     return () => {
-      unsubStatus();
+      unsubDelivery();
+      unsubRead();
     };
   }, [chatId, userId]);
 
@@ -638,7 +646,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           if (!(msg as any).silent) {
             notifyIncomingMessage(name, msg.text || (msg as any).media?.name || "New media");
           }
-          updateMessageStatus(msg.from, msg.id, "read");
+          if (isValidOnion(msg.from)) void sendReadReceipt(msg.from, msg.id).catch(() => undefined);
         }
       }
     });
@@ -843,19 +851,9 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
 
     // БОСС: Пробуем отправить P2P, если не вышло — кидаем в облако
     try {
-      const sentP2P = await sendP2PMessage(peerId, msg);
-
-      if (!sentP2P) {
-        // Если P2P не сработал, кладём в локальную очередь доставки
-        await bufferMessageInCloud(chatId, msg);
-        // Как только попало в облако — это уже успех, убираем часики
-        setMessages((prev) => prev.map((m) => (m.id === msg.id ? { ...m, status: "sent" } : m)));
-      } else {
-        // P2P сработал мгновенно
-        setMessages((prev) =>
-          prev.map((m) => (m.id === msg.id ? { ...m, status: "delivered" } : m)),
-        );
-      }
+      // Persisted sealed in the Dexie outbox; status advances via
+      // onDeliveryUpdate (sent → delivered on the peer's ACK).
+      await sendP2PMessage(peerId, msg);
     } catch (e) {
       console.error("Ошибка отправки:", e);
     }
@@ -924,7 +922,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       },
     ]);
     try {
-      await dbPut("messages", botMsg.id, botMsg);
+      await saveLocalMessage(botMsg as P2PMessage);
       const meta = await getChatMeta(chatId);
       await saveChatMeta({
         friendId: chatId,
@@ -994,7 +992,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
 
   // Voice messages bypass EXIF scrub (audio has no EXIF) and the malware scan
   // (internal recording, not user-supplied). They flow through uploadMedia →
-  // Trivo server (/upload) → sendP2PMessage (WebSocket frame).
+  // Local media store → sendP2PMessage (sealed Tor outbox).
   const handleVoiceRecorded = async (file: File) => {
     if (!userId) return;
     beginUpload(file.name, file.size);
@@ -1014,7 +1012,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       };
       const peerId = chatId;
       const sent = await sendP2PMessage(peerId, msg as any);
-      if (!sent) await bufferMessageInCloud(chatId, msg as any);
+      void sent;
 
       // Immediate UI refresh — bubble appears the instant the URL is back.
       setMessages((prev) => [
@@ -1086,9 +1084,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
 
       const peerId = chatId;
       const sent = await sendP2PMessage(peerId, msg as any);
-      if (!sent) {
-        await bufferMessageInCloud(chatId, msg as any);
-      }
+      void sent;
 
       setMessages((prev) => [
         ...prev,
@@ -1140,7 +1136,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       };
       const peerId = chatId;
       const sentOk = await sendP2PMessage(peerId, msg as any);
-      if (!sentOk) await bufferMessageInCloud(chatId, msg as any);
+      void sentOk;
 
       setMessages((prev) => [
         ...prev,
@@ -1171,7 +1167,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   // Purge one-time media: remove from local DB + memory, mark message as consumed.
   const purgeOneTimeMedia = async (msg: Message) => {
     try {
-      await dbDelete("messages", msg.id);
+      await deleteLocalMessage(msg.id);
     } catch {
       /* ignore */
     }
@@ -2355,7 +2351,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           };
           const peerId = targetChatId;
           const sent = await sendP2PMessage(peerId, payload);
-          if (!sent) await bufferMessageInCloud(targetChatId, payload);
+          void sent;
           const lastMessage = forwardingMedia ? caption || forwardingMedia.name : forwardingText;
           await saveChatMeta({
             friendId: targetChatId,

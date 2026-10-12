@@ -93,6 +93,5 @@ export const useBackNavigation = (active: boolean, handler: BackHandler) => {
       const i = stack.lastIndexOf(handler);
       if (i >= 0) stack.splice(i, 1);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, handler]);
 };
