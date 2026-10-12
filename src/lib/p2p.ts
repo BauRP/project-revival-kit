@@ -162,7 +162,9 @@ export function onConnectionChange(cb: (peer: string, connected: boolean) => voi
 }
 
 /** 'sent' = remote socket accepted; 'delivered' = verified DELIVERED_ACK. */
-export function onDeliveryUpdate(cb: (messageId: string, state: "sent" | "delivered") => void): () => void {
+export function onDeliveryUpdate(
+  cb: (messageId: string, state: "sent" | "delivered") => void,
+): () => void {
   return onionOnDelivery(cb);
 }
 

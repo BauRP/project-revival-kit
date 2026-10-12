@@ -24,10 +24,7 @@ import { startMediaCacheMonitor } from "@/lib/dexie-db";
 import { TransportStatusChip } from "@/components/TransportStatusChip";
 import { executePanic, createPanicLongPress } from "@/lib/panic";
 import { startPresence, setInvisibleMode } from "@/lib/presence";
-import {
-  listenForFriendRequests,
-  acceptFriendRequest,
-} from "@/lib/sync/peer-sync";
+import { listenForFriendRequests, acceptFriendRequest } from "@/lib/sync/peer-sync";
 import { initMockPeer } from "@/lib/mock-peer";
 import { isDuplicateMessage } from "@/lib/local-peer-cache";
 import { LAYOUT_CONFIG, getAppTopOffset, getBottomNavOffset } from "@/lib/layout-metrics";
@@ -128,7 +125,6 @@ const Index = () => {
           void initMockPeer(language).catch((err) => {
             console.warn("[trivo] local support initialization failed:", err);
           });
-
         }, 250);
       });
     });
@@ -307,27 +303,27 @@ const Index = () => {
         style={{ paddingBottom: getBottomNavOffset() }}
       >
         <div key={activeTab} className="h-full overflow-y-auto scrollbar-hide">
-            {activeTab === "chats" && (
-              <div className="flex flex-col h-full">
-                <TabbedWorkspace onActiveFolderChange={(f) => setActiveFolder(f)} />
-                {userId && (
-                  <div className="flex justify-end px-3 py-1">
-                    <TransportStatusChip userId={userId} />
-                  </div>
-                )}
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <ChatList
-                    onOpenChat={handleOpenChat}
-                    activeFolderId={activeFolder?.id || null}
-                    isSystemFolder={!!activeFolder?.is_system}
-                  />
+          {activeTab === "chats" && (
+            <div className="flex flex-col h-full">
+              <TabbedWorkspace onActiveFolderChange={(f) => setActiveFolder(f)} />
+              {userId && (
+                <div className="flex justify-end px-3 py-1">
+                  <TransportStatusChip userId={userId} />
                 </div>
+              )}
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <ChatList
+                  onOpenChat={handleOpenChat}
+                  activeFolderId={activeFolder?.id || null}
+                  isSystemFolder={!!activeFolder?.is_system}
+                />
               </div>
-            )}
-            {activeTab === "add-friend" && <AddFriend />}
-            {activeTab === "friends" && <FriendsList onOpenChat={handleOpenChat} />}
-            {activeTab === "security" && <SecurityDashboard />}
-            {activeTab === "profile" && <ProfilePage />}
+            </div>
+          )}
+          {activeTab === "add-friend" && <AddFriend />}
+          {activeTab === "friends" && <FriendsList onOpenChat={handleOpenChat} />}
+          {activeTab === "security" && <SecurityDashboard />}
+          {activeTab === "profile" && <ProfilePage />}
         </div>
       </div>
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />

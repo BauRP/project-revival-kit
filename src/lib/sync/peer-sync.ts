@@ -17,7 +17,11 @@ export interface FriendRequest {
 export async function sendFriendRequest(request: Omit<FriendRequest, "status" | "timestamp">) {
   const timestamp = Date.now();
   const { dbPut } = await import("../storage");
-  await dbPut("settings", `friend-req-out-${request.to}`, { ...request, timestamp, status: "pending" });
+  await dbPut("settings", `friend-req-out-${request.to}`, {
+    ...request,
+    timestamp,
+    status: "pending",
+  });
   await onionSendDispatch(request.to, {
     type: "friend_request",
     id: `fr-${request.to}-${timestamp}`,
@@ -51,7 +55,8 @@ export function listenForFriendRequests(
 export async function acceptFriendRequest(fromOnion: string): Promise<void> {
   const { dbPut } = await import("../storage");
   const stored = await dbGet<FriendRequest>("settings", `friend-req-in-${fromOnion}`);
-  if (stored) await dbPut("settings", `friend-req-in-${fromOnion}`, { ...stored, status: "accepted" });
+  if (stored)
+    await dbPut("settings", `friend-req-in-${fromOnion}`, { ...stored, status: "accepted" });
   await onionSendDispatch(fromOnion, {
     type: "friend_request_status",
     id: `frs-${fromOnion}-${Date.now()}`,
@@ -60,7 +65,9 @@ export async function acceptFriendRequest(fromOnion: string): Promise<void> {
   });
 }
 
-export async function getOutgoingRequestStatus(toOnion: string): Promise<"pending" | "accepted" | "none"> {
+export async function getOutgoingRequestStatus(
+  toOnion: string,
+): Promise<"pending" | "accepted" | "none"> {
   const local = await dbGet<FriendRequest>("settings", `friend-req-out-${toOnion}`);
   if (local?.status === "pending" || local?.status === "accepted") return local.status;
   return "none";
