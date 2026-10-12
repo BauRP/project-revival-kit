@@ -387,7 +387,11 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
 
   switch (inner.kind) {
     case "dispatch": {
-      const payload = { ...(inner.body.payload as Record<string, unknown>), from, to: self };
+      const payload: Record<string, unknown> = {
+        ...(inner.body.payload as Record<string, unknown>),
+        from,
+        to: self,
+      };
       const committed = await commitDispatch(rawId, payload);
       await sendEphemeral(from, "ack", { ids: [String(payload.id)] }).catch(() => false);
       if (committed) safeEach(incomingDispatchListeners, payload);

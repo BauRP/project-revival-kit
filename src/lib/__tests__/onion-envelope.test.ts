@@ -20,8 +20,12 @@ describe("onion identity", () => {
 
 describe("E2EE envelope", () => {
   it("only the recipient can open, and tampering is rejected", () => {
-    const a = kp(), b = kp(), c = kp();
-    const A = onionFromPublicKey(a.pub), B = onionFromPublicKey(b.pub), C = onionFromPublicKey(c.pub);
+    const a = kp(),
+      b = kp(),
+      c = kp();
+    const A = onionFromPublicKey(a.pub),
+      B = onionFromPublicKey(b.pub),
+      C = onionFromPublicKey(c.pub);
     const f = sealFrame({ hello: "world" }, A, B, a.sec);
     expect(JSON.stringify(f)).not.toContain("world");
     expect(openFrame(f, B, b.sec)).toEqual({ hello: "world" });
