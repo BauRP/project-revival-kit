@@ -427,8 +427,7 @@ public class TorOnionService extends Service {
                     : "Online · " + shortOnion(onionAddress));
             lastError = null;
             publishStatus();
-            // Anything queued while we were offline goes out immediately.
-            workers.execute(this::flushOutboxOnce);
+
         } catch (Exception e) {
             lastError = "tor ready failed: " + e.getMessage();
             Log.e(TAG, lastError, e);
