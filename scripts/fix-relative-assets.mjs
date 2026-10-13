@@ -9,10 +9,11 @@
 //  document-relative one.
 // ============================================================================
 
-import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { STAGE_DIR } from "./web-dir.mjs";
 
-const ROOT = resolve(process.cwd(), "dist/client");
+const ROOT = STAGE_DIR;
 const TEXT = new Set([".html", ".js", ".mjs", ".css", ".json", ".map"]);
 
 /** Files that must keep absolute URLs (none today, kept for clarity). */
@@ -29,11 +30,9 @@ function walk(dir) {
 }
 
 let touched = 0;
-try {
-  statSync(ROOT);
-} catch {
-  console.log("[trivo] dist/ missing — nothing to normalise");
-  process.exit(0);
+if (!existsSync(resolve(ROOT, "index.html"))) {
+  console.error(`[trivo] ${ROOT}/index.html missing — run scripts/stage-web.mjs first`);
+  process.exit(1);
 }
 
 for (const file of walk(ROOT)) {

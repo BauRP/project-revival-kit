@@ -2,7 +2,7 @@ name: Build Messenger APK
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main, master]
   workflow_dispatch:
 
 jobs:
@@ -16,25 +16,35 @@ jobs:
       - name: Setup Java 21 (Zulu)
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
-          java-version: '21'
+          distribution: "zulu"
+          java-version: "21"
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
 
-      - name: Install Dependencies
-        run: |
-          npm install --legacy-peer-deps
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.3"
+
+      - name: Install Dependencies (frozen bun.lock)
+        run: bun install --frozen-lockfile
 
       - name: Build Web Assets
         run: |
-          CAP_BUILD=1 npm run build
+          CAP_BUILD=1 bun run build
+          node scripts/stage-web.mjs
           node scripts/fix-relative-assets.mjs
           node scripts/verify-web-dir.mjs
 
-      - name: Bootstrap Gradle Wrapper JAR
+      - name: Validate Web Directory Before Sync
+        run: |
+          test -f www/index.html || { echo "www/index.html missing"; exit 1; }
+          ls -la www
+
+      - name: Bootstrap Gradle Wrapper
         run: |
           mkdir -p android/gradle/wrapper
           if [ ! -f android/gradle/wrapper/gradle-wrapper.jar ]; then
@@ -42,79 +52,52 @@ jobs:
               https://raw.githubusercontent.com/gradle/gradle/v8.9.0/gradle/wrapper/gradle-wrapper.jar
           fi
           if [ ! -f android/gradlew ]; then
-            curl -sSLo android/gradlew \
-              https://raw.githubusercontent.com/gradle/gradle/v8.9.0/gradlew
-            chmod +x android/gradlew
+            curl -sSLo android/gradlew https://raw.githubusercontent.com/gradle/gradle/v8.9.0/gradlew
           fi
+          chmod +x android/gradlew
 
-      - name: Sync & Copy Capacitor
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Build Android APK (debug)
+        working-directory: android
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Select Universal APK
+        id: apk
         run: |
-          npx cap sync android
+          DIR=android/app/build/outputs/apk/debug
+          ls -la "$DIR"
+          APK=$(ls "$DIR"/*universal*.apk 2>/dev/null | head -n 1)
+          if [ -z "$APK" ] || [ ! -f "$APK" ]; then
+            echo "Universal APK not found in $DIR"; exit 1
+          fi
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          echo "Universal APK: $APK"
 
-      - name: Cleanup Gradle Cache & Trash
+      - name: Audit libtor.so per ABI
         run: |
-          echo "Удаляю старый кэш и мусорные дистрибутивы..."
-          rm -rf ~/.gradle/caches/
-          rm -rf ~/.gradle/wrapper/dists/
-          cd android
-          chmod +x gradlew
-          ./gradlew clean
+          APK="${{ steps.apk.outputs.path }}"
+          FAIL=0
+          for ABI in arm64-v8a armeabi-v7a x86_64 x86; do
+            if unzip -l "$APK" | grep -q "lib/$ABI/libtor.so"; then
+              echo "OK   lib/$ABI/libtor.so"
+            else
+              echo "MISS lib/$ABI/libtor.so"; FAIL=1
+            fi
+          done
+          unzip -l "$APK" | grep "\.so$" || true
+          exit $FAIL
 
-      - name: Generate Debug Keystore & Get SHA1
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivo-chat-debug-apks
+          path: android/app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Summary
         run: |
-          echo "Генерирую debug.keystore и извлекаю SHA1..."
-          mkdir -p ~/.android
-          if [ ! -f ~/.android/debug.keystore ]; then
-            keytool -genkey -v -keystore ~/.android/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
-          fi
-          keytool -list -v -keystore ~/.android/debug.keystore -alias androiddebugkey -storepass android -keypass android | grep SHA1
-
-      - name: Build Android APK
-        run: |
-          cd android
-          chmod +x gradlew
-          rm -rf app/build
-          ./gradlew assembleDebug --no-daemon --refresh-dependencies --stacktrace
-
-      - name: Generate Summary & Download Link
-        run: |
-          # Ищем сгенерированный файл APK
-          APK_PATH=$(find android/app/build/outputs/apk -name "*.apk" | head -n 1)
-
-          if [ -z "$APK_PATH" ] || [ ! -f "$APK_PATH" ]; then
-            echo "КРИТИЧЕСКАЯ ОШИБКА: APK не найден!"
-            exit 1
-          fi
-
-          echo "Найден APK по адресу: $APK_PATH"
-
-          set +e
-          DOWNLOAD_URL=""
-
-          # Вариант 1: Catbox
-          DOWNLOAD_URL=$(curl -s -F "reqtype=fileupload" -F "fileToUpload=@$APK_PATH" https://catbox.moe/user/api.php)
-
-          # Вариант 2: Litterbox
-          if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" != http* ]]; then
-            DOWNLOAD_URL=$(curl -s -F "reqtype=fileupload" -F "time=24h" -F "fileToUpload=@$APK_PATH" https://litterbox.catbox.moe/resources/internals/api.php)
-          fi
-
-          # Вариант 3: Bashupload
-          if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" != http* ]]; then
-            DOWNLOAD_URL=$(curl -s -T "$APK_PATH" https://bashupload.com | grep -o 'https://bashupload.com/[^" ]*' | head -n 1)
-          fi
-
-          # Вариант 4: File.io
-          if [[ -z "$DOWNLOAD_URL" || "$DOWNLOAD_URL" != http* ]]; then
-            DOWNLOAD_URL=$(curl -s -F "file=@$APK_PATH" https://file.io | grep -o '"link":"[^"]*' | cut -d'"' -f4)
-          fi
-          set -e
-
-          if [[ "$DOWNLOAD_URL" == http* ]]; then
-            echo "## 📱 Готовый файл APK для Messenger:" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "[🚀 НАЖМИ СЮДА, ЧТОБЫ СКАЧАТЬ APK]($DOWNLOAD_URL)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "КРИТИЧЕСКАЯ ОШИБКА: Не удалось загрузить APK ни на один облачный сервер."
-            exit 1
-          fi
+          echo "## Trivo Chat APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "Universal APK: \`$(basename "${{ steps.apk.outputs.path }}")\` — download from the **Artifacts** section of this run." >> "$GITHUB_STEP_SUMMARY"

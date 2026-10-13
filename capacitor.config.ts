@@ -3,8 +3,8 @@ import type { CapacitorConfig } from "@capacitor/cli";
 const config: CapacitorConfig = {
   appId: "com.baurp.trivochat",
   appName: "Trivo Chat Elite",
-  // The TanStack Start client build emits the SPA shell + assets here.
-  webDir: "dist/client",
+  // scripts/stage-web.mjs copies the real build (dist/client or .output/public) here.
+  webDir: "www",
   server: {
     androidScheme: "https",
     cleartext: true,
