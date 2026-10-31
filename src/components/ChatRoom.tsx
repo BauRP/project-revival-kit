@@ -168,18 +168,28 @@ const TapToDownload = ({
   label,
   sizeBytes,
   render,
+  onDownload,
 }: {
   label: string;
   sizeBytes?: number;
   render: () => React.ReactElement;
+  onDownload?: () => Promise<void>;
 }) => {
   const { t } = useLanguage();
   const [loaded, setLoaded] = useState(false);
+  const [loading, setLoading] = useState(false);
   if (loaded) return render();
   return (
     <button
       type="button"
-      onClick={() => setLoaded(true)}
+      disabled={loading}
+      onClick={() => {
+        if (!onDownload) { setLoaded(true); return; }
+        setLoading(true);
+        void onDownload().then(() => setLoaded(true)).catch((error) => {
+          console.warn("[media] manual download failed", error);
+        }).finally(() => setLoading(false));
+      }}
       className="flex items-center gap-2 px-3 py-2 rounded-xl border border-[#00FFFF]/40 bg-black text-[#00FFFF] hover:bg-[#00FFFF]/10 transition-colors"
     >
       <Download size={14} />
@@ -1398,6 +1408,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           <TapToDownload
             label={media.name || t("image")}
             sizeBytes={media.size}
+            onDownload={() => media.fileId ? ensureMediaUrl(media, chatId).then(() => undefined) : Promise.resolve()}
             render={() => (
               <a href={media.url} target="_blank" rel="noopener noreferrer" className="block">
                 <img
