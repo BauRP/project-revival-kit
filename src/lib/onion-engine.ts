@@ -399,18 +399,23 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
     }
     case "ack": {
       const ids = Array.isArray(inner.body.ids) ? (inner.body.ids as string[]) : [];
+      const confirmed: string[] = [];
       await dxdb.transaction("rw", [dxdb.outbox, dxdb.messages, dxdb.inbox_raw], async () => {
         for (const mid of ids) {
+          if (typeof mid !== "string") continue;
           const rec = await dxdb.outbox.get(mid);
+          // A signed ACK is meaningful only for a frame previously sent to
+          // this EXACT peer; forged/foreign message IDs cannot update the UI.
           if (!rec || rec.peer !== from) continue;
           await dxdb.outbox.delete(mid);
           const msg = await dxdb.messages.get(mid);
           if (msg && msg.status !== "read")
             await dxdb.messages.update(mid, { status: "delivered" });
+          confirmed.push(mid);
         }
         await dxdb.inbox_raw.delete(rawId);
       });
-      ids.forEach((mid) => safeEach(deliveryListeners, mid, "delivered"));
+      confirmed.forEach((mid) => safeEach(deliveryListeners, mid, "delivered"));
       return;
     }
     case "hello":
