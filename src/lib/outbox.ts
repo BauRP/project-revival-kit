@@ -20,6 +20,7 @@ export interface ScheduledItem {
   silent: boolean;
   scheduledAt: number; // epoch ms
   createdAt: number;
+  attempts?: number; // retained across retries; never reset the scheduled item
 }
 
 type Sender = (item: ScheduledItem) => Promise<void> | void;
@@ -83,6 +84,7 @@ export async function enqueue(
     silent: item.silent,
     scheduledAt: item.scheduledAt,
     createdAt: Date.now(),
+    attempts: 0,
   };
   await tx("readwrite", (s) => s.put(full));
   scheduleNextWake();
@@ -114,9 +116,13 @@ async function fireDue() {
       await remove(item.id);
     } catch (e) {
       console.error("[outbox] send failed", item.id, e);
-      // Push retry by 30s so we don't spin
-      await enqueue({ ...item, id: item.id, scheduledAt: now + 30_000 });
-      await remove(item.id);
+      // Update the SAME persisted item without deleting it. A failed send
+      // must never erase an offline message from the queue.
+      const attempts = (item.attempts ?? 0) + 1;
+      const retryDelay = Math.min(30_000 * 2 ** Math.min(attempts - 1, 7), 60 * 60_000);
+      await tx("readwrite", (store) =>
+        store.put({ ...item, attempts, scheduledAt: Date.now() + retryDelay }),
+      );
     }
   }
   scheduleNextWake();
