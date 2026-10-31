@@ -1,4 +1,4 @@
-// Simulated security scanning for media files
+// Conservative offline extension risk check; this is NOT antivirus scanning.
 // Layer 1: EXIF/metadata stripping (pre-upload)
 // Layer 2: Post-download threat simulation
 
@@ -63,8 +63,7 @@ export function simulateSecurityScan(
     return { safe: true, fileName };
   }
 
-  // Simulate: very low chance of "infected" for demo purposes
-  // In production, replace with real scanning API
+  // Extension-only policy. This does not establish whether a file is malware.
   const suspicious = fileName.toLowerCase().match(/\.(exe|bat|cmd|scr|pif|vbs|js|wsf|com)$/);
   if (suspicious) {
     return { safe: false, threatType: "malware", fileName };
@@ -83,13 +82,13 @@ export function getBlockedFileMessage(
   if (lang === "ru" || lang === "kk") {
     const item = type === "photo" ? "фото" : "файл";
     return {
-      title: `Это ${item} содержит вирус или шпион`,
-      footer: "ОПАСНО: Файл заблокирован системой безопасности",
+      title: `Небезопасный тип файла: ${item}`,
+      footer: "Файл заблокирован из-за потенциально опасного расширения. Антивирусная проверка не проводилась.",
     };
   }
   const item = type === "photo" ? "photo" : "file";
   return {
-    title: `This ${item} contains a virus or spyware`,
-    footer: "DANGER: File blocked by security system",
+    title: `Potentially unsafe file type: ${item}`,
+    footer: "Blocked due to file extension. No antivirus scan was performed.",
   };
 }
