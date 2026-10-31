@@ -44,7 +44,7 @@ import { subscribeToPresence, getPresenceStatus } from "@/lib/presence";
 import { onionOnConnectionChange, onionIsConnectedTo } from "@/lib/onion-engine";
 import { getContactLastSeen, setContactLastSeen } from "@/lib/dexie-db";
 import { toast } from "@/hooks/use-toast";
-import { generateUUIDv4, isDuplicateMessage } from "@/lib/local-peer-cache";
+import { generateUUIDv4 } from "@/lib/local-peer-cache";
 import {
   simulateSecurityScan,
   stripExifMetadata,
@@ -560,7 +560,8 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   useEffect(() => {
     const unsub = onP2PMessage((msg: P2PMessage) => {
       if (msg.from === chatId || msg.to === chatId) {
-        if (isDuplicateMessage(msg.id)) return;
+        // Dexie and this component's local message IDs handle duplicates;
+        // the chat listener must not consume the global listener's event.
         // Phase 3 §3 — Contacts-only mode: drop & block non-contact senders.
         if (msg.from !== userId && shouldBlockIncoming(msg.from)) {
           moveToBlocked(msg.from);
