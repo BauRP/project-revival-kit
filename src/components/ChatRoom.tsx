@@ -332,7 +332,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       setSearchQuery("");
       return true;
     }
-    if (editingId && !override?.messageId) {
+    if (editingId) {
       setEditingId(null);
       return true;
     }
