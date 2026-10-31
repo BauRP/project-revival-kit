@@ -28,7 +28,7 @@ export interface UploadHandle {
 }
 
 function makeFileId(): string {
-  return `f_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  return `f_${crypto.randomUUID()}`;
 }
 
 /**
@@ -128,6 +128,9 @@ export function downloadFromTrivo(fileId: string): Promise<string> {
   })();
 
   inFlight.set(fileId, task);
+  void task.finally(() => {
+    if (inFlight.get(fileId) === task) inFlight.delete(fileId);
+  }).catch(() => undefined);
   return task;
 }
 
