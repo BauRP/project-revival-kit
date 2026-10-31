@@ -78,11 +78,12 @@ export async function getOrCreateIdentity(): Promise<IdentityKeys> {
   if (isNative()) {
     if (existing && "sealed" in existing) {
       const unlocked = await vault.openIdentity({ sealed: existing.sealed });
-      const identity = JSON.parse(unlocked.plaintext) as IdentityKeys;
+      const identity = validateIdentityKeys(JSON.parse(unlocked.plaintext) as IdentityKeys);
       await vault.saveIdentity({ sealed: existing.sealed });
       return validateIdentityKeys(identity);
     }
     if (existing && "signing" in existing) {
+      validateIdentityKeys(existing);
       // Crash-safe migration: encrypt and persist a device-recovery copy before
       // replacing the old unprotected IndexedDB record.
       const wrapped = await vault.sealIdentity({ plaintext: JSON.stringify(existing) });
@@ -93,7 +94,7 @@ export async function getOrCreateIdentity(): Promise<IdentityKeys> {
     const recovery = await vault.loadIdentity();
     if (recovery.sealed) {
       const unlocked = await vault.openIdentity({ sealed: recovery.sealed });
-      const identity = JSON.parse(unlocked.plaintext) as IdentityKeys;
+      const identity = validateIdentityKeys(JSON.parse(unlocked.plaintext) as IdentityKeys);
       await dbPutStrict("identity", "keys", { sealed: recovery.sealed });
       return validateIdentityKeys(identity);
     }
