@@ -85,7 +85,8 @@ const statusListeners = new Set<(status: TorStatus) => void>();
 const deliveryListeners = new Set<(messageId: string, state: DeliveryState) => void>();
 
 const reachability = new Map<string, number>();
-const blobRequests = new Map<string, (ok: boolean) => void>();
+interface BlobRequest { peer: string; resolve: (ok: boolean) => void }
+const blobRequests = new Map<string, BlobRequest>();
 interface PartialReceive {
   fileId: string;
   from: string;
@@ -469,10 +470,10 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
     case "blob_missing": {
       await dxdb.inbox_raw.delete(rawId);
       const fileId = String(inner.body.fileId || "");
-      const resolver = blobRequests.get(fileId);
-      if (resolver && !partialReceives.has(fileId)) {
+      const pending = blobRequests.get(fileId);
+      if (pending && pending.peer === from && !partialReceives.has(fileId)) {
         blobRequests.delete(fileId);
-        resolver(false);
+        pending.resolve(false);
       }
       return;
     }
@@ -612,8 +613,18 @@ async function sendBlob(peer: string, fileId: string, include: (index: number) =
 
 async function acceptBlobChunk(from: string, body: Record<string, unknown>): Promise<void> {
   const fileId = String(body.fileId || "");
-  if (!fileId) return;
-  const entry: PartialReceive = partialReceives.get(fileId) || {
+  const pending = blobRequests.get(fileId);
+  // Reject unsolicited frames, unexpected senders and abusive chunk counts.
+  const index = Number(body.index);
+  const chunks = Number(body.totalChunks);
+  const base64 = String(body.data || "");
+  if (!fileId || !pending || pending.peer !== from ||
+      !Number.isSafeInteger(index) || !Number.isSafeInteger(chunks) ||
+      chunks < 1 || chunks > 24000 || index < 0 || index >= chunks ||
+      base64.length > 80000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) return;
+  const prior = partialReceives.get(fileId);
+  if (prior && (prior.from !== from || prior.totalChunks !== chunks)) return;
+  const entry: PartialReceive = prior || {
     fileId,
     from,
     name: String(body.name || fileId),
@@ -622,8 +633,7 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
     received: new Map<number, string>(),
     updatedAt: Date.now(),
   };
-  entry.received.set(Number(body.index || 0), String(body.data || ""));
-  entry.totalChunks = Number(body.totalChunks || 1);
+  entry.received.set(index, base64);
   entry.updatedAt = Date.now();
   partialReceives.set(fileId, entry);
   if (entry.received.size < entry.totalChunks) return;
@@ -640,38 +650,42 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
     entry.mimeType,
   );
   partialReceives.delete(fileId);
-  const resolver = blobRequests.get(fileId);
-  if (resolver) {
+  const request = blobRequests.get(fileId);
+  if (request && request.peer === from) {
     blobRequests.delete(fileId);
-    resolver(true);
+    request.resolve(true);
   }
 }
 
-export function onionRequestBlob(fileId: string): Promise<boolean> {
-  if (!fileId) return Promise.resolve(false);
+/** Only request encrypted media from its authenticated message sender. */
+export function onionRequestBlob(fileId: string, peer: string): Promise<boolean> {
+  const source = normalizeOnion(peer);
+  if (!fileId || !isValidOnion(source)) return Promise.resolve(false);
+  const existing = blobRequests.get(fileId);
+  if (existing) return Promise.resolve(false); // One active owner per file.
   return new Promise<boolean>((resolve) => {
-    blobRequests.set(fileId, resolve);
+    const request: BlobRequest = { peer: source, resolve };
+    blobRequests.set(fileId, request);
     void (async () => {
-      const contacts = (await getAllContacts()).sort(
-        (a, b) => (b.lastSeen || 0) - (a.lastSeen || 0),
-      );
-      let asked = false;
-      for (const c of contacts) {
-        const partial = partialReceives.get(fileId);
-        const sent = await sendEphemeral(c.onion, "blob_request", {
-          fileId,
-          have: partial ? Array.from(partial.received.keys()) : [],
-        });
-        asked = asked || sent;
-      }
-      if (!asked && blobRequests.get(fileId) === resolve) {
+      const partial = partialReceives.get(fileId);
+      const sent = await sendEphemeral(source, "blob_request", {
+        fileId,
+        have: partial?.from === source ? Array.from(partial.received.keys()) : [],
+      });
+      if (!sent && blobRequests.get(fileId) === request) {
         blobRequests.delete(fileId);
         resolve(false);
       }
-    })();
-    setTimeout(() => {
-      if (blobRequests.get(fileId) === resolve) {
+    })().catch(() => {
+      if (blobRequests.get(fileId) === request) {
         blobRequests.delete(fileId);
+        resolve(false);
+      }
+    });
+    setTimeout(() => {
+      if (blobRequests.get(fileId) === request) {
+        blobRequests.delete(fileId);
+        partialReceives.delete(fileId);
         resolve(false);
       }
     }, BLOB_REQUEST_TIMEOUT_MS);
