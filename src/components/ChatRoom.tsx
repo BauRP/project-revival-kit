@@ -39,7 +39,7 @@ import DefaultAvatar from "./DefaultAvatar";
 import CallScreen from "./CallScreen";
 import ReportMenu from "./ReportMenu";
 import { uploadMedia, formatFileSize, type MediaAttachment } from "@/lib/media";
-import { ensureMediaUrl, TRIVO_MAX_UPLOAD_BYTES } from "@/lib/media-store";
+import { ensureMediaUrl, purgeConsumedMedia, TRIVO_MAX_UPLOAD_BYTES } from "@/lib/media-store";
 import { subscribeToPresence, getPresenceStatus } from "@/lib/presence";
 import { onionOnConnectionChange, onionIsConnectedTo } from "@/lib/onion-engine";
 import { getContactLastSeen, setContactLastSeen } from "@/lib/dexie-db";
@@ -1169,6 +1169,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   const purgeOneTimeMedia = async (msg: Message) => {
     try {
       await deleteLocalMessage(msg.id);
+      if (msg.media?.fileId) await purgeConsumedMedia(msg.media.fileId);
     } catch {
       /* ignore */
     }
