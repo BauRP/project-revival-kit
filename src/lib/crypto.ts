@@ -134,8 +134,8 @@ export function getKeyFingerprint(publicKey: string): string {
 
     return `${part1}-${part2}-${part3}`;
   } catch (e) {
-    // Если всё совсем плохо, генерируем случайный ID, чтобы не было "111111"
-    return "TRV-" + Math.random().toString(36).substring(2, 10).toUpperCase();
+    // A random fingerprint would undermine identity verification. Fail closed.
+    throw new Error("Cannot calculate the identity key fingerprint", { cause: e });
   }
 }
 
