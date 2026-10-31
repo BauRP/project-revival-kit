@@ -453,14 +453,20 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
       await dxdb.inbox_raw.delete(rawId);
       const fileId = String(inner.body.fileId || "");
       const have = Array.isArray(inner.body.have) ? (inner.body.have as number[]) : [];
-      if (await hasBlob(fileId)) await sendBlob(from, fileId, (i) => !have.includes(i));
-      else await sendEphemeral(from, "blob_missing", { fileId });
+      if (await hasBlob(fileId) && await canPeerRequestBlob(from, fileId)) {
+        await sendBlob(from, fileId, (i) => !have.includes(i));
+      } else {
+        await sendEphemeral(from, "blob_missing", { fileId });
+      }
       return;
     }
     case "blob_sync_request": {
       await dxdb.inbox_raw.delete(rawId);
       const missing = Array.isArray(inner.body.missing) ? (inner.body.missing as number[]) : [];
-      await sendBlob(from, String(inner.body.fileId || ""), (i) => missing.includes(i));
+      const requestedFile = String(inner.body.fileId || "");
+      if (await canPeerRequestBlob(from, requestedFile)) {
+        await sendBlob(from, requestedFile, (i) => missing.includes(i));
+      }
       return;
     }
     case "blob_chunk":
@@ -571,6 +577,17 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
       await dbPut("settings", `friend-req-out-${payload.from}`, { ...out, status: "accepted" });
   }
   return fresh;
+}
+
+/** Keep a file private to the chat participants to whom it was sent. */
+async function canPeerRequestBlob(peer: string, fileId: string): Promise<boolean> {
+  if (!fileId || !isValidOnion(peer)) return false;
+  const self = await ensureLocalIdentity();
+  const rows = await dxdb.messages.where("to").equals(peer).toArray();
+  return rows.some((row) => {
+    const media = row.media as { fileId?: string } | undefined;
+    return row.from === self && media?.fileId === fileId;
+  });
 }
 
 // ─── Blob transfer (sealed, chunked, resumable) ──────────────
