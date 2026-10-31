@@ -332,7 +332,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       setSearchQuery("");
       return true;
     }
-    if (editingId) {
+    if (editingId && !override?.messageId) {
       setEditingId(null);
       return true;
     }
@@ -779,6 +779,8 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     text?: string;
     silent?: boolean;
     skipClear?: boolean;
+    messageId?: string;
+    scheduledTimestamp?: number;
   }) => {
     const sourceText = override?.text ?? input;
     const isSilent = override?.silent ?? silent;
@@ -799,7 +801,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       return;
     }
 
-    const msgId = generateUUIDv4();
+    const msgId = override?.messageId || generateUUIDv4();
     // Block 5: prepend the quoted reply preview to the outgoing text. Persists
     // through the P2P transport as plain markdown-style quotation, so both ends
     // see the threaded context without requiring a schema migration.
@@ -831,14 +833,14 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       from: userId,
       to: chatId,
       text: currentInput,
-      timestamp: Date.now(),
+      timestamp: override?.scheduledTimestamp ?? Date.now(),
       status: "pending",
-      deleteAt: getDeleteAt(Date.now(), disappearingDuration),
+      deleteAt: getDeleteAt(override?.scheduledTimestamp ?? Date.now(), disappearingDuration),
       silent: isSilent || undefined,
     };
 
     // БОСС: Сразу добавляем в список, чтобы не было задержки
-    setMessages((prev) => [
+    setMessages((prev) => prev.some((m) => m.id === msg.id) ? prev : [
       ...prev,
       {
         id: msg.id,
@@ -864,13 +866,14 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
 
     const peerId = chatId;
 
-    // БОСС: Пробуем отправить P2P, если не вышло — кидаем в облако
+    // The native Tor outbox owns delivery; do not fall back to a cloud.
     try {
       // Persisted sealed in the Dexie outbox; status advances via
       // onDeliveryUpdate (sent → delivered on the peer's ACK).
       await sendP2PMessage(peerId, msg);
     } catch (e) {
       console.error("Ошибка отправки:", e);
+      if (override?.messageId) throw e; // Retain the scheduled item for retry.
     }
 
     // Сохраняем в историю чатов
@@ -1342,7 +1345,15 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   useEffect(() => {
     if (!chatId) return;
     return registerSender(chatId, async (item: ScheduledItem) => {
-      await sendMessageRef.current({ text: item.text, silent: item.silent, skipClear: true });
+      // Re-entrant timers must not duplicate a message already in the Tor outbox.
+      const queued = await dxdb.outbox.get(item.id);
+      if (queued) return;
+      const stored = await dxdb.messages.get(item.id);
+      if (stored && stored.status !== "pending") return;
+      await sendMessageRef.current({
+        text: item.text, silent: item.silent, skipClear: true,
+        messageId: item.id, scheduledTimestamp: item.scheduledAt,
+      });
     });
   }, [chatId]);
 
