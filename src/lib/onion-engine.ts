@@ -280,6 +280,8 @@ export async function onionSendDispatch(
   const to = normalizeOnion(peer);
   if (!isValidOnion(to)) throw new Error(`Not a valid .onion address: ${peer}`);
   const id = String(payload.id || crypto.randomUUID());
+  // A scheduled retry must never overwrite a previously sealed frame.
+  if (await dxdb.outbox.get(id)) return attemptOutbox(id);
   const kind = String(payload.type || "text_message") as OutboxKind;
   const sealed = await seal(to, { kind: "dispatch", id, body: { payload: { ...payload, id } } });
   const now = Date.now();
