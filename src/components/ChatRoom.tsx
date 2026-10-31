@@ -586,7 +586,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
             }
             // Lazy-resolve the Trivo file: fetch with x-api-key, replace the
             // remote placeholder URL with a local blob URL, then re-render.
-            if (!blocked && media.fileId) {
+            if (!blocked && media.fileId && shouldAutoDownload(media.type === "image" ? "image" : media.type === "audio" ? "audio" : "file")) {
               ensureMediaUrl(media, msg.from)
                 .then((resolved) => {
                   if (!resolved) return;
