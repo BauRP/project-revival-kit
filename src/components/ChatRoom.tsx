@@ -115,6 +115,8 @@ import {
   aggregate as aggregateReactions,
   getReactions,
   toggleReaction,
+  broadcastReaction,
+  subscribeReactions,
   type ReactionMap,
 } from "@/lib/reactions";
 import LinkPreviewCard from "./LinkPreviewCard";
@@ -382,6 +384,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   useEffect(() => {
     if (!chatId) return;
     void getReactions(chatId).then(setReactions);
+    return subscribeReactions(chatId, setReactions);
   }, [chatId]);
 
   // Phase 2 §3 — when the user types a new URL, clear any prior dismissal so
@@ -408,6 +411,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       if (!userId) return;
       const next = await toggleReaction(chatId, msgId, userId, emoji);
       setReactions(next);
+      broadcastReaction(chatId, msgId, next[msgId]?.[userId] || null);
       setReactionTarget(null);
     },
     [chatId, userId],
