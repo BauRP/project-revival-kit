@@ -515,7 +515,7 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
     } else if (type === "message_status") {
       const mid = String(payload.messageId || "");
       const msg = await dxdb.messages.get(mid);
-      if (msg && msg.from === payload.to && payload.status === "read") {
+      if (msg && msg.from === payload.to && msg.to === payload.from && payload.status === "read") {
         await dxdb.messages.update(mid, { status: "read" });
       }
       fresh = true;
