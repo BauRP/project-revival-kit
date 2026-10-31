@@ -94,14 +94,23 @@ export async function dbDelete(store: string, key: string): Promise<void> {
   }
 }
 
-export async function nukeAllData(): Promise<void> {
+/** Delete each database after closing active Dexie connections. */
+function deleteIndexedDb(name: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.deleteDatabase(DB_NAME);
-    req.onsuccess = () => {
-      localStorage.clear();
-      sessionStorage.clear();
-      resolve();
-    };
-    req.onerror = () => reject(req.error);
+    const req = indexedDB.deleteDatabase(name);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error || new Error(`Cannot delete ${name}`));
+    req.onblocked = () => reject(new Error(`Database ${name} is still open`));
   });
+}
+
+export async function nukeAllData(): Promise<void> {
+  // Never claim success when the database is locked or deletion failed.
+  const { dxdb } = await import("./dexie-db");
+  dxdb.close();
+  await dxdb.delete();
+  await deleteIndexedDb(DB_NAME);
+  await deleteIndexedDb("trivo-outbox");
+  localStorage.clear();
+  sessionStorage.clear();
 }
