@@ -46,6 +46,8 @@ export interface TorTransportPlugin {
     secretKey?: string | null;
   }): Promise<TorStatus & { secretKey: string | null }>;
   stop(): Promise<void>;
+  pendingInbound(): Promise<{ entries: Array<{ id: string; frame: string }> }>;
+  acknowledgeInbound(options: { id: string }): Promise<void>;
   getStatus(): Promise<TorStatus>;
   /** Immediate synchronous-ish delivery attempt over the Tor SOCKS port. */
   send(options: { id: string; onion: string; frame: string }): Promise<TorSendResult>;
