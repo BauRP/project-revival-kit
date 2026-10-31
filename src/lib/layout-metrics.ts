@@ -9,7 +9,7 @@ export const LAYOUT_CONFIG = {
   BOTTOM_NAV_HEIGHT: 54,
 } as const;
 
-export const getBottomNavOffset = () => `${LAYOUT_CONFIG.BOTTOM_NAV_HEIGHT}px`;
+export const getBottomNavOffset = () => `calc(${LAYOUT_CONFIG.BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom, 0px))`;
 
 /** Top offset for absolutely positioned chrome: safe-area inset only. */
 export const getAppTopOffset = () => "env(safe-area-inset-top, 0px)";
