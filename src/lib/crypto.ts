@@ -48,6 +48,26 @@ export function generateIdentityKeysSync(): IdentityKeys {
   };
 }
 
+/** Validate stored keypairs before they can be used or restored. */
+export function validateIdentityKeys(value: IdentityKeys): IdentityKeys {
+  if (!value || !value.signing || !value.exchange || !Number.isFinite(value.createdAt))
+    throw new Error("Invalid stored identity structure");
+  const signingSecret = decodeBase64(value.signing.secretKey);
+  const exchangeSecret = decodeBase64(value.exchange.secretKey);
+  const signingPublic = decodeBase64(value.signing.publicKey);
+  const exchangePublic = decodeBase64(value.exchange.publicKey);
+  if (signingSecret.length !== nacl.sign.secretKeyLength ||
+      exchangeSecret.length !== nacl.box.secretKeyLength ||
+      signingPublic.length !== nacl.sign.publicKeyLength ||
+      exchangePublic.length !== nacl.box.publicKeyLength)
+    throw new Error("Invalid stored identity key length");
+  const actualSigning = nacl.sign.keyPair.fromSecretKey(signingSecret).publicKey;
+  const actualExchange = nacl.box.keyPair.fromSecretKey(exchangeSecret).publicKey;
+  if (!nacl.verify(actualSigning, signingPublic) || !nacl.verify(actualExchange, exchangePublic))
+    throw new Error("Stored identity public/private keys do not match");
+  return value;
+}
+
 /**
  * Generate or load the local Ed25519 + X25519 identity.
  * Generation is delegated to the crypto Web Worker so the UI thread stays free
@@ -60,7 +80,7 @@ export async function getOrCreateIdentity(): Promise<IdentityKeys> {
       const unlocked = await vault.openIdentity({ sealed: existing.sealed });
       const identity = JSON.parse(unlocked.plaintext) as IdentityKeys;
       await vault.saveIdentity({ sealed: existing.sealed });
-      return identity;
+      return validateIdentityKeys(identity);
     }
     if (existing && "signing" in existing) {
       // Crash-safe migration: encrypt and persist a device-recovery copy before
@@ -68,17 +88,17 @@ export async function getOrCreateIdentity(): Promise<IdentityKeys> {
       const wrapped = await vault.sealIdentity({ plaintext: JSON.stringify(existing) });
       await vault.saveIdentity({ sealed: wrapped.sealed });
       await dbPutStrict("identity", "keys", wrapped);
-      return existing;
+      return validateIdentityKeys(existing);
     }
     const recovery = await vault.loadIdentity();
     if (recovery.sealed) {
       const unlocked = await vault.openIdentity({ sealed: recovery.sealed });
       const identity = JSON.parse(unlocked.plaintext) as IdentityKeys;
       await dbPutStrict("identity", "keys", { sealed: recovery.sealed });
-      return identity;
+      return validateIdentityKeys(identity);
     }
   } else if (existing && "signing" in existing) {
-    return existing;
+    return validateIdentityKeys(existing);
   }
   const { generateIdentityKeysAsync } = await import("./crypto-async");
   const identity = await generateIdentityKeysAsync();
@@ -89,7 +109,7 @@ export async function getOrCreateIdentity(): Promise<IdentityKeys> {
   } else {
     await dbPutStrict("identity", "keys", identity);
   }
-  return identity;
+  return validateIdentityKeys(identity);
 }
 
 /**
