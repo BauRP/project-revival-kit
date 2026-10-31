@@ -1408,7 +1408,11 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           <TapToDownload
             label={media.name || t("image")}
             sizeBytes={media.size}
-            onDownload={() => media.fileId ? ensureMediaUrl(media, chatId).then(() => undefined) : Promise.resolve()}
+            onDownload={async () => {
+              if (!media.fileId) throw new Error("Missing attachment ID");
+              await ensureMediaUrl(media, msg.sent ? undefined : chatId);
+              if (!media.url?.startsWith("blob:")) throw new Error("Attachment is not downloaded");
+            }}
             render={() => (
               <a href={media.url} target="_blank" rel="noopener noreferrer" className="block">
                 <img
