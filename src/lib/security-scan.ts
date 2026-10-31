@@ -50,9 +50,9 @@ export async function stripExifMetadata(file: File): Promise<File> {
 }
 
 /**
- * Simulate a post-download security scan.
- * In production this would integrate with a real AV API.
- * Always returns safe=true for internal voice recordings.
+ * Conservative local extension policy, not a malware scan.
+ * The return value only means the extension was not blocked.
+ * Never advertise it as proof the file contains no malware.
  */
 export function simulateSecurityScan(
   fileName: string,
