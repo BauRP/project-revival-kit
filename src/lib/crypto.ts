@@ -73,7 +73,18 @@ export function validateIdentityKeys(value: IdentityKeys): IdentityKeys {
  * Generation is delegated to the crypto Web Worker so the UI thread stays free
  * during first launch; the dynamic import avoids a module cycle.
  */
-export async function getOrCreateIdentity(): Promise<IdentityKeys> {
+// Single flight prevents two simultaneous first-launch callers from generating
+// different identities and overwriting one another.
+let loadingIdentity: Promise<IdentityKeys> | null = null;
+export function getOrCreateIdentity(): Promise<IdentityKeys> {
+  if (loadingIdentity) return loadingIdentity;
+  const task = loadOrCreateIdentity();
+  loadingIdentity = task;
+  void task.catch(() => { if (loadingIdentity === task) loadingIdentity = null; });
+  return task;
+}
+
+async function loadOrCreateIdentity(): Promise<IdentityKeys> {
   const existing = await dbGetStrict<IdentityKeys | { sealed: string }>("identity", "keys");
   if (isNative()) {
     if (existing && "sealed" in existing) {
