@@ -92,6 +92,7 @@ public class MainActivity extends BridgeActivity {
          */
         registerPluginSafely("com.baurp.trivochat.TorTransportPlugin", "TorTransport");
         registerPluginSafely("com.baurp.trivochat.SecureViewPlugin", "SecureView");
+        registerPluginSafely("com.baurp.trivochat.SecureVaultPlugin", "SecureVault");
         Log.i(TAG, "onCreate: plugin registration finished, entering BridgeActivity.onCreate()");
 
         try {
