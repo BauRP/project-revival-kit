@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ShieldCheck } from "lucide-react";
 
@@ -7,7 +7,7 @@ interface SecurityScanOverlayProps {
   onComplete: () => void;
 }
 
-const SCAN_DURATION = 1500; // 1.5 seconds
+const SCAN_DURATION = 300; // UI transition only: no pretend antivirus scan
 
 const SecurityScanOverlay = ({ visible, onComplete }: SecurityScanOverlayProps) => {
   const [progress, setProgress] = useState(0);
@@ -46,8 +46,8 @@ const SecurityScanOverlay = ({ visible, onComplete }: SecurityScanOverlayProps) 
               <ShieldCheck size={28} className="text-primary" />
             </div>
             <div className="space-y-1">
-              <p className="text-sm font-semibold text-foreground">Deep Scan in Progress...</p>
-              <p className="text-xs text-muted-foreground">Checking file integrity</p>
+              <p className="text-sm font-semibold text-foreground">Checking file type...</p>
+              <p className="text-xs text-muted-foreground">Checking basic attachment information</p>
             </div>
             <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
               <motion.div
