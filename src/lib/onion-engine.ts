@@ -519,6 +519,19 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         await dxdb.messages.update(mid, { status: "read" });
       }
       fresh = true;
+    } else if (type === "message_reaction") {
+      const mid = String(payload.messageId || "");
+      const original = await dxdb.messages.get(mid);
+      const emoji = payload.emoji;
+      if (!original ||
+          original.from !== payload.from && original.to !== payload.from ||
+          original.from !== payload.to && original.to !== payload.to ||
+          (emoji !== null && (typeof emoji !== "string" || emoji.length > 24)) ||
+          mid.length > 128) {
+        await dxdb.inbox_raw.delete(rawId);
+        return;
+      }
+      fresh = true;
     } else if (type === "message_lifecycle") {
       const ck = String(payload.chatKey || "");
       const mid = String(payload.messageId || "");
