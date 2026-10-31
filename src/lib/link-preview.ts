@@ -62,21 +62,8 @@ export async function fetchLinkPreview(url: string): Promise<LinkPreview | null>
   } catch {
     /* ignore cache miss */
   }
-  try {
-    const proxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-    const res = await fetch(proxy, { signal: AbortSignal.timeout(6000) });
-    if (!res.ok) return null;
-    const html = await res.text();
-    const preview = parseOg(html, url);
-    if (!preview.title && !preview.image && !preview.description) return null;
-    try {
-      await dbPut("settings", cacheKey(url), preview);
-    } catch {
-      /* non-fatal */
-    }
-    return preview;
-  } catch (e) {
-    console.warn("[link-preview] fetch failed", e);
-    return null;
-  }
+  // Remote previews would expose the private link to a public proxy or
+  // to its destination outside the Tor path. Until a native Tor-only
+  // preview fetcher is implemented, fail closed (the URL remains clickable).
+  return null;
 }
