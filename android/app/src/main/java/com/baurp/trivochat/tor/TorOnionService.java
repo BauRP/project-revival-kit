@@ -539,21 +539,17 @@ public class TorOnionService extends Service {
     private void handleInbound(Socket client) {
         try {
             String frame = Socks5Client.readFrame(client);
+            // Persist sealed bytes BEFORE acknowledging the socket. Frames survive
+            // WebView suspension, process restarts and a detached JS listener.
+            NativeInboundQueue.store(getApplicationContext(), frame);
             Socks5Client.ack(client);
             Listener l = listener;
-            boolean handedToWebView = false;
             if (l != null) {
                 try {
                     l.onFrame(frame);
-                    handedToWebView = true;
                 } catch (Exception e) {
-                    handedToWebView = false;
+                    Log.w(TAG, "WebView unavailable; sealed frame retained for replay", e);
                 }
-            }
-            if (!handedToWebView) {
-                // No JS layer alive: the frame is dropped. The sender keeps it in
-                // its Dexie outbox and retries until it receives a DELIVERED_ACK.
-                Log.i(TAG, "inbound frame dropped: WebView not attached");
             }
         } catch (IOException e) {
             Log.w(TAG, "inbound frame rejected: " + e.getMessage());
