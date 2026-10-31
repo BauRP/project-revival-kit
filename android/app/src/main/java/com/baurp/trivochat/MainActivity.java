@@ -11,6 +11,10 @@ import android.widget.FrameLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.Plugin;
 
@@ -93,6 +97,7 @@ public class MainActivity extends BridgeActivity {
             super.onCreate(savedInstanceState);
             Log.i(TAG, "onCreate: BridgeActivity.onCreate() completed, hardening WebView");
             configureWebView();
+            configureSystemBars();
             Log.i(TAG, "onCreate: native shell ready");
         } catch (Throwable fatal) {
             Log.e(TAG, "Fatal native launch failure", fatal);
@@ -142,6 +147,27 @@ public class MainActivity extends BridgeActivity {
             settings.setMediaPlaybackRequiresUserGesture(false);
         } catch (Throwable t) {
             Log.e(TAG, "WebView hardening skipped: " + t);
+        }
+    }
+
+    /** Keep the entire WebView between Android system bars, including gesture navigation,
+     * three-button navigation and display cutouts. Insets update on rotation and nav changes.
+     * This is intentionally applied to the native WebView, not guessed from device size.
+     */
+    private void configureSystemBars() {
+        try {
+            WebView webView = getBridge() != null ? getBridge().getWebView() : null;
+            if (webView == null) return;
+            WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+            ViewCompat.setOnApplyWindowInsetsListener(webView, (view, insets) -> {
+                androidx.core.graphics.Insets bars = insets.getInsets(
+                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+                view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+                return insets;
+            });
+            ViewCompat.requestApplyInsets(webView);
+        } catch (Throwable t) {
+            Log.e(TAG, "System bar inset handling unavailable", t);
         }
     }
 
