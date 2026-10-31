@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useCallback } from "react";
-import { getOrCreateIdentity, getKeyFingerprint, type IdentityKeys } from "@/lib/crypto";
+import { getOrCreateIdentity, getKeyFingerprint, eraseIdentityVault, type IdentityKeys } from "@/lib/crypto";
 import { getOrCreateUserId } from "@/lib/identity";
 import { migrateLegacyMessages } from "@/lib/p2p";
 import { recoverInbox } from "@/lib/onion-engine";
@@ -74,6 +74,7 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
   const deleteAccount = useCallback(async () => {
     // Полная очистка перед удалением
     await nukeAllData();
+    await eraseIdentityVault();
     try {
       localStorage.clear();
     } catch {
