@@ -30,6 +30,43 @@ function openDB(): Promise<IDBDatabase> {
   });
 }
 
+/** Critical identity operations must never convert a storage failure to a missing key. */
+export async function dbGetStrict<T>(store: string, key: string): Promise<T | undefined> {
+  const db = await openDB();
+  return new Promise<T | undefined>((resolve, reject) => {
+    let result: T | undefined;
+    try {
+      const transaction = db.transaction(store, "readonly");
+      const request = transaction.objectStore(store).get(key);
+      request.onsuccess = () => { result = request.result as T | undefined; };
+      transaction.oncomplete = () => { db.close(); resolve(result); };
+      transaction.onerror = () => { db.close(); reject(transaction.error || new Error("Identity read failed")); };
+      transaction.onabort = () => { db.close(); reject(transaction.error || new Error("Identity read aborted")); };
+    } catch (error) {
+      db.close();
+      reject(error);
+    }
+  });
+}
+
+export async function dbPutStrict(store: string, key: string, value: unknown): Promise<void> {
+  const db = await openDB();
+  return new Promise<void>((resolve, reject) => {
+    try {
+      const transaction = db.transaction(store, "readwrite");
+      const target = transaction.objectStore(store);
+      if (target.keyPath) target.put(value);
+      else target.put(value, key);
+      transaction.oncomplete = () => { db.close(); resolve(); };
+      transaction.onerror = () => { db.close(); reject(transaction.error || new Error("Identity write failed")); };
+      transaction.onabort = () => { db.close(); reject(transaction.error || new Error("Identity write aborted")); };
+    } catch (error) {
+      db.close();
+      reject(error);
+    }
+  });
+}
+
 export async function dbGet<T>(store: string, key: string): Promise<T | undefined> {
   try {
     const db = await openDB();
