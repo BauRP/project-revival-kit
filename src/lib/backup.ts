@@ -22,8 +22,10 @@ interface EncryptedEnvelope {
 }
 
 function deriveKey(password: string): Uint8Array {
-  // SHA-512 then truncate to 32 bytes for nacl.secretbox.
-  const hash = nacl.hash(decodeUTF8(password || "trivo-default-passphrase"));
+  // LEGACY V1 format only. Password mandatory; V2 should use Argon2id + salt.
+  // Do not use this function for new unattended backups.
+  if (!password || !password.trim()) throw new Error("Backup password is required");
+  const hash = nacl.hash(decodeUTF8(password));
   return hash.slice(0, nacl.secretbox.keyLength);
 }
 
