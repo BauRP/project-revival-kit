@@ -173,6 +173,7 @@ export async function onionInit(): Promise<string> {
       throw new Error("TOR_UNAVAILABLE: native Android runtime required");
     }
     await bindNativeListeners();
+    await replayNativeInbound();
     const res = await TorTransport.start({
       label: onion,
       secretKey: torServiceKeyFromSigningSecret(signingSecret as string),
@@ -200,10 +201,35 @@ export async function onionInit(): Promise<string> {
   }
 }
 
+let nativeReplay: Promise<void> | null = null;
+
+/** Native entries are deleted only after JS has persisted/decrypted the frame. */
+export function replayNativeInbound(): Promise<void> {
+  if (!isTorNativeAvailable()) return Promise.resolve();
+  if (nativeReplay) return nativeReplay;
+  const work = (async () => {
+    // Each batch is small to avoid shipping megabytes across the JS bridge.
+    for (let batch = 0; batch < 32; batch++) {
+      const { entries } = await TorTransport.pendingInbound();
+      if (!entries.length) break;
+      for (const entry of entries) {
+        await acceptRawFrame(entry.frame);
+        await TorTransport.acknowledgeInbound({ id: entry.id });
+      }
+    }
+  })();
+  nativeReplay = work;
+  void work.finally(() => { if (nativeReplay === work) nativeReplay = null; }).catch(() => undefined);
+  return work;
+}
+
 async function bindNativeListeners(): Promise<void> {
   if (listenersBound) return;
   listenersBound = true;
-  await TorTransport.addListener("onionMessage", (evt) => void acceptRawFrame(evt.frame));
+  await TorTransport.addListener("onionMessage", () => {
+    // Trigger durable replay instead of trusting a transient JS event.
+    void replayNativeInbound();
+  });
   await TorTransport.addListener("onionStatus", (status) => notifyStatus(status));
 }
 
@@ -665,6 +691,7 @@ async function pollTick(): Promise<void> {
       notifyStatus(status);
     }
     await drainOutbox();
+    if (isTorNativeAvailable()) await replayNativeInbound();
     for (const entry of partialReceives.values()) {
       if (Date.now() - entry.updatedAt <= POLL_INTERVAL_MS * 2) continue;
       const missing: number[] = [];
