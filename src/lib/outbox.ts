@@ -56,9 +56,18 @@ async function tx<T>(
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const t = db.transaction(STORE, mode);
-    const req = run(t.objectStore(STORE));
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    let result: T;
+    try {
+      const req = run(t.objectStore(STORE));
+      req.onsuccess = () => { result = req.result; };
+      req.onerror = () => t.abort();
+      t.oncomplete = () => resolve(result);
+      t.onerror = () => reject(t.error || new Error("Scheduled outbox transaction failed"));
+      t.onabort = () => reject(t.error || new Error("Scheduled outbox transaction aborted"));
+    } catch (error) {
+      t.abort();
+      reject(error);
+    }
   });
 }
 
@@ -110,9 +119,28 @@ async function fireDue() {
   for (const item of items) {
     if (item.scheduledAt > now) break;
     const sender = senders.get(item.chatId);
-    if (!sender) continue; // chat not open — wait for next mount
     try {
-      await sender(item);
+      if (sender) {
+        await sender(item);
+      } else {
+        // The scheduled message must not depend on the chat screen being open.
+        // The onion outbox becomes the durable owner after sendP2PMessage.
+        const [{ ensureLocalIdentity }, { sendP2PMessage }, { isValidOnion }] = await Promise.all([
+          import("./onion-engine"), import("./p2p"), import("./onion-id"),
+        ]);
+        if (!isValidOnion(item.chatId))
+          throw new Error("Scheduled destination cannot be sent without its chat screen");
+        const self = await ensureLocalIdentity();
+        await sendP2PMessage(item.chatId, {
+          id: item.id,
+          from: self,
+          to: item.chatId,
+          text: item.text,
+          timestamp: item.scheduledAt,
+          status: "pending",
+          silent: item.silent,
+        });
+      }
       await remove(item.id);
     } catch (e) {
       console.error("[outbox] send failed", item.id, e);
