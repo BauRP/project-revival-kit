@@ -106,7 +106,7 @@ const SecurityDashboard = () => {
               <Wifi size={18} className="text-primary mt-0.5 shrink-0" />
               <div className="min-w-0">
                 <p className="text-sm font-medium text-foreground">{t("p2pNetwork")}</p>
-                <p className="text-xs text-muted-foreground mt-1">{t("onionTorConnected")}</p>
+                <p className="text-xs text-muted-foreground mt-1">Статус подключения смотрите в индикаторе Tor на вкладке «Чаты»</p>
               </div>
             </div>
           </div>
@@ -182,7 +182,7 @@ const SecurityDashboard = () => {
                 />
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-muted-foreground">{t("pqxdhStatus")}</p>
-                  <p className="text-sm text-primary font-medium">{t("hybridActive")}</p>
+                  <p className="text-sm text-muted-foreground font-medium">Постквантовая защита не подтверждена</p>
                 </div>
               </div>
             </div>
