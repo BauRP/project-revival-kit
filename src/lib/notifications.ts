@@ -7,28 +7,46 @@ import {
 } from "@/lib/translation-config";
 import { isNative } from "@/lib/platform";
 
+function preference(key: string, fallback: boolean): boolean {
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? fallback : value === "true";
+  } catch {
+    return fallback;
+  }
+}
+
+/** Respect privacy preferences BEFORE constructing any notification payload. */
 export async function notifyIncomingMessage(title: string, body: string): Promise<void> {
+  if (!preference("trivo-notifications", true)) return;
+  const hidden = preference("trivo-hide-content", false);
+  const safeTitle = hidden ? "Trivo Chat" : title;
+  const safeBody = hidden ? "Новое сообщение" : body;
+
   if (!isNative()) {
     if ("Notification" in window && Notification.permission === "granted") {
-      new Notification(title, { body });
+      new Notification(safeTitle, { body: safeBody });
     }
     return;
   }
 
   try {
-    await LocalNotifications.requestPermissions();
+    const permission = await LocalNotifications.checkPermissions();
+    if (permission.display !== "granted") return; // Permission requested in Settings, not per message.
     await LocalNotifications.schedule({
       notifications: [
         {
           id: Date.now() % 2147483647,
-          title,
-          body,
+          title: safeTitle,
+          body: safeBody,
           smallIcon: "ic_launcher_foreground",
           sound: "trivo_elite_notification.wav",
         },
       ],
     });
-  } catch {}
+  } catch (error) {
+    console.warn("[notifications] unable to show notification", error);
+  }
 }
 
 export async function translateIncomingMessage(text: string): Promise<string | null> {
