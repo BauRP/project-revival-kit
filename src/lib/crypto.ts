@@ -1,7 +1,7 @@
 // Ed25519 + X25519 + XSalsa20-Poly1305 encryption layer using tweetnacl
 import nacl from "tweetnacl";
 import { encodeBase64, decodeBase64, encodeUTF8, decodeUTF8 } from "tweetnacl-util";
-import { dbGet, dbPut } from "./storage";
+import { dbGetStrict, dbPutStrict } from "./storage";
 import { registerPlugin } from "@capacitor/core";
 import { isNative } from "./platform";
 
@@ -54,25 +54,27 @@ export function generateIdentityKeysSync(): IdentityKeys {
  * during first launch; the dynamic import avoids a module cycle.
  */
 export async function getOrCreateIdentity(): Promise<IdentityKeys> {
-  const existing = await dbGet<IdentityKeys | { sealed: string }>("identity", "keys");
+  const existing = await dbGetStrict<IdentityKeys | { sealed: string }>("identity", "keys");
   if (isNative()) {
     if (existing && "sealed" in existing) {
       const unlocked = await vault.openIdentity({ sealed: existing.sealed });
-      return JSON.parse(unlocked.plaintext) as IdentityKeys;
+      const identity = JSON.parse(unlocked.plaintext) as IdentityKeys;
+      await vault.saveIdentity({ sealed: existing.sealed });
+      return identity;
     }
     if (existing && "signing" in existing) {
       // Crash-safe migration: encrypt and persist a device-recovery copy before
       // replacing the old unprotected IndexedDB record.
       const wrapped = await vault.sealIdentity({ plaintext: JSON.stringify(existing) });
       await vault.saveIdentity({ sealed: wrapped.sealed });
-      await dbPut("identity", "keys", wrapped);
+      await dbPutStrict("identity", "keys", wrapped);
       return existing;
     }
     const recovery = await vault.loadIdentity();
     if (recovery.sealed) {
       const unlocked = await vault.openIdentity({ sealed: recovery.sealed });
       const identity = JSON.parse(unlocked.plaintext) as IdentityKeys;
-      await dbPut("identity", "keys", { sealed: recovery.sealed });
+      await dbPutStrict("identity", "keys", { sealed: recovery.sealed });
       return identity;
     }
   } else if (existing && "signing" in existing) {
@@ -83,9 +85,9 @@ export async function getOrCreateIdentity(): Promise<IdentityKeys> {
   if (isNative()) {
     const wrapped = await vault.sealIdentity({ plaintext: JSON.stringify(identity) });
     await vault.saveIdentity({ sealed: wrapped.sealed });
-    await dbPut("identity", "keys", wrapped);
+    await dbPutStrict("identity", "keys", wrapped);
   } else {
-    await dbPut("identity", "keys", identity);
+    await dbPutStrict("identity", "keys", identity);
   }
   return identity;
 }
