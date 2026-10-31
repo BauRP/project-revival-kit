@@ -4,7 +4,7 @@
 //  over the sealed Tor blob protocol (onion-engine.ts).
 // ============================================================================
 
-import { getBlob, putBlob } from "./dexie-db";
+import { dxdb, getBlob, putBlob } from "./dexie-db";
 import { onionRequestBlob } from "./onion-engine";
 import { compressImageIfNeeded } from "./image-compress";
 
@@ -155,4 +155,14 @@ export async function ensureMediaUrl<T extends { fileId?: string; url?: string }
     console.warn("[trivo] ensureMediaUrl failed", e);
   }
   return media;
+}
+
+/** Revoke one-time local object URL and remove the consumed attachment. */
+export async function purgeConsumedMedia(fileId: string): Promise<void> {
+  const url = blobUrlCache.get(fileId);
+  if (url) {
+    blobUrlCache.delete(fileId);
+    URL.revokeObjectURL(url);
+  }
+  await dxdb.blobs.delete(fileId);
 }
