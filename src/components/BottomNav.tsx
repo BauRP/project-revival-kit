@@ -43,9 +43,9 @@ const BottomNav = ({ activeTab, onTabChange }: BottomNavProps) => {
       <div
         className="glass-panel px-2 rounded-none rounded-t-2xl neon-border border-b-0 overflow-hidden"
         style={{
-          height: LAYOUT_CONFIG.BOTTOM_NAV_HEIGHT,
+          height: `calc(${LAYOUT_CONFIG.BOTTOM_NAV_HEIGHT}px + env(safe-area-inset-bottom, 0px))`,
           paddingTop: 0,
-          paddingBottom: 0,
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
         }}
       >
         <div className="flex h-full items-stretch justify-around">
@@ -56,7 +56,7 @@ const BottomNav = ({ activeTab, onTabChange }: BottomNavProps) => {
               <button
                 key={tab.id}
                 onClick={() => onTabChange(tab.id)}
-                className="relative flex flex-1 flex-col items-center justify-center gap-1 px-1 py-0 transition-colors"
+                className="relative flex flex-1 min-w-0 flex-col items-center justify-center gap-1 px-1 py-0 transition-colors"
               >
                 {isActive && (
                   <motion.div
