@@ -110,6 +110,9 @@ export async function dbGetAll<T>(store: string): Promise<T[]> {
       const req = tx.objectStore(store).getAll();
       req.onsuccess = () => resolve(req.result as T[]);
       req.onerror = () => reject(req.error);
+      tx.oncomplete = () => db.close();
+      tx.onabort = () => db.close();
+      tx.onerror = () => db.close();
     });
   } catch (e) {
     console.warn("[Storage] dbGetAll error:", e);
@@ -123,8 +126,9 @@ export async function dbDelete(store: string, key: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const tx = db.transaction(store, "readwrite");
       tx.objectStore(store).delete(key);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+      tx.oncomplete = () => { db.close(); resolve(); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+      tx.onabort = () => db.close();
     });
   } catch (e) {
     console.warn("[Storage] dbDelete error:", e);
