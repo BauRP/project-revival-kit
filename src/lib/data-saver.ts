@@ -32,11 +32,9 @@ export function getConnectionKind(): ConnectionKind {
     // ConnectivityManager-equivalent: type === "wifi" | "cellular" | "ethernet" | ...
     if (c.type === "wifi" || c.type === "ethernet") return "wifi";
     if (c.type === "cellular" || c.saveData === true) return "cellular";
-    // effectiveType heuristic
-    if (typeof c.effectiveType === "string") {
-      if (c.effectiveType === "4g" && !c.saveData) return "wifi";
-      return "cellular";
-    }
+    // An effectiveType of "4g" is a SPEED estimate, NOT proof of Wi-Fi.
+    // Privacy/data-saver mode must fail closed when the transport is unknown.
+    if (typeof c.effectiveType === "string") return "unknown";
     return "unknown";
   } catch {
     return "unknown";
