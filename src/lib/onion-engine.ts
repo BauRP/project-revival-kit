@@ -490,9 +490,24 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
       const ck = String(payload.chatKey || "");
       const mid = String(payload.messageId || "");
       if (ck && mid) {
+        const original = await dxdb.messages.get(mid);
+        const sender = String(payload.from || "");
+        const recipient = String(payload.to || "");
+        const expectedChatKey = [sender, recipient].sort().join("__");
+        const patch = (payload.patch || {}) as Record<string, unknown>;
+        const hasOwnerOnlyMutation =
+          "editedText" in patch || "isEdited" in patch || "deletedForEveryone" in patch;
+        // Only a known chat participant can modify the original message.
+        // Editing and deleting for everyone additionally require authorship.
+        if (!original || ck !== expectedChatKey ||
+            ![original.from, original.to].includes(sender) ||
+            ![original.from, original.to].includes(recipient) ||
+            (hasOwnerOnlyMutation && original.from !== sender)) {
+          await dxdb.inbox_raw.delete(rawId);
+          return;
+        }
         const key = `${ck}::${mid}`;
         const prev = (await dxdb.lifecycle.get(key))?.data || { messageId: mid };
-        const patch = (payload.patch || {}) as Record<string, unknown>;
         const next: Record<string, unknown> = {
           ...prev,
           ...patch,
