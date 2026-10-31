@@ -24,6 +24,7 @@ export async function stripExifMetadata(file: File): Promise<File> {
       canvas.height = img.naturalHeight;
       const ctx = canvas.getContext("2d");
       if (!ctx) {
+        URL.revokeObjectURL(url);
         resolve(file);
         return;
       }
