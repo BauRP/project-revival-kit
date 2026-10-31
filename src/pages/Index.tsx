@@ -259,6 +259,7 @@ const Index = () => {
     backgroundImage: "var(--gradient-bg)",
     paddingTop: "env(safe-area-inset-top, 0px)",
     height: "100dvh",
+    boxSizing: "border-box" as const,
     ["--bottom-nav-offset" as string]: getBottomNavOffset(),
     ["--bottom-nav-height" as string]: `${LAYOUT_CONFIG.BOTTOM_NAV_HEIGHT}px`,
     ["--app-top-offset" as string]: getAppTopOffset(),
