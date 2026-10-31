@@ -10,6 +10,10 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, X } from "lucide-react";
 import { useEffect } from "react";
+import { registerPlugin } from "@capacitor/core";
+import { isNative } from "@/lib/platform";
+
+const secureView = registerPlugin<{ setSecure(options: { enabled: boolean }): Promise<void> }>("SecureView");
 
 interface OneTimeViewerProps {
   open: boolean;
@@ -21,6 +25,16 @@ interface OneTimeViewerProps {
 }
 
 const OneTimeViewer = ({ open, url, mediaType, onClose, onConsumed }: OneTimeViewerProps) => {
+  useEffect(() => {
+    if (!isNative()) return;
+    void secureView.setSecure({ enabled: open }).catch((error) =>
+      console.warn('[one-time] Android screen protection unavailable', error),
+    );
+    return () => {
+      void secureView.setSecure({ enabled: false }).catch(() => undefined);
+    };
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
