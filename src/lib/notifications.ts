@@ -80,16 +80,8 @@ async function runTranslation(
   sourceLanguage: string,
   targetLanguage: string,
 ): Promise<string | null> {
-  // Primary path: context-aware LLM translation via Lovable AI Gateway.
-  try {
-    const { translateLLM } = await import("@/lib/translate-client");
-    const llm = await translateLLM(text, sourceLanguage, targetLanguage);
-    if (llm) return llm;
-  } catch (e) {
-    console.warn("[translate] LLM unavailable, falling back", e);
-  }
-
-  // Fallback 1: bundled dictionary (offline phrasebook).
+  // Offline only: never forward private messages to a cloud translation API.
+  // Prefer the bundled on-device phrase dictionary.
   const bundled = translateWithBundledDictionary(text, sourceLanguage, targetLanguage);
   if (bundled) return bundled;
 
