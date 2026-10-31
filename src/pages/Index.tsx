@@ -26,7 +26,6 @@ import { executePanic, createPanicLongPress } from "@/lib/panic";
 import { startPresence, setInvisibleMode } from "@/lib/presence";
 import { listenForFriendRequests, acceptFriendRequest } from "@/lib/sync/peer-sync";
 import { initMockPeer } from "@/lib/mock-peer";
-import { isDuplicateMessage } from "@/lib/local-peer-cache";
 import { LAYOUT_CONFIG, getAppTopOffset, getBottomNavOffset } from "@/lib/layout-metrics";
 import { toast } from "sonner";
 import { useBiometricAuth } from "@/hooks/useBiometricAuth";
@@ -147,9 +146,8 @@ const Index = () => {
     });
 
     const unsubMsg = onP2PMessage(async (msg: P2PMessage) => {
-      // UUID deduplication at root level
-      if (isDuplicateMessage(msg.id)) return;
-
+      // The onion engine deduplicates by committed message ID in Dexie.
+      // Never share a 'seen' flag with ChatRoom: both listeners must run.
       const existing = await getChatMeta(msg.from);
       await saveChatMeta({
         friendId: msg.from,
