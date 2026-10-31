@@ -2,9 +2,11 @@
 // All Android module versions live here for single-source-of-truth.
 ext {
     // SDK / Tooling
-    // Android 11 (API 30) is the hard floor; target the latest stable platform.
-    minSdkVersion = 30
-    compileSdkVersion = 36
+    // Capacitor 8 supports Android 7 (API 24) onward. Compile against
+    // Android 17 (API 37), while keeping Capacitor 8's supported target API 36.
+    // Target 37 requires a coordinated Capacitor 9 migration (min API 26).
+    minSdkVersion = 24
+    compileSdkVersion = 37
     targetSdkVersion = 36
     buildToolsVersion = '36.0.0'
     ndkVersion = '26.1.10909125'
