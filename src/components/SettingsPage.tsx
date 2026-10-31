@@ -28,6 +28,8 @@ import TranslationSettingsPanel from "./TranslationSettingsPanel";
 import { Switch } from "./ui/switch";
 import { nukeAllData } from "@/lib/storage";
 import { isDataSaverEnabled, setDataSaverEnabled } from "@/lib/data-saver";
+import { LocalNotifications } from "@capacitor/local-notifications";
+import { isNative } from "@/lib/platform";
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -177,9 +179,13 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
   const handleToggleNotifications = useCallback(async (checked: boolean) => {
     setNotifications(checked);
     writeStoredBoolean("trivo-notifications", checked);
-    if (checked && "Notification" in window) {
+    if (checked) {
       try {
-        await Notification.requestPermission();
+        if (isNative()) {
+          await LocalNotifications.requestPermissions();
+        } else if ("Notification" in window) {
+          await Notification.requestPermission();
+        }
       } catch {
         // Permission prompts may be blocked by the WebView; keep preference state stable.
       }
