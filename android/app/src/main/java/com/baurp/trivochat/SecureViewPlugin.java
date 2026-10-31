@@ -31,7 +31,7 @@ public class SecureViewPlugin extends Plugin {
                 }
                 call.resolve();
             } catch (Throwable error) {
-                call.reject("Unable to change window screenshot protection", error);
+                call.reject("Unable to change window screenshot protection", error.getMessage(), (Exception) (error instanceof Exception ? error : new RuntimeException(error)));
             }
         });
     }
