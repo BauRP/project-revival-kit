@@ -219,12 +219,11 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
 
   const handleDeleteAccount = async () => {
     try {
-      await nukeAllData();
-      deleteAccount();
-      window.location.reload();
-    } catch {
-      deleteAccount();
-      window.location.reload();
+      // Single wipe path. Never reload or claim success after a failed delete.
+      await deleteAccount();
+    } catch (error) {
+      console.error("[account] deletion failed", error);
+      alert("Не удалось полностью удалить данные. Закройте другие окна приложения и повторите попытку.");
     }
   };
 
