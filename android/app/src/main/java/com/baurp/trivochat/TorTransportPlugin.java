@@ -5,6 +5,7 @@ import android.os.Build;
 import android.util.Log;
 
 import com.baurp.trivochat.tor.TorOnionService;
+import com.baurp.trivochat.tor.NativeInboundQueue;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -63,6 +64,43 @@ public class TorTransportPlugin extends Plugin {
         o.put("servicePort", TorOnionService.VIRTUAL_PORT);
         o.put("lastError", s.lastError);
         return o;
+    }
+
+    /** Read a bounded batch of previously persisted sealed inbound frames. */
+    @PluginMethod
+    public void pendingInbound(PluginCall call) {
+        io.execute(() -> {
+            try {
+                com.getcapacitor.JSArray entries = new com.getcapacitor.JSArray();
+                for (NativeInboundQueue.Entry entry : NativeInboundQueue.pending(getContext(), 8)) {
+                    JSObject item = new JSObject();
+                    item.put("id", entry.id);
+                    item.put("frame", entry.frame);
+                    entries.put(item);
+                }
+                JSObject result = new JSObject();
+                result.put("entries", entries);
+                call.resolve(result);
+            } catch (Exception error) {
+                call.reject("Cannot load inbound queue", error);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void acknowledgeInbound(PluginCall call) {
+        String id = call.getString("id", "");
+        io.execute(() -> {
+            try {
+                if (!NativeInboundQueue.acknowledge(getContext(), id)) {
+                    call.reject("Inbound queue entry could not be removed");
+                    return;
+                }
+                call.resolve();
+            } catch (Exception error) {
+                call.reject("Cannot acknowledge inbound entry", error);
+            }
+        });
     }
 
     @PluginMethod
