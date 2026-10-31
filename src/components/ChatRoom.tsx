@@ -42,7 +42,7 @@ import { uploadMedia, formatFileSize, type MediaAttachment } from "@/lib/media";
 import { ensureMediaUrl, purgeConsumedMedia, TRIVO_MAX_UPLOAD_BYTES } from "@/lib/media-store";
 import { subscribeToPresence, getPresenceStatus } from "@/lib/presence";
 import { onionOnConnectionChange, onionIsConnectedTo } from "@/lib/onion-engine";
-import { getContactLastSeen, setContactLastSeen } from "@/lib/dexie-db";
+import { dxdb, getContactLastSeen, setContactLastSeen } from "@/lib/dexie-db";
 import { toast } from "@/hooks/use-toast";
 import { generateUUIDv4 } from "@/lib/local-peer-cache";
 import {
@@ -57,7 +57,6 @@ import {
   connectToPeer,
   onDeliveryUpdate,
   saveLocalMessage,
-  deleteLocalMessage,
   saveChatMeta,
   getChatMeta,
   type P2PMessage,
@@ -493,6 +492,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
             deleteAt: (m as any).deleteAt,
             silent: (m as any).silent || legacySilent || undefined,
             oneTimeView: (m as any).oneTimeView || undefined,
+            oneTimeConsumed: (m as any).oneTimeConsumed || undefined,
             roundVideo: (m as any).roundVideo || undefined,
           };
         })
@@ -1168,7 +1168,9 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   // Purge one-time media: remove from local DB + memory, mark message as consumed.
   const purgeOneTimeMedia = async (msg: Message) => {
     try {
-      await deleteLocalMessage(msg.id);
+      // Persist the consumed marker; deleting the entire message would make
+      // the UI forget it was opened after a restart.
+      await dxdb.messages.update(msg.id, { media: undefined, oneTimeConsumed: true });
       if (msg.media?.fileId) await purgeConsumedMedia(msg.media.fileId);
     } catch {
       /* ignore */
