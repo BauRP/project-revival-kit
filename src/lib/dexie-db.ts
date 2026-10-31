@@ -321,17 +321,15 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
     "rw",
     [dxdb.contacts, dxdb.messages, dxdb.outbox, dxdb.lifecycle, dxdb.blobs],
     async () => {
-      await Promise.all([
-        dxdb.contacts.clear(),
-        dxdb.messages.clear(),
-        dxdb.outbox.clear(),
-        dxdb.lifecycle.clear(),
-        dxdb.blobs.clear(),
-      ]);
+      // Non-destructive restore: current conversations, contacts and attachments
+      // must never be erased just because an older backup was imported.
       await dxdb.contacts.bulkPut(dump.contacts || []);
-      await dxdb.messages.bulkPut(dump.messages || []);
-      await dxdb.outbox.bulkPut(dump.outbox || []);
-      await dxdb.lifecycle.bulkPut(dump.lifecycle || []);
+      const presentIds = new Set(await dxdb.messages.toCollection().primaryKeys());
+      await dxdb.messages.bulkPut((dump.messages || []).filter((m) => !presentIds.has(m.id)));
+      const outboxIds = new Set(await dxdb.outbox.toCollection().primaryKeys());
+      await dxdb.outbox.bulkPut((dump.outbox || []).filter((m) => !outboxIds.has(m.id)));
+      const lifecycleIds = new Set(await dxdb.lifecycle.toCollection().primaryKeys());
+      await dxdb.lifecycle.bulkPut((dump.lifecycle || []).filter((m) => !lifecycleIds.has(m.key)));
       const blobRows: BlobRecord[] = (dump.blobs || []).map((b) => ({
         fileId: b.fileId,
         mimeType: b.mimeType,
@@ -340,7 +338,8 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
         storedAt: b.storedAt,
         data: base64ToBlob(b.dataB64, b.mimeType),
       }));
-      await dxdb.blobs.bulkPut(blobRows);
+      const existingBlobIds = new Set(await dxdb.blobs.toCollection().primaryKeys());
+      await dxdb.blobs.bulkPut(blobRows.filter((b) => !existingBlobIds.has(b.fileId)));
     },
   );
 }
