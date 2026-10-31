@@ -101,7 +101,7 @@ const inFlight = new Map<string, Promise<string>>();
  *   2) Blob present in Dexie (sender side, or a previously received chunk set).
  *   3) Ask the original peer over the open RTCDataChannel.
  */
-export function downloadFromTrivo(fileId: string): Promise<string> {
+export function downloadFromTrivo(fileId: string, peer?: string): Promise<string> {
   if (!fileId) return Promise.reject(new Error("downloadFromTrivo: missing fileId"));
   const cached = blobUrlCache.get(fileId);
   if (cached) return Promise.resolve(cached);
@@ -117,7 +117,7 @@ export function downloadFromTrivo(fileId: string): Promise<string> {
       return url;
     }
     // Try to pull it from any open peer connection that has it.
-    const ok = await onionRequestBlob(fileId).catch(() => false);
+    const ok = peer ? await onionRequestBlob(fileId, peer).catch(() => false) : false;
     inFlight.delete(fileId);
     if (!ok) throw new Error(`Blob ${fileId} not available locally or via peer`);
     const fetched = await getBlob(fileId);
@@ -136,6 +136,7 @@ export function downloadFromTrivo(fileId: string): Promise<string> {
 
 export async function ensureMediaUrl<T extends { fileId?: string; url?: string }>(
   media: T | null | undefined,
+  peer?: string,
 ): Promise<T | null | undefined> {
   if (!media) return media;
   const needsResolve =
@@ -148,7 +149,7 @@ export async function ensureMediaUrl<T extends { fileId?: string; url?: string }
   if (!needsResolve && media.url) return media;
   if (!media.fileId) return media;
   try {
-    const url = await downloadFromTrivo(media.fileId);
+    const url = await downloadFromTrivo(media.fileId, peer);
     (media as { url?: string }).url = url;
   } catch (e) {
     console.warn("[trivo] ensureMediaUrl failed", e);
