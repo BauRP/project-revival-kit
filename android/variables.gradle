@@ -3,10 +3,11 @@
 ext {
     // SDK / Tooling
     // Capacitor 8 supports Android 7 (API 24) onward. Compile against
-    // Android 17 (API 37), while keeping Capacitor 8's supported target API 36.
-    // Target 37 requires a coordinated Capacitor 9 migration (min API 26).
+    // Android 16 (API 36), while keeping Capacitor 8's supported target API 36.
+    // Android 17 (API 37) is included as a runtime compatibility test target.
+    // Upgrading compile/target SDK requires a separate dependency validation.
     minSdkVersion = 24
-    compileSdkVersion = 37
+    compileSdkVersion = 36
     targetSdkVersion = 36
     buildToolsVersion = '36.0.0'
     ndkVersion = '26.1.10909125'
