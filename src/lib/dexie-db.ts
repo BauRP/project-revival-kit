@@ -214,13 +214,23 @@ export async function enforceMediaCacheLimit(
   const total = await getTotalBlobBytes();
   if (total < limitBytes) return 0;
 
-  // Order ascending by storedAt → oldest first.
+  // Never delete a blob still referenced by a message. The old policy
+  // removed half the user's attachments regardless of whether they were needed.
+  const referenced = new Set<string>();
+  await dxdb.messages.each((message) => {
+    const media = message.media as { fileId?: string } | undefined;
+    if (media?.fileId) referenced.add(media.fileId);
+  });
   const all = await dxdb.blobs.orderBy("storedAt").toArray();
-  if (all.length === 0) return 0;
-  const halfCount = Math.floor(all.length / 2);
-  if (halfCount === 0) return 0;
-  const victims = all.slice(0, halfCount).map((b) => b.fileId);
-  await dxdb.blobs.bulkDelete(victims);
+  const victims: string[] = [];
+  let freed = 0;
+  for (const record of all) {
+    if (total - freed < limitBytes) break;
+    if (referenced.has(record.fileId)) continue;
+    victims.push(record.fileId);
+    freed += record.size || 0;
+  }
+  if (victims.length) await dxdb.blobs.bulkDelete(victims);
   return victims.length;
 }
 
