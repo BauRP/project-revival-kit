@@ -565,11 +565,13 @@ function base64ToBytes(b64: string): Uint8Array {
 async function sendBlob(peer: string, fileId: string, include: (index: number) => boolean) {
   const rec = await getBlob(fileId);
   if (!rec) return;
-  const buffer = new Uint8Array(await rec.data.arrayBuffer());
-  const totalChunks = Math.max(1, Math.ceil(buffer.length / BLOB_CHUNK_BYTES));
+  // Stream each slice separately. Never materialize a 1 GB attachment in RAM.
+  const totalChunks = Math.max(1, Math.ceil(rec.data.size / BLOB_CHUNK_BYTES));
   for (let index = 0; index < totalChunks; index++) {
     if (!include(index)) continue;
-    const slice = buffer.subarray(index * BLOB_CHUNK_BYTES, (index + 1) * BLOB_CHUNK_BYTES);
+    const slice = new Uint8Array(await rec.data.slice(
+      index * BLOB_CHUNK_BYTES, (index + 1) * BLOB_CHUNK_BYTES,
+    ).arrayBuffer());
     const ok = await sendEphemeral(peer, "blob_chunk", {
       fileId,
       index,
