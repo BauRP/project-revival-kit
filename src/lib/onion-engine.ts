@@ -572,9 +572,12 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         // Only a known chat participant can modify the original message.
         // Editing and deleting for everyone additionally require authorship.
         if (!original || ck !== expectedChatKey ||
-            ![original.from, original.to].includes(sender) ||
-            ![original.from, original.to].includes(recipient) ||
-            (hasOwnerOnlyMutation && original.from !== sender)) {
+            original.from !== sender && original.to !== sender ||
+            original.from !== recipient && original.to !== recipient ||
+            sender === recipient ||
+            (hasOwnerOnlyMutation && original.from !== sender) ||
+            ("deletedFor" in patch) || ("messageId" in patch) ||
+            ("updatedAt" in patch)) {
           await dxdb.inbox_raw.delete(rawId);
           return;
         }
