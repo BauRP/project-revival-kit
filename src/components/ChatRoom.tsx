@@ -9,6 +9,7 @@ import {
   Download,
   Clock,
   ShieldAlert,
+  ShieldCheck,
   Search,
   Pin,
   X,
@@ -63,6 +64,7 @@ import {
 } from "@/lib/p2p";
 import { sendReadReceipt, listenForReadReceipts } from "@/lib/sync/peer-sync";
 import { isValidOnion } from "@/lib/onion-id";
+import { getLocalHistoryProtection, getRemoteHistoryProtection, setLocalHistoryProtection, onLocalHistoryProtection, onRemoteHistoryProtection, HISTORY_PROTECTION_NOTICE } from "@/lib/history-protection";
 import {
   subscribeLifecycle,
   editMessage as fsEditMessage,
@@ -262,6 +264,8 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   const [profileOpen, setProfileOpen] = useState(false);
   // Header three-dot menu (Silent, One-time, Disappearing).
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  const [historyProtected, setHistoryProtected] = useState(false);
+  const [peerHistoryProtected, setPeerHistoryProtected] = useState(false);
   const [disappearingModalOpen, setDisappearingModalOpen] = useState(false);
   // System bubbles (e.g. "Disappearing messages turned ON") — local, non-erasable.
   const [systemBubbles, setSystemBubbles] = useState<Message[]>([]);
@@ -380,6 +384,15 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       prev.map((message) => translated.find((item) => item.id === message.id) || message),
     );
   };
+
+  useEffect(() => {
+    if (!isValidOnion(chatId)) return;
+    void getLocalHistoryProtection(chatId).then((v) => setHistoryProtected(v.enabled));
+    void getRemoteHistoryProtection(chatId).then((v) => setPeerHistoryProtected(v.enabled));
+    const offLocal = onLocalHistoryProtection(chatId, (v) => setHistoryProtected(v.enabled));
+    const offRemote = onRemoteHistoryProtection(chatId, (v) => setPeerHistoryProtected(v.enabled));
+    return () => { offLocal(); offRemote(); };
+  }, [chatId]);
 
   // P2P lifecycle (edit / delete / pin) — source of truth
   useEffect(() => {
@@ -793,6 +806,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
         await fsEditMessage(userId, chatId, editingId, newText);
         toast({ title: t("edited") });
       } catch (e) {
+        toast({ title: e instanceof Error ? e.message : HISTORY_PROTECTION_NOTICE, variant: "destructive" });
         console.error("[ChatRoom] edit failed", e);
       }
       setInput("");
@@ -1274,6 +1288,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
 
   const handleEditStart = () => {
     if (!singleSel) return;
+    if (peerHistoryProtected) { toast({ title: HISTORY_PROTECTION_NOTICE }); return; }
     setEditingId(singleSel.id);
     setInput(getEffectiveText(singleSel).text);
     setSelectedIds([]);
@@ -1320,6 +1335,11 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
 
   const handleDeleteForEveryone = async () => {
     if (!userId || selectedMessages.length === 0) return;
+    if (peerHistoryProtected) {
+      setDeleteSheetOpen(false);
+      toast({ title: HISTORY_PROTECTION_NOTICE });
+      return;
+    }
     const ids = selectedMessages.map((m) => m.id);
     setLifecycle((prev) => {
       const next = { ...prev };
@@ -1658,6 +1678,21 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
                     >
                       {silent ? t("on") : t("off")}
                     </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHeaderMenuOpen(false);
+                      if (!userId) return;
+                      void setLocalHistoryProtection(userId, chatId, !historyProtected)
+                        .then((state) => toast({ title: state.enabled ? "Защита истории переписки включена" : "Защита истории переписки выключена" }))
+                        .catch((error) => toast({ title: error instanceof Error ? error.message : "Не удалось изменить защиту", variant: "destructive" }));
+                    }}
+                    className="flex items-center gap-2.5 w-full px-3 py-2.5 text-sm text-foreground hover:bg-white/5"
+                  >
+                    <ShieldCheck size={16} className={historyProtected ? "text-[#00FFFF]" : "text-muted-foreground"} />
+                    <span className="flex-1 text-left">Защита истории переписки</span>
+                    <span className="text-[10px] uppercase font-bold">{historyProtected ? "ВКЛ" : "ВЫКЛ"}</span>
                   </button>
                   <button
                     type="button"
