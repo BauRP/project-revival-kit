@@ -26,8 +26,13 @@ const base64 = (input: Uint8Array): string => {
     binary += String.fromCharCode(...input.subarray(i, i + 0x8000));
   return btoa(binary);
 };
-const bytes = (value: string): Uint8Array =>
-  Uint8Array.from(atob(value), (c) => c.charCodeAt(0));
+const bytes = (value: string, maxChars: number): Uint8Array => {
+  if (typeof value !== "string" || value.length > maxChars ||
+      !/^[A-Za-z0-9+/]*={0,2}$/.test(value) || value.length % 4 !== 0)
+    throw new Error("Invalid backup encoding");
+  try { return Uint8Array.from(atob(value), (c) => c.charCodeAt(0)); }
+  catch { throw new Error("Invalid backup encoding"); }
+};
 
 async function derive(password: string, salt: Uint8Array, iterations: number): Promise<CryptoKey> {
   if (typeof password !== "string" || password.trim().length < 12)
@@ -54,14 +59,17 @@ export async function decryptBackupV2(envelope: BackupEnvelopeV2, password: stri
   if (!envelope || envelope.magic !== MAGIC || envelope.kdf !== "PBKDF2-SHA256" ||
       envelope.cipher !== "AES-256-GCM" || envelope.iterations !== ITERATIONS)
     throw new Error("Unsupported or invalid encrypted backup");
-  const salt = bytes(envelope.salt);
-  const iv = bytes(envelope.iv);
+  const salt = bytes(envelope.salt, 64);
+  const iv = bytes(envelope.iv, 32);
   if (salt.length !== 32 || iv.length !== 12)
     throw new Error("Invalid backup salt or nonce");
+  // Avoid allocating massive hostile base64 blobs before the size is checked.
+  const ciphertext = bytes(envelope.ciphertext, 256 * 1024 * 1024);
+  if (ciphertext.length < 16) throw new Error("Invalid backup ciphertext");
   const key = await derive(password, salt, envelope.iterations);
   try {
     const plain = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: new Uint8Array(iv) }, key, new Uint8Array(bytes(envelope.ciphertext)),
+      { name: "AES-GCM", iv: new Uint8Array(iv) }, key, new Uint8Array(ciphertext),
     );
     return dec.decode(plain);
   } catch {

@@ -1,6 +1,6 @@
 import { nukeAllData } from "./storage";
 import { onionShutdownNative } from "./onion-engine";
-import { dxdb } from "./dexie-db";
+import { eraseIdentityVault } from "./crypto";
 import { goHome } from "./home-navigation";
 
 let panicActive = false;
@@ -11,8 +11,8 @@ export async function executePanic(): Promise<void> {
 
   try {
     await onionShutdownNative();
-    dxdb.close();
-    await dxdb.delete();
+    // First revoke the non-exportable identity key. Then erase local records.
+    await eraseIdentityVault();
     await nukeAllData();
     goHome();
   } catch {

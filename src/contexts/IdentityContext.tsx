@@ -74,8 +74,8 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
   const deleteAccount = useCallback(async () => {
     // Stop native transports before removing the databases they use.
     await onionShutdownNative();
-    await nukeAllData();
     await eraseIdentityVault();
+    await nukeAllData();
     try {
       localStorage.clear();
     } catch {
