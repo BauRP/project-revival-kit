@@ -44,6 +44,7 @@ import { dbGetStrict, dbPutStrict } from "./storage";
 import { isLegacyFriendEvent } from "./inbound-durability";
 import { validateIncomingTextMessage } from "./inbound-message";
 import { chunkDigest, matchesChunkDigest } from "./chunk-integrity";
+import { orderedCompleteChunkSet } from "./media-chunks";
 import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, type DispatchCommitResult } from "./dispatch-commit";
@@ -786,25 +787,34 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
   entry.updatedAt = Date.now();
   partialReceives.set(fileId, entry);
   if (entry.received.size < entry.totalChunks) return;
-  const ordered: Uint8Array[] = [];
-  for (let i = 0; i < entry.totalChunks; i++) {
-    const part = entry.received.get(i);
-    if (part === undefined) return;
-    ordered.push(base64ToBytes(part));
-  }
-  await putBlob(
-    fileId,
-    new Blob(ordered as BlobPart[], { type: entry.mimeType }),
-    entry.name,
-    entry.mimeType,
-  );
-  await dxdb.partial_chunks.where("fileId").equals(fileId).delete();
+  await assemblePersistedBlob(fileId, from);
   partialReceives.delete(fileId);
   const request = blobRequests.get(fileId);
   if (request && request.peer === from) {
     blobRequests.delete(fileId);
     request.resolve(true);
   }
+}
+
+/** Assemble only validated persisted parts, without keeping another whole-file
+ * copy in JavaScript memory. Safe to run again after a crash.
+ */
+async function assemblePersistedBlob(fileId: string, from: string): Promise<boolean> {
+  const records = await dxdb.partial_chunks.where("fileId").equals(fileId).toArray();
+  const ordered = orderedCompleteChunkSet(
+    records.map((row) => ({ ...row, size: row.data.size })), fileId, from,
+  );
+  if (!ordered) return false;
+  const parts: BlobPart[] = [];
+  for (const row of ordered) {
+    const bytes = new Uint8Array(await row.data.arrayBuffer());
+    if (!matchesChunkDigest(bytes, row.digest)) return false;
+    parts.push(row.data);
+  }
+  const first = ordered[0];
+  await putBlob(fileId, new Blob(parts, { type: first.mimeType }), first.name, first.mimeType);
+  await dxdb.partial_chunks.where("fileId").equals(fileId).delete();
+  return true;
 }
 
 /** Only request encrypted media from its authenticated message sender. */
@@ -839,6 +849,13 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
             received, updatedAt: Date.now() };
           partialReceives.set(fileId, partial);
         }
+      }
+      if (partial && partial.received.size === partial.totalChunks &&
+          await assemblePersistedBlob(fileId, source)) {
+        partialReceives.delete(fileId);
+        blobRequests.delete(fileId);
+        resolve(true);
+        return;
       }
       const sent = await sendEphemeral(source, "blob_request", {
         fileId,
