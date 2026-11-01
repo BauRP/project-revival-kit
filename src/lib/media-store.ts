@@ -92,6 +92,16 @@ export function uploadFileToTrivo(
   };
 }
 
+/** Permanent local tombstones prevent a consumed one-time attachment from
+ * being downloaded again, even after a WebView restart. */
+export function consumedMediaKey(fileId: string): string {
+  return `consumed-media::${fileId}`;
+}
+async function assertNotConsumed(fileId: string): Promise<void> {
+  const record = await dxdb.lifecycle.get(consumedMediaKey(fileId));
+  if (record?.data.consumed === true) throw new Error("One-time attachment already viewed");
+}
+
 const blobUrlCache = new Map<string, string>();
 const inFlight = new Map<string, Promise<string>>();
 
@@ -103,12 +113,14 @@ const inFlight = new Map<string, Promise<string>>();
  */
 export function downloadFromTrivo(fileId: string, peer?: string): Promise<string> {
   if (!fileId) return Promise.reject(new Error("downloadFromTrivo: missing fileId"));
-  const cached = blobUrlCache.get(fileId);
-  if (cached) return Promise.resolve(cached);
   const pending = inFlight.get(fileId);
   if (pending) return pending;
 
   const task = (async (): Promise<string> => {
+    // Check BEFORE returning even a cached URL: consumed media is never replayable.
+    await assertNotConsumed(fileId);
+    const cached = blobUrlCache.get(fileId);
+    if (cached) return cached;
     const local = await getBlob(fileId);
     if (local) {
       const url = URL.createObjectURL(local.data);
@@ -159,10 +171,21 @@ export async function ensureMediaUrl<T extends { fileId?: string; url?: string }
 
 /** Revoke one-time local object URL and remove the consumed attachment. */
 export async function purgeConsumedMedia(fileId: string): Promise<void> {
+  if (!fileId) throw new Error("Missing consumed attachment ID");
+  const now = Date.now();
+  // Atomic: store the tombstone and remove every local copy in a single
+  // IndexedDB transaction, so a crash cannot make a viewed file replayable.
+  await dxdb.transaction("rw", [dxdb.lifecycle, dxdb.blobs, dxdb.partial_chunks], async () => {
+    await dxdb.lifecycle.put({
+      key: consumedMediaKey(fileId), chatKey: "consumed-media",
+      messageId: fileId, data: { consumed: true, consumedAt: now }, updatedAt: now,
+    });
+    await dxdb.blobs.delete(fileId);
+    await dxdb.partial_chunks.where("fileId").equals(fileId).delete();
+  });
   const url = blobUrlCache.get(fileId);
   if (url) {
     blobUrlCache.delete(fileId);
     URL.revokeObjectURL(url);
   }
-  await dxdb.blobs.delete(fileId);
 }
