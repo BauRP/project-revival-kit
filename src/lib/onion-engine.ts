@@ -41,6 +41,7 @@ import {
   type StoredMessage,
 } from "./dexie-db";
 import { dbGet, dbPut } from "./storage";
+import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp } from "./lifecycle-auth";
 
 export const ONION_SERVICE_PORT = 8443;
 export const POLL_INTERVAL_MS = 5_000;
@@ -567,27 +568,23 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         const recipient = String(payload.to || "");
         const expectedChatKey = [sender, recipient].sort().join("__");
         const patch = (payload.patch || {}) as Record<string, unknown>;
-        const hasOwnerOnlyMutation =
-          "editedText" in patch || "isEdited" in patch || "deletedForEveryone" in patch;
-        // Only a known chat participant can modify the original message.
-        // Editing and deleting for everyone additionally require authorship.
-        if (!original || ck !== expectedChatKey ||
-            original.from !== sender && original.to !== sender ||
-            original.from !== recipient && original.to !== recipient ||
-            sender === recipient ||
-            (hasOwnerOnlyMutation && original.from !== sender) ||
-            ("deletedFor" in patch) || ("messageId" in patch) ||
-            ("updatedAt" in patch)) {
+        if (!canApplyRemoteLifecycle(original, sender, recipient, ck, patch)) {
           await dxdb.inbox_raw.delete(rawId);
           return;
         }
         const key = `${ck}::${mid}`;
-        const prev = (await dxdb.lifecycle.get(key))?.data || { messageId: mid };
+        const priorRecord = await dxdb.lifecycle.get(key);
+        const prev = priorRecord?.data || { messageId: mid };
+        if (!acceptsLifecycleTimestamp(prev.remoteUpdatedAt, payload.updatedAt)) {
+          await dxdb.inbox_raw.delete(rawId);
+          return;
+        }
         const next: Record<string, unknown> = {
           ...prev,
           ...patch,
           messageId: mid,
           updatedAt: payload.updatedAt,
+          remoteUpdatedAt: payload.updatedAt,
         };
         if (patch.clearPin) {
           delete next.pinnedAt;
