@@ -774,6 +774,14 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
       !matchesChunkDigest(chunkBytes, body.digest)) return;
   const priorChunk = entry.received.get(index);
   if (priorChunk !== undefined && priorChunk !== base64) return;
+  const key = JSON.stringify([fileId, from, index]);
+  const diskChunk = await dxdb.partial_chunks.get(key);
+  if (diskChunk && diskChunk.digest !== body.digest) return;
+  if (!diskChunk) await dxdb.partial_chunks.put({
+    key, fileId, from, index, totalChunks: chunks,
+    name: entry.name, mimeType: entry.mimeType, digest: String(body.digest),
+    data: new Blob([chunkBytes as BlobPart]), updatedAt: Date.now(),
+  });
   entry.received.set(index, base64);
   entry.updatedAt = Date.now();
   partialReceives.set(fileId, entry);
@@ -790,6 +798,7 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
     entry.name,
     entry.mimeType,
   );
+  await dxdb.partial_chunks.where("fileId").equals(fileId).delete();
   partialReceives.delete(fileId);
   const request = blobRequests.get(fileId);
   if (request && request.peer === from) {
@@ -808,7 +817,29 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
     const request: BlobRequest = { peer: source, resolve };
     blobRequests.set(fileId, request);
     void (async () => {
-      const partial = partialReceives.get(fileId);
+      // Rehydrate verified chunks after app restart; only ask for missing data.
+      let partial = partialReceives.get(fileId);
+      if (!partial) {
+        const saved = await dxdb.partial_chunks.where("fileId").equals(fileId).toArray();
+        const ordered = saved.filter((row) => row.from === source)
+          .sort((a, b) => a.index - b.index);
+        if (ordered.length) {
+          const first = ordered[0];
+          const same = ordered.filter((row) =>
+            row.totalChunks === first.totalChunks && row.name === first.name &&
+            row.mimeType === first.mimeType &&
+            Number.isSafeInteger(row.index) && row.index >= 0 && row.index < first.totalChunks);
+          const received = new Map<number, string>();
+          for (const row of same) {
+            const bytes = new Uint8Array(await row.data.arrayBuffer());
+            if (matchesChunkDigest(bytes, row.digest)) received.set(row.index, bytesToBase64(bytes));
+          }
+          partial = { fileId, from: source, name: first.name,
+            mimeType: first.mimeType, totalChunks: first.totalChunks,
+            received, updatedAt: Date.now() };
+          partialReceives.set(fileId, partial);
+        }
+      }
       const sent = await sendEphemeral(source, "blob_request", {
         fileId,
         have: partial?.from === source ? Array.from(partial.received.keys()) : [],
@@ -826,6 +857,7 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
     setTimeout(() => {
       if (blobRequests.get(fileId) === request) {
         blobRequests.delete(fileId);
+        // Keep verified partial chunks on disk for a future retry.
         partialReceives.delete(fileId);
         resolve(false);
       }
