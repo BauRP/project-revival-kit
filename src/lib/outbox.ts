@@ -72,15 +72,13 @@ async function tx<T>(
 }
 
 export async function listOutbox(): Promise<ScheduledItem[]> {
-  try {
-    const all = await tx<ScheduledItem[]>(
-      "readonly",
-      (s) => s.getAll() as IDBRequest<ScheduledItem[]>,
-    );
-    return all.sort((a, b) => a.scheduledAt - b.scheduledAt);
-  } catch {
-    return [];
-  }
+  // A failed read is not an empty queue. Propagate the error to prevent
+  // falsely reporting that scheduled messages were delivered or deleted.
+  const all = await tx<ScheduledItem[]>(
+    "readonly",
+    (store) => store.getAll() as IDBRequest<ScheduledItem[]>,
+  );
+  return all.sort((a, b) => a.scheduledAt - b.scheduledAt);
 }
 
 export async function enqueue(
@@ -167,7 +165,13 @@ function scheduleNextWake() {
     const next = items[0];
     const delay = Math.max(0, next.scheduledAt - Date.now());
     // Cap at 60s so we re-evaluate periodically (handles registerSender races).
-    timer = setTimeout(fireDue, Math.min(delay, 60_000));
+    timer = setTimeout(() => void fireDue().catch((error) => {
+      console.error("[outbox] scheduled delivery failed", error);
+      scheduleNextWake();
+    }), Math.min(delay, 60_000));
+  }).catch((error) => {
+    console.error("[outbox] unable to read pending messages", error);
+    timer = setTimeout(scheduleNextWake, 30_000);
   });
 }
 
