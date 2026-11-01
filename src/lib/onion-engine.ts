@@ -701,7 +701,11 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
       chunks < 1 || chunks > 24000 || index < 0 || index >= chunks ||
       base64.length > 80000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) return;
   const prior = partialReceives.get(fileId);
-  if (prior && (prior.from !== from || prior.totalChunks !== chunks)) return;
+  if (prior && (prior.from !== from || prior.totalChunks !== chunks ||
+      prior.name !== String(body.name || fileId) ||
+      prior.mimeType !== String(body.mimeType || "application/octet-stream"))) return;
+  if (typeof body.name !== "string" || body.name.length > 255 ||
+      typeof body.mimeType !== "string" || body.mimeType.length > 128) return;
   const entry: PartialReceive = prior || {
     fileId,
     from,
@@ -711,6 +715,8 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
     received: new Map<number, string>(),
     updatedAt: Date.now(),
   };
+  const priorChunk = entry.received.get(index);
+  if (priorChunk !== undefined && priorChunk !== base64) return;
   entry.received.set(index, base64);
   entry.updatedAt = Date.now();
   partialReceives.set(fileId, entry);
