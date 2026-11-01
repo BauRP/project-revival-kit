@@ -35,7 +35,7 @@ async function derive(password: string, salt: Uint8Array, iterations: number): P
   if (!globalThis.crypto?.subtle) throw new Error("Secure on-device cryptography is unavailable");
   const material = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", hash: "SHA-256", salt, iterations },
+    { name: "PBKDF2", hash: "SHA-256", salt: new Uint8Array(salt), iterations },
     material, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"],
   );
 }
@@ -61,7 +61,7 @@ export async function decryptBackupV2(envelope: BackupEnvelopeV2, password: stri
   const key = await derive(password, salt, envelope.iterations);
   try {
     const plain = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv }, key, bytes(envelope.ciphertext),
+      { name: "AES-GCM", iv: new Uint8Array(iv) }, key, new Uint8Array(bytes(envelope.ciphertext)),
     );
     return dec.decode(plain);
   } catch {
