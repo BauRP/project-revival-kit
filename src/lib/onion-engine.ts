@@ -787,7 +787,7 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
   entry.updatedAt = Date.now();
   partialReceives.set(fileId, entry);
   if (entry.received.size < entry.totalChunks) return;
-  await assemblePersistedBlob(fileId, from);
+  if (!(await assemblePersistedBlob(fileId, from))) return;
   partialReceives.delete(fileId);
   const request = blobRequests.get(fileId);
   if (request && request.peer === from) {
