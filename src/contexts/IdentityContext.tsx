@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode, useCallback 
 import { getOrCreateIdentity, getKeyFingerprint, eraseIdentityVault, type IdentityKeys } from "@/lib/crypto";
 import { getOrCreateUserId } from "@/lib/identity";
 import { migrateLegacyMessages } from "@/lib/p2p";
-import { recoverInbox } from "@/lib/onion-engine";
+import { recoverInbox, onionShutdownNative } from "@/lib/onion-engine";
 import { nukeAllData } from "@/lib/storage";
 import { safeStorage } from "@/lib/safe-storage";
 
@@ -72,7 +72,8 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
   const toggleStealth = useCallback(() => setStealthMode((p) => !p), []);
 
   const deleteAccount = useCallback(async () => {
-    // Полная очистка перед удалением
+    // Stop native transports before removing the databases they use.
+    await onionShutdownNative();
     await nukeAllData();
     await eraseIdentityVault();
     try {
