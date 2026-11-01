@@ -44,6 +44,7 @@ import { dbGetStrict, dbPutStrict } from "./storage";
 import { isLegacyFriendEvent } from "./inbound-durability";
 import { validateIncomingTextMessage } from "./inbound-message";
 import { validateSharedProfile } from "./profile-wire";
+import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, type DispatchCommitResult } from "./dispatch-commit";
 import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp } from "./lifecycle-auth";
 
 export const ONION_SERVICE_PORT = 8443;
@@ -436,9 +437,10 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
         from,
         to: self,
       };
-      const committed = await commitDispatch(rawId, payload);
-      await sendEphemeral(from, "ack", { ids: [String(payload.id)] }).catch(() => false);
-      if (committed) safeEach(incomingDispatchListeners, payload);
+      const result = await commitDispatch(rawId, payload);
+      if (shouldAckDispatch(result))
+        await sendEphemeral(from, "ack", { ids: [String(payload.id)] }).catch(() => false);
+      if (shouldNotifyDispatch(result)) safeEach(incomingDispatchListeners, payload);
       return;
     }
     case "ack": {
@@ -511,13 +513,19 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
  * Persist a decrypted dispatch payload and drop its raw frame in the same
  * transaction. Returns false for duplicates (already committed earlier).
  */
-async function commitDispatch(rawId: string, payload: Record<string, unknown>): Promise<boolean> {
+async function commitDispatch(rawId: string, payload: Record<string, unknown>): Promise<DispatchCommitResult> {
   const type = String(payload.type || "");
   const id = String(payload.id || "");
   let fresh = false;
+  let rejected = false;
+  if (!isValidDispatchId(payload.id)) {
+    await dxdb.inbox_raw.delete(rawId);
+    return "rejected";
+  }
   await dxdb.transaction("rw", [dxdb.messages, dxdb.inbox_raw, dxdb.lifecycle, dxdb.contacts], async () => {
     if (type === "text_message") {
       const validated = validateIncomingTextMessage(payload);
+      if (!validated) rejected = true;
       if (validated && !(await dxdb.messages.get(id))) {
         await dxdb.messages.add(validated as StoredMessage);
         fresh = true;
@@ -538,6 +546,7 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
           original.from !== payload.to && original.to !== payload.to ||
           (emoji !== null && (typeof emoji !== "string" || emoji.length > 24)) ||
           mid.length > 128) {
+        rejected = true;
         await dxdb.inbox_raw.delete(rawId);
         return;
       }
@@ -562,6 +571,7 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
       const profile = validateSharedProfile(payload.profile, sender);
       const contact = profile ? await dxdb.contacts.get(sender) : undefined;
       if (!profile || !contact) {
+        rejected = true;
         await dxdb.inbox_raw.delete(rawId);
         return;
       }
@@ -584,6 +594,7 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         const expectedChatKey = [sender, recipient].sort().join("__");
         const patch = (payload.patch || {}) as Record<string, unknown>;
         if (!canApplyRemoteLifecycle(original, sender, recipient, ck, patch)) {
+          rejected = true;
           await dxdb.inbox_raw.delete(rawId);
           return;
         }
@@ -619,6 +630,7 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
       fresh = true;
     } else {
       // Unknown events must not be surfaced as successfully handled features.
+      rejected = true;
       fresh = false;
     }
     // Friend requests are persisted in a second IndexedDB database. Keep
@@ -639,7 +651,7 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
   // If a power loss happens here, recoverInbox safely repeats the idempotent
   // legacy write; the sender will not be ACKed until it is durable.
   if (isLegacyFriendEvent(type)) await dxdb.inbox_raw.delete(rawId);
-  return fresh;
+  return rejected ? "rejected" : fresh ? "committed" : "duplicate";
 }
 
 /** Keep a file private to the chat participants to whom it was sent. */
