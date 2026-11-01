@@ -612,8 +612,12 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         });
       }
       fresh = true;
-    } else {
+    } else if (type === "friend_request" || type === "friend_request_status") {
+      // These two legacy events are committed to their separate database below.
       fresh = true;
+    } else {
+      // Unknown events must not be surfaced as successfully handled features.
+      fresh = false;
     }
     // Friend requests are persisted in a second IndexedDB database. Keep
     // the sealed frame until that database has fully committed as well.
