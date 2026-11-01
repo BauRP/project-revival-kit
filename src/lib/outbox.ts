@@ -175,6 +175,18 @@ function scheduleNextWake() {
   });
 }
 
+/** Release the scheduled IndexedDB connection before a full account wipe. */
+export async function closeScheduledOutbox(): Promise<void> {
+  if (timer) { clearTimeout(timer); timer = null; }
+  senders.clear();
+  const pending = dbPromise;
+  dbPromise = null;
+  if (pending) {
+    const db = await pending;
+    db.close();
+  }
+}
+
 // Kick off on import so a reload picks up persisted items.
 if (typeof window !== "undefined") {
   scheduleNextWake();
