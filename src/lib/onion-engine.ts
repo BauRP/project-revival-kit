@@ -594,6 +594,23 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         });
         fresh = true;
       }
+    } else if (type === "history_protection") {
+      const enabled = payload.enabled;
+      const time = payload.updatedAt;
+      const from = String(payload.from || "");
+      if (typeof enabled !== "boolean" || typeof time !== "number" ||
+          !Number.isSafeInteger(time) || time <= 0 || time > Date.now() + 600_000 ||
+          !(await dxdb.contacts.get(from))) {
+        rejected = true;
+      } else {
+        const key = `history-protection::remote::${from}`;
+        const previous = await dxdb.lifecycle.get(key);
+        if (!previous || Number(previous.data.updatedAt || 0) < time) {
+          await dxdb.lifecycle.put({ key, chatKey: "history-protection-remote",
+            messageId: from, data: { enabled, updatedAt: time }, updatedAt: time });
+          fresh = true;
+        }
+      }
     } else if (type === "message_lifecycle") {
       const ck = String(payload.chatKey || "");
       const mid = String(payload.messageId || "");
@@ -603,6 +620,13 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         const recipient = String(payload.to || "");
         const expectedChatKey = [sender, recipient].sort().join("__");
         const patch = (payload.patch || {}) as Record<string, unknown>;
+        const protectedRecord = await dxdb.lifecycle.get(`history-protection::local::${sender}`);
+        if (protectedRecord?.data.enabled === true &&
+            ("editedText" in patch || "isEdited" in patch || "deletedForEveryone" in patch)) {
+          rejected = true;
+          await dxdb.inbox_raw.delete(rawId);
+          return;
+        }
         if (!canApplyRemoteLifecycle(original, sender, recipient, ck, patch)) {
           rejected = true;
           await dxdb.inbox_raw.delete(rawId);
