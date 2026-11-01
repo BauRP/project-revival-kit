@@ -48,6 +48,7 @@ import { orderedCompleteChunkSet } from "./media-chunks";
 import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
+import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, type DispatchCommitResult } from "./dispatch-commit";
 import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp } from "./lifecycle-auth";
 
@@ -768,6 +769,8 @@ async function sendBlob(peer: string, fileId: string, include: (index: number) =
 async function acceptBlobChunk(from: string, body: Record<string, unknown>): Promise<void> {
   const fileId = String(body.fileId || "");
   const pending = blobRequests.get(fileId);
+  // A consumed one-time attachment may not be re-created by a late Tor frame.
+  if (fileId && isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data)) return;
   // Reject unsolicited frames, unexpected senders and abusive chunk counts.
   const index = Number(body.index);
   const chunks = Number(body.totalChunks);
@@ -840,6 +843,8 @@ async function assemblePersistedBlob(fileId: string, from: string): Promise<bool
     parts.push(row.data);
   }
   const first = ordered[0];
+  // Recheck after digest verification: revocation can race a large assembly.
+  if (isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data)) return false;
   await putBlob(fileId, new Blob(parts, { type: first.mimeType }), first.name, first.mimeType);
   await dxdb.partial_chunks.where("fileId").equals(fileId).delete();
   return true;
