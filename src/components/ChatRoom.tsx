@@ -1210,8 +1210,9 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     try {
       // Persist the consumed marker; deleting the entire message would make
       // the UI forget it was opened after a restart.
-      await dxdb.messages.update(msg.id, { media: undefined, oneTimeConsumed: true });
+      // Durably revoke the attachment BEFORE removing the message preview.
       if (msg.media?.fileId) await purgeConsumedMedia(msg.media.fileId);
+      await dxdb.messages.update(msg.id, { media: undefined, oneTimeConsumed: true });
     } catch (error) {
       // Do not fake a consumed state if the durable tombstone failed.
       console.error("[one-time] could not persist consumed marker", error);
