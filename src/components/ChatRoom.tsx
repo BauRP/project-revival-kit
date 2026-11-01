@@ -386,12 +386,17 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   };
 
   useEffect(() => {
+    // Reset immediately when switching chats; a previous peer's policy must
+    // never appear as the new peer's protection state.
+    setHistoryProtected(false);
+    setPeerHistoryProtected(false);
     if (!isValidOnion(chatId)) return;
-    void getLocalHistoryProtection(chatId).then((v) => setHistoryProtected(v.enabled));
-    void getRemoteHistoryProtection(chatId).then((v) => setPeerHistoryProtected(v.enabled));
+    let active = true;
+    void getLocalHistoryProtection(chatId).then((v) => { if (active) setHistoryProtected(v.enabled); });
+    void getRemoteHistoryProtection(chatId).then((v) => { if (active) setPeerHistoryProtected(v.enabled); });
     const offLocal = onLocalHistoryProtection(chatId, (v) => setHistoryProtected(v.enabled));
     const offRemote = onRemoteHistoryProtection(chatId, (v) => setPeerHistoryProtected(v.enabled));
-    return () => { offLocal(); offRemote(); };
+    return () => { active = false; offLocal(); offRemote(); };
   }, [chatId]);
 
   // P2P lifecycle (edit / delete / pin) — source of truth
