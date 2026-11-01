@@ -72,7 +72,7 @@ function broadcastLifecycle(
   if (!isValidOnion(peerId)) return; // local-only chats (support bot)
   void onionSendDispatch(peerId, {
     type: "message_lifecycle",
-    id: `lc-${messageId.replace(/\//g, "_")}-${Date.now()}`,
+    id: `lc-${crypto.randomUUID()}`,
     chatKey: chatKey(selfId, peerId),
     messageId: messageId.replace(/\//g, "_"),
     patch,
