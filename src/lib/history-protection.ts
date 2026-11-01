@@ -8,14 +8,14 @@
  */
 import { dxdb, type LifecycleRecord } from "./dexie-db";
 import { isValidOnion } from "./onion-id";
-import { onionRegisterIncomingListener, onionSendDispatch } from "./onion-engine";
+import { onionOnConnectionChange, onionRegisterIncomingListener, onionSendDispatch } from "./onion-engine";
 
 export interface HistoryProtectionState {
   enabled: boolean;
   updatedAt: number;
 }
 export const HISTORY_PROTECTION_NOTICE =
-  "У пользователя включена защита истории переписки. Удаление у всех и редактирование недоступны.";
+  "У пользователя включена защита истории переписки.";
 
 export class HistoryProtectionError extends Error {
   constructor() {
@@ -30,6 +30,17 @@ export function localProtectionKey(peer: string): string {
 export function remoteProtectionKey(peer: string): string {
   return `history-protection::remote::${peer}`;
 }
+/** Only remote author-driven edit and delete-for-everyone are denied.
+ * "Delete for me" never goes over Tor and remains allowed. */
+export function deniedByHistoryProtection(
+  enabled: boolean,
+  patch: Record<string, unknown>,
+): boolean {
+  return enabled && (
+    "isEdited" in patch || "editedText" in patch || "deletedForEveryone" in patch
+  );
+}
+
 export function validProtectionUpdate(
   enabled: unknown, updatedAt: unknown, now = Date.now(),
 ): enabled is boolean {
@@ -74,11 +85,36 @@ export async function setLocalHistoryProtection(
   // Await durable sealing/queue insertion before the setting is reported as
   // synchronized. A temporarily unreachable peer is fine: its frame remains
   // in the Tor outbox. Failure to seal is explicitly surfaced to the caller.
-  await onionSendDispatch(peer, {
-    type: "history_protection", id: crypto.randomUUID(), enabled, updatedAt,
-  });
+  await publishHistoryProtection(peer, state);
   return state;
 }
+
+/** Re-announce the latest durable state on a fresh authenticated Tor link.
+ * A missed toggle is otherwise possible if the original outbound queue was
+ * interrupted before persistence. Duplicate updates are idempotent on receipt.
+ */
+async function publishHistoryProtection(peer: string, state: HistoryProtectionState): Promise<void> {
+  await onionSendDispatch(peer, {
+    type: "history_protection",
+    id: crypto.randomUUID(),
+    enabled: state.enabled,
+    updatedAt: state.updatedAt,
+  });
+}
+
+const lastRepublished = new Map<string, number>();
+onionOnConnectionChange((peer, connected) => {
+  if (!connected || !isValidOnion(peer)) return;
+  const now = Date.now();
+  if (now - (lastRepublished.get(peer) || 0) < 60_000) return;
+  lastRepublished.set(peer, now);
+  void getLocalHistoryProtection(peer).then((state) => {
+    if (state.updatedAt > 0) return publishHistoryProtection(peer, state);
+  }).catch((error) => {
+    lastRepublished.delete(peer);
+    console.warn("[history-protection] reconnect sync failed", error);
+  });
+});
 
 const localListeners = new Set<(peer: string, state: HistoryProtectionState) => void>();
 const remoteListeners = new Set<(peer: string, state: HistoryProtectionState) => void>();
