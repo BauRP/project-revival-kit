@@ -42,6 +42,7 @@ import {
 } from "./dexie-db";
 import { dbGetStrict, dbPutStrict } from "./storage";
 import { isLegacyFriendEvent } from "./inbound-durability";
+import { validateIncomingTextMessage } from "./inbound-message";
 import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp } from "./lifecycle-auth";
 
 export const ONION_SERVICE_PORT = 8443;
@@ -513,18 +514,9 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
   let fresh = false;
   await dxdb.transaction("rw", [dxdb.messages, dxdb.inbox_raw, dxdb.lifecycle], async () => {
     if (type === "text_message") {
-      if (!(await dxdb.messages.get(id))) {
-        const { type: _t, ...rest } = payload;
-        void _t;
-        await dxdb.messages.add({
-          ...rest,
-          id,
-          from: String(payload.from),
-          to: String(payload.to),
-          text: String(payload.text || ""),
-          timestamp: Number(payload.timestamp) || Date.now(),
-          status: "delivered",
-        } as StoredMessage);
+      const validated = validateIncomingTextMessage(payload);
+      if (validated && !(await dxdb.messages.get(id))) {
+        await dxdb.messages.add(validated as StoredMessage);
         fresh = true;
       }
     } else if (type === "message_status") {
