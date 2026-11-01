@@ -723,7 +723,8 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
   const base64 = String(body.data || "");
   if (!fileId || !pending || pending.peer !== from ||
       !Number.isSafeInteger(index) || !Number.isSafeInteger(chunks) ||
-      chunks < 1 || chunks > 24000 || index < 0 || index >= chunks ||
+      chunks < 1 || chunks > Math.ceil((1024 * 1024 * 1024) / BLOB_CHUNK_BYTES) ||
+      index < 0 || index >= chunks ||
       base64.length > 80000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) return;
   const prior = partialReceives.get(fileId);
   if (prior && (prior.from !== from || prior.totalChunks !== chunks ||
