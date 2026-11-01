@@ -11,6 +11,10 @@
 import localPeerCache from "./local-peer-cache";
 import { dbGet, dbPut } from "./storage";
 import { getChatMeta, saveChatMeta } from "./p2p";
+import { getAllContacts } from "./dexie-db";
+import { onionRegisterIncomingListener, onionSendDispatch } from "./onion-engine";
+import { isValidOnion } from "./onion-id";
+import { makeSharedProfile, validateSharedProfile } from "./profile-wire";
 
 export type ProfileStatus = "online" | "away" | "dnd" | "offline" | "custom";
 
@@ -99,6 +103,7 @@ export async function saveMyProfile(
   localProfile = next;
   await dbPut("settings", LOCAL_KEY, next);
   publishProfile(next);
+  void publishProfileToContacts(next).catch((error) => console.warn("[profile] Tor sync failed", error));
   localListeners.forEach((cb) => {
     try {
       cb(next);
@@ -128,7 +133,10 @@ function publishProfile(profile: UserProfile): void {
 /** Re-publishes the current profile (used on transport reconnect / app start). */
 export async function republishMyProfile(userId: string): Promise<void> {
   const profile = await loadMyProfile(userId);
-  if (profile.updatedAt > 0) publishProfile(profile);
+  if (profile.updatedAt > 0) {
+    publishProfile(profile);
+    await publishProfileToContacts(profile);
+  }
 }
 
 export function onMyProfileChange(cb: (profile: UserProfile) => void): () => void {
@@ -230,3 +238,26 @@ function releaseProfile(userId: string): void {
     subscriptions.delete(userId);
   }
 }
+
+/** Send only to explicitly added contacts; delivery uses the existing sealed outbox. */
+async function publishProfileToContacts(profile: UserProfile): Promise<void> {
+  if (!isValidOnion(profile.userId)) return;
+  const shared = makeSharedProfile(profile);
+  const contacts = await getAllContacts();
+  await Promise.all(contacts.filter((c) => isValidOnion(c.onion) && c.onion !== profile.userId).map(async (c) => {
+    await onionSendDispatch(c.onion, {
+      type: "profile_update", id: crypto.randomUUID(), profile: shared,
+    });
+  }));
+}
+
+onionRegisterIncomingListener((payload) => {
+  if (payload.type !== "profile_update") return;
+  const from = String(payload.from || "");
+  const profile = validateSharedProfile(payload.profile, from);
+  if (!profile || !isValidOnion(from)) return;
+  void getAllContacts().then((contacts) => {
+    if (!contacts.some((c) => c.onion === from)) return;
+    return handleIncoming(from, profile);
+  }).catch((error) => console.warn("[profile] invalid incoming update", error));
+});
