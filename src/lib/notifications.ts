@@ -6,6 +6,7 @@ import {
   translateWithBundledDictionary,
 } from "@/lib/translation-config";
 import { isNative } from "@/lib/platform";
+import { safeNotificationText, shouldNotifyChat, type NotificationPolicyInput } from "./notification-policy";
 
 function preference(key: string, fallback: boolean): boolean {
   try {
@@ -17,11 +18,9 @@ function preference(key: string, fallback: boolean): boolean {
 }
 
 /** Respect privacy preferences BEFORE constructing any notification payload. */
-export async function notifyIncomingMessage(title: string, body: string): Promise<void> {
-  if (!preference("trivo-notifications", true)) return;
-  const hidden = preference("trivo-hide-content", false);
-  const safeTitle = hidden ? "Trivo Chat" : title;
-  const safeBody = hidden ? "Новое сообщение" : body;
+export async function notifyIncomingMessage(title: string, body: string, policy: Omit<NotificationPolicyInput, "enabled"> = {}): Promise<void> {
+  if (!shouldNotifyChat({ ...policy, enabled: preference("trivo-notifications", true) })) return;
+  const { title: safeTitle, body: safeBody } = safeNotificationText(title, body, preference("trivo-hide-content", false));
 
   if (!isNative()) {
     if ("Notification" in window && Notification.permission === "granted") {
