@@ -147,7 +147,8 @@ function deleteIndexedDb(name: string): Promise<void> {
 
 export async function nukeAllData(): Promise<void> {
   // Never claim success when the database is locked or deletion failed.
-  const { dxdb } = await import("./dexie-db");
+  const [{ dxdb }, { closeScheduledOutbox }] = await Promise.all([import("./dexie-db"), import("./outbox")]);
+  await closeScheduledOutbox();
   dxdb.close();
   await dxdb.delete();
   await deleteIndexedDb(DB_NAME);
