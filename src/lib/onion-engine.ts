@@ -840,7 +840,9 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
           const same = ordered.filter((row) =>
             row.totalChunks === first.totalChunks && row.name === first.name &&
             row.mimeType === first.mimeType &&
-            Number.isSafeInteger(row.index) && row.index >= 0 && row.index < first.totalChunks);
+            Number.isSafeInteger(row.index) && row.index >= 0 && row.index < first.totalChunks &&
+            row.data.size <= BLOB_CHUNK_BYTES &&
+            (row.index === first.totalChunks - 1 || row.data.size === BLOB_CHUNK_BYTES));
           const received = new Set<number>();
           for (const row of same) {
             const bytes = new Uint8Array(await row.data.arrayBuffer());
