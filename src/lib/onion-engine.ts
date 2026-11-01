@@ -40,7 +40,8 @@ import {
   type OutboxRecord,
   type StoredMessage,
 } from "./dexie-db";
-import { dbGet, dbPut } from "./storage";
+import { dbGetStrict, dbPutStrict } from "./storage";
+import { isLegacyFriendEvent } from "./inbound-durability";
 import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp } from "./lifecycle-auth";
 
 export const ONION_SERVICE_PORT = 8443;
@@ -602,19 +603,24 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
     } else {
       fresh = true;
     }
-    await dxdb.inbox_raw.delete(rawId);
+    // Friend requests are persisted in a second IndexedDB database. Keep
+    // the sealed frame until that database has fully committed as well.
+    if (!isLegacyFriendEvent(type)) await dxdb.inbox_raw.delete(rawId);
   });
-  // Friend requests live in the legacy key-value store (separate DB): written
-  // after the Dexie commit; a crash in between only loses the request toast,
-  // and the sender retries because the ACK was not yet sent.
   if (type === "friend_request") {
-    await dbPut("settings", `friend-req-in-${payload.from}`, { ...payload, status: "pending" });
+    await dbPutStrict("settings", `friend-req-in-${payload.from}`,
+      { ...payload, status: "pending" });
   }
   if (type === "friend_request_status" && payload.status === "accepted") {
-    const out = await dbGet<Record<string, unknown>>("settings", `friend-req-out-${payload.from}`);
-    if (out)
-      await dbPut("settings", `friend-req-out-${payload.from}`, { ...out, status: "accepted" });
+    const out = await dbGetStrict<Record<string, unknown>>("settings",
+      `friend-req-out-${payload.from}`);
+    if (out) await dbPutStrict("settings", `friend-req-out-${payload.from}`,
+      { ...out, status: "accepted" });
   }
+  // Only acknowledge the remote peer after BOTH databases have committed.
+  // If a power loss happens here, recoverInbox safely repeats the idempotent
+  // legacy write; the sender will not be ACKed until it is durable.
+  if (isLegacyFriendEvent(type)) await dxdb.inbox_raw.delete(rawId);
   return fresh;
 }
 
