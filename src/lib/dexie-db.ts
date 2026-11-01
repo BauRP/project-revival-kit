@@ -137,13 +137,10 @@ export async function upsertContact(onion: string, displayName?: string): Promis
 
 export async function setContactLastSeen(onion: string, ts: number = Date.now()): Promise<void> {
   if (!onion) return;
-  const existing = await dxdb.contacts.get(onion);
-  await dxdb.contacts.put({
-    onion,
-    displayName: existing?.displayName,
-    addedAt: existing?.addedAt ?? ts,
-    lastSeen: ts,
-  });
+  // A signed incoming frame proves the sender owns that .onion, NOT that
+  // the user accepted them as a contact. Unknown senders must never acquire
+  // contact privileges merely by pinging the transport.
+  await dxdb.contacts.where("onion").equals(onion).modify({ lastSeen: ts });
 }
 
 export async function getAllContacts(): Promise<ContactRecord[]> {

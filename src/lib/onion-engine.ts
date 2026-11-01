@@ -47,6 +47,7 @@ import { chunkDigest, matchesChunkDigest } from "./chunk-integrity";
 import { orderedCompleteChunkSet } from "./media-chunks";
 import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
+import { duplicateMessageMatches } from "./inbound-identity";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, type DispatchCommitResult } from "./dispatch-commit";
 import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp } from "./lifecycle-auth";
 
@@ -322,7 +323,19 @@ function backoff(attempts: number): number {
   return Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** Math.max(0, attempts - 1));
 }
 
+// The poller, a fresh dispatch and peer reconnect can all attempt the same
+// frame at once. Serialize shipping per ID to prevent duplicate network sends.
+const outboxFlights = new Map<string, Promise<boolean>>();
 async function attemptOutbox(id: string): Promise<boolean> {
+  const existing = outboxFlights.get(id);
+  if (existing) return existing;
+  const work = sendOutboxOnce(id);
+  outboxFlights.set(id, work);
+  try { return await work; } finally {
+    if (outboxFlights.get(id) === work) outboxFlights.delete(id);
+  }
+}
+async function sendOutboxOnce(id: string): Promise<boolean> {
   const rec = await dxdb.outbox.get(id);
   if (!rec) return false;
   const ok = await ship(rec.peer, rec.frame, rec.id);
@@ -533,9 +546,15 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
     if (type === "text_message") {
       const validated = validateIncomingTextMessage(payload);
       if (!validated) rejected = true;
-      if (validated && !(await dxdb.messages.get(id))) {
-        await dxdb.messages.add(validated as StoredMessage);
-        fresh = true;
+      if (validated) {
+        const existing = await dxdb.messages.get(id);
+        if (!existing) {
+          await dxdb.messages.add(validated as StoredMessage);
+          fresh = true;
+        } else if (!duplicateMessageMatches(existing, validated)) {
+          // A collision from another sender is NOT a successful duplicate.
+          rejected = true;
+        }
       }
     } else if (type === "message_status") {
       const mid = String(payload.messageId || "");
@@ -662,8 +681,11 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
           data: next,
           updatedAt: Date.now(),
         });
+      } else {
+        // An incomplete lifecycle command is not a valid delivered event.
+        rejected = true;
       }
-      fresh = true;
+      if (!rejected) fresh = true;
     } else if (type === "friend_request" || type === "friend_request_status") {
       // These two legacy events are committed to their separate database below.
       fresh = true;
