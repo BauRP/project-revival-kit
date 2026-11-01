@@ -11,7 +11,7 @@
 import localPeerCache from "./local-peer-cache";
 import { dbGet, dbPut } from "./storage";
 import { getChatMeta, saveChatMeta } from "./p2p";
-import { getAllContacts } from "./dexie-db";
+import { getAllContacts, dxdb } from "./dexie-db";
 import { onionRegisterIncomingListener, onionSendDispatch } from "./onion-engine";
 import { isValidOnion } from "./onion-id";
 import { makeSharedProfile, validateSharedProfile } from "./profile-wire";
@@ -151,6 +151,12 @@ export function getProfile(userId: string): UserProfile | null {
   return remoteCache.get(userId) || null;
 }
 
+export async function hydrateRemoteProfile(userId: string): Promise<void> {
+  const row = await dxdb.lifecycle.get(`profile::${userId}`);
+  if (!row) return;
+  await handleIncoming(userId, row.data);
+}
+
 export function onProfileChange(cb: (profile: UserProfile) => void): () => void {
   remoteListeners.add(cb);
   return () => {
@@ -159,8 +165,8 @@ export function onProfileChange(cb: (profile: UserProfile) => void): () => void 
 }
 
 async function handleIncoming(userId: string, raw: unknown): Promise<void> {
-  const profile = normalize(raw, userId);
-  if (!profile || profile.userId !== userId) return;
+  const profile = validateSharedProfile(raw, userId);
+  if (!profile) return;
   const prev = remoteCache.get(userId);
   if (prev && prev.updatedAt >= profile.updatedAt) return;
   remoteCache.set(userId, profile);
@@ -205,16 +211,13 @@ export function subscribeToProfile(userId: string): () => void {
   try {
     node = localPeerCache.get(CHANNEL).get(userId);
     // Hydrate from whatever is already cached locally, then stream updates.
-    node.once((data: unknown) => {
-      void handleIncoming(userId, data);
-    });
-    node.on((data: unknown) => {
-      void handleIncoming(userId, data);
-    });
+    // Only authenticated Tor updates can mutate a remote profile.
+    // Legacy local-peer cache is not an authenticated source.
   } catch {
     node = null;
   }
 
+  void hydrateRemoteProfile(userId).catch((error) => console.warn("[profile] hydrate failed", error));
   subscriptions.set(userId, {
     count: 1,
     stop: () => {
@@ -258,6 +261,6 @@ onionRegisterIncomingListener((payload) => {
   if (!profile || !isValidOnion(from)) return;
   void getAllContacts().then((contacts) => {
     if (!contacts.some((c) => c.onion === from)) return;
-    return handleIncoming(from, profile);
+    return hydrateRemoteProfile(from);
   }).catch((error) => console.warn("[profile] invalid incoming update", error));
 });
