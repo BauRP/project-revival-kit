@@ -43,6 +43,7 @@ import {
 import { dbGetStrict, dbPutStrict } from "./storage";
 import { isLegacyFriendEvent } from "./inbound-durability";
 import { validateIncomingTextMessage } from "./inbound-message";
+import { validateSharedProfile } from "./profile-wire";
 import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp } from "./lifecycle-auth";
 
 export const ONION_SERVICE_PORT = 8443;
@@ -512,7 +513,7 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
   const type = String(payload.type || "");
   const id = String(payload.id || "");
   let fresh = false;
-  await dxdb.transaction("rw", [dxdb.messages, dxdb.inbox_raw, dxdb.lifecycle], async () => {
+  await dxdb.transaction("rw", [dxdb.messages, dxdb.inbox_raw, dxdb.lifecycle, dxdb.contacts], async () => {
     if (type === "text_message") {
       const validated = validateIncomingTextMessage(payload);
       if (validated && !(await dxdb.messages.get(id))) {
@@ -553,14 +554,24 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
       }
       fresh = true;
     } else if (type === "profile_update") {
-      // Only the authenticated peer's profile may reach the UI listener.
-      // The listener checks the contact allowlist before saving it.
-      const profile = payload.profile;
-      if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+      // Validate and persist before ACK. Only an existing contact may update
+      // their own profile; the authenticated frame sender is authoritative.
+      const sender = String(payload.from || "");
+      const profile = validateSharedProfile(payload.profile, sender);
+      const contact = profile ? await dxdb.contacts.get(sender) : undefined;
+      if (!profile || !contact) {
         await dxdb.inbox_raw.delete(rawId);
         return;
       }
-      fresh = true;
+      const key = `profile::${sender}`;
+      const previous = await dxdb.lifecycle.get(key);
+      if (!previous || Number(previous.data.updatedAt || 0) < profile.updatedAt) {
+        await dxdb.lifecycle.put({
+          key, chatKey: "remote-profile", messageId: sender,
+          data: { ...profile }, updatedAt: profile.updatedAt,
+        });
+        fresh = true;
+      }
     } else if (type === "message_lifecycle") {
       const ck = String(payload.chatKey || "");
       const mid = String(payload.messageId || "");
