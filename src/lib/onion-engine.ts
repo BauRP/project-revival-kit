@@ -474,9 +474,11 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
     case "blob_request": {
       await dxdb.inbox_raw.delete(rawId);
       const fileId = String(inner.body.fileId || "");
-      const have = Array.isArray(inner.body.have) ? (inner.body.have as number[]) : [];
+      const have = new Set(Array.isArray(inner.body.have)
+        ? inner.body.have.filter((v): v is number => Number.isSafeInteger(v) && v >= 0)
+        : []);
       if (await hasBlob(fileId) && await canPeerRequestBlob(from, fileId)) {
-        await sendBlob(from, fileId, (i) => !have.includes(i));
+        await sendBlob(from, fileId, (i) => !have.has(i));
       } else {
         await sendEphemeral(from, "blob_missing", { fileId });
       }
@@ -484,10 +486,12 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
     }
     case "blob_sync_request": {
       await dxdb.inbox_raw.delete(rawId);
-      const missing = Array.isArray(inner.body.missing) ? (inner.body.missing as number[]) : [];
+      const missing = new Set(Array.isArray(inner.body.missing)
+        ? inner.body.missing.filter((v): v is number => Number.isSafeInteger(v) && v >= 0)
+        : []);
       const requestedFile = String(inner.body.fileId || "");
       if (await canPeerRequestBlob(from, requestedFile)) {
-        await sendBlob(from, requestedFile, (i) => missing.includes(i));
+        await sendBlob(from, requestedFile, (i) => missing.has(i));
       }
       return;
     }
