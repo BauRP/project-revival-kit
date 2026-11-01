@@ -323,7 +323,9 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
     async () => {
       // Non-destructive restore: current conversations, contacts and attachments
       // must never be erased just because an older backup was imported.
-      await dxdb.contacts.bulkPut(dump.contacts || []);
+      // Existing contact names and preferences take priority over older backups.
+      const currentContacts = new Set(await dxdb.contacts.toCollection().primaryKeys());
+      await dxdb.contacts.bulkPut((dump.contacts || []).filter((c) => !currentContacts.has(c.onion)));
       const presentIds = new Set(await dxdb.messages.toCollection().primaryKeys());
       await dxdb.messages.bulkPut((dump.messages || []).filter((m) => !presentIds.has(m.id)));
       const outboxIds = new Set(await dxdb.outbox.toCollection().primaryKeys());
