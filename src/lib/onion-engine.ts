@@ -534,9 +534,13 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
       const mid = String(payload.messageId || "");
       const msg = await dxdb.messages.get(mid);
       if (msg && msg.from === payload.to && msg.to === payload.from && payload.status === "read") {
-        await dxdb.messages.update(mid, { status: "read" });
+        if (msg.status !== "read") {
+          await dxdb.messages.update(mid, { status: "read" });
+          fresh = true;
+        }
+      } else {
+        rejected = true;
       }
-      fresh = true;
     } else if (type === "message_reaction") {
       const mid = String(payload.messageId || "");
       const original = await dxdb.messages.get(mid);
@@ -552,7 +556,12 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
       }
       const key = JSON.stringify(["reaction", String(payload.from), mid, String(payload.from)]);
       const incomingAt = Number(payload.updatedAt);
-      const timestamp = Number.isFinite(incomingAt) ? Math.min(incomingAt, Date.now() + 60_000) : Date.now();
+      if (!Number.isSafeInteger(incomingAt) || incomingAt <= 0 || incomingAt > Date.now() + 60_000) {
+        rejected = true;
+        await dxdb.inbox_raw.delete(rawId);
+        return;
+      }
+      const timestamp = incomingAt;
       const previous = await dxdb.lifecycle.get(key);
       if (!previous || previous.updatedAt <= timestamp) {
         await dxdb.lifecycle.put({
