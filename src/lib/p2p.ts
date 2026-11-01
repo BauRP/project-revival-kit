@@ -52,19 +52,24 @@ export interface ChatMeta {
 
 const messageListeners = new Set<(msg: P2PMessage) => void>();
 
-// The engine only surfaces a text_message after it is committed to Dexie.
+// Notify the UI ONLY with the validated record committed by the onion engine.
+// The raw authenticated frame is still untrusted JSON and must not be spread
+// into UI message objects (which could reintroduce spoofed URLs/status fields).
 onionRegisterIncomingListener((payload) => {
-  if (payload.type !== "text_message" || !payload.id || !payload.from) return;
-  const { type: _t, ...rest } = payload;
-  void _t;
-  const msg = { ...rest, status: "delivered" } as unknown as P2PMessage;
-  messageListeners.forEach((cb) => {
-    try {
-      cb(msg);
-    } catch (e) {
-      console.warn("[p2p] listener failed", e);
-    }
-  });
+  if (payload.type !== "text_message" ||
+      typeof payload.id !== "string" || typeof payload.from !== "string") return;
+  void (async () => {
+    const stored = await dxdb.messages.get(payload.id as string);
+    if (!stored || stored.from !== payload.from || stored.to !== payload.to) return;
+    const msg = { ...stored } as unknown as P2PMessage;
+    messageListeners.forEach((cb) => {
+      try {
+        cb(msg);
+      } catch (error) {
+        console.warn("[p2p] listener failed", error);
+      }
+    });
+  })().catch((error) => console.warn("[p2p] failed to load verified incoming message", error));
 });
 
 // ─── Outbound ────────────────────────────────────────────────
