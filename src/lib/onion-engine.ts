@@ -43,6 +43,7 @@ import {
 import { dbGetStrict, dbPutStrict } from "./storage";
 import { isLegacyFriendEvent } from "./inbound-durability";
 import { validateIncomingTextMessage } from "./inbound-message";
+import { chunkDigest, matchesChunkDigest } from "./chunk-integrity";
 import { validateSharedProfile } from "./profile-wire";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, type DispatchCommitResult } from "./dispatch-commit";
 import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp } from "./lifecycle-auth";
@@ -707,6 +708,7 @@ async function sendBlob(peer: string, fileId: string, include: (index: number) =
       name: rec.name,
       mimeType: rec.mimeType,
       data: bytesToBase64(slice),
+      digest: chunkDigest(slice),
     });
     if (!ok) return;
   }
@@ -738,6 +740,13 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
     received: new Map<number, string>(),
     updatedAt: Date.now(),
   };
+  // Verify a decoded chunk before accepting it into the assembly buffer.
+  // Legacy senders without an integrity field must update before transfer.
+  let chunkBytes: Uint8Array;
+  try { chunkBytes = base64ToBytes(base64); } catch { return; }
+  if (chunkBytes.length > BLOB_CHUNK_BYTES ||
+      (index !== chunks - 1 && chunkBytes.length !== BLOB_CHUNK_BYTES) ||
+      !matchesChunkDigest(chunkBytes, body.digest)) return;
   const priorChunk = entry.received.get(index);
   if (priorChunk !== undefined && priorChunk !== base64) return;
   entry.received.set(index, base64);
