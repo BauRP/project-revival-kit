@@ -71,9 +71,12 @@ export async function setLocalHistoryProtection(
   emitLocal(peer, state);
   // Network availability is not required. The durable sealed outbox retains
   // the newest toggle until the recipient reconnects.
-  void onionSendDispatch(peer, {
+  // Await durable sealing/queue insertion before the setting is reported as
+  // synchronized. A temporarily unreachable peer is fine: its frame remains
+  // in the Tor outbox. Failure to seal is explicitly surfaced to the caller.
+  await onionSendDispatch(peer, {
     type: "history_protection", id: crypto.randomUUID(), enabled, updatedAt,
-  }).catch((error) => console.warn("[history-protection] sync pending/failed", error));
+  });
   return state;
 }
 
