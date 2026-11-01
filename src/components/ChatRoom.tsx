@@ -677,7 +677,10 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           });
           // Strict silent flag honored — suppress notification ping when set.
           if (!(msg as any).silent) {
-            notifyIncomingMessage(name, msg.text || (msg as any).media?.name || "New media");
+            void getChatPreferences(chatId).then((prefs) => notifyIncomingMessage(
+              name, msg.text || (msg as any).media?.name || "New media",
+              { mutedUntil: prefs.mutedUntil, blocked: prefs.blocked, silent: !!(msg as any).silent },
+            )).catch((error) => console.warn("[notifications] chat policy unavailable", error));
           }
           if (isValidOnion(msg.from)) void sendReadReceipt(msg.from, msg.id).catch(() => undefined);
         }
