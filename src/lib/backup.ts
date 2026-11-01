@@ -10,6 +10,7 @@ import { decodeBase64, encodeBase64, decodeUTF8, encodeUTF8 } from "tweetnacl-ut
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { exportDexieDump, importDexieDump, type DexieDump } from "./dexie-db";
 import { isNative } from "./platform";
+import { encryptBackupV2, decryptBackupV2, type BackupEnvelopeV2 } from "./backup-crypto";
 
 const FILE_NAME_DEFAULT = "TrivoBackup.tvc";
 const MAGIC = "TRIVO-BACKUP-V1";
@@ -29,7 +30,7 @@ function deriveKey(password: string): Uint8Array {
   return hash.slice(0, nacl.secretbox.keyLength);
 }
 
-function encryptDump(dump: DexieDump, password: string): EncryptedEnvelope {
+function legacyEncryptDump(dump: DexieDump, password: string): EncryptedEnvelope {
   const key = deriveKey(password);
   const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
   const plaintext = decodeUTF8(JSON.stringify(dump));
@@ -67,7 +68,7 @@ export async function exportBackup(
   filename: string = FILE_NAME_DEFAULT,
 ): Promise<BackupExportResult> {
   const dump = await exportDexieDump();
-  const envelope = encryptDump(dump, password);
+  const envelope = await encryptBackupV2(JSON.stringify(dump), password);
   const json = JSON.stringify(envelope);
 
   if (isNative()) {
@@ -115,8 +116,10 @@ export async function importBackup(
     json = await pickFileAsText();
   }
 
-  const envelope = JSON.parse(json) as EncryptedEnvelope;
-  const dump = decryptDump(envelope, password);
+  const envelope = JSON.parse(json) as EncryptedEnvelope | BackupEnvelopeV2;
+  const dump = envelope.magic === "TRIVO-BACKUP-V2"
+    ? JSON.parse(await decryptBackupV2(envelope as BackupEnvelopeV2, password)) as DexieDump
+    : decryptDump(envelope as EncryptedEnvelope, password);
   await importDexieDump(dump);
 }
 
