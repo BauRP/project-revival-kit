@@ -487,6 +487,8 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
       return;
     }
     case "blob_chunk":
+      // Chunks are transient until their parent blob is assembled. Keep the
+      // sealed frame on disk if processing fails; replay can retry safely.
       await acceptBlobChunk(from, inner.body);
       await dxdb.inbox_raw.delete(rawId);
       return;
