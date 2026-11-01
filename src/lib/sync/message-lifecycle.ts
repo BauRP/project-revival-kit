@@ -11,6 +11,7 @@
 import { onionRegisterIncomingListener, onionSendDispatch } from "../onion-engine";
 import { isValidOnion } from "../onion-id";
 import { getLifecycleMap, putLifecycle } from "../dexie-db";
+import { assertRemoteHistoryAllowsChanges } from "../history-protection";
 
 export interface MessageLifecycle {
   messageId: string;
@@ -88,6 +89,7 @@ export async function editMessage(
   messageId: string,
   newText: string,
 ): Promise<void> {
+  await assertRemoteHistoryAllowsChanges(peerId);
   const patch: Partial<MessageLifecycle> = { isEdited: true, editedText: newText };
   await writeLocalEntry(selfId, peerId, messageId, patch);
   broadcastLifecycle(selfId, peerId, messageId, patch);
@@ -112,6 +114,7 @@ export async function deleteMessageForEveryone(
   peerId: string,
   messageId: string,
 ): Promise<void> {
+  await assertRemoteHistoryAllowsChanges(peerId);
   const patch: Partial<MessageLifecycle> = {
     deletedForEveryone: true,
     isEdited: false,
