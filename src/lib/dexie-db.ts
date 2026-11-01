@@ -71,6 +71,20 @@ export interface LifecycleRecord {
   updatedAt: number;
 }
 
+/** Persistent incomplete chunks. Data is private app storage; cleanup on completion. */
+export interface PartialBlobChunkRecord {
+  key: string;
+  fileId: string;
+  from: string;
+  index: number;
+  totalChunks: number;
+  name: string;
+  mimeType: string;
+  digest: string;
+  data: Blob;
+  updatedAt: number;
+}
+
 class TrivoDexie extends Dexie {
   contacts!: Table<ContactRecord, string>;
   messages!: Table<StoredMessage, string>;
@@ -78,6 +92,7 @@ class TrivoDexie extends Dexie {
   inbox_raw!: Table<InboxRawRecord, string>;
   blobs!: Table<BlobRecord, string>;
   lifecycle!: Table<LifecycleRecord, string>;
+  partial_chunks!: Table<PartialBlobChunkRecord, string>;
 
   constructor() {
     super("trivo-p2p");
@@ -97,6 +112,10 @@ class TrivoDexie extends Dexie {
       inbox_raw: "&id, receivedAt",
       blobs: "&fileId, storedAt, size",
       lifecycle: "&key, chatKey, messageId, updatedAt",
+    });
+    // v6 adds incomplete media chunks without touching existing user records.
+    this.version(6).stores({
+      partial_chunks: "&key, fileId, from, updatedAt",
     });
   }
 }
