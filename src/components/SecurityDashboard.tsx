@@ -4,6 +4,7 @@ import {
   Fingerprint,
   Lock,
   Wifi,
+  RefreshCw,
   Activity,
   Zap,
   Eye,
@@ -11,7 +12,8 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { onionCurrentStatus, onionOnStatus, onionInit } from "@/lib/onion-engine";
 import { motion } from "framer-motion";
 import { useIdentity } from "@/contexts/IdentityContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -23,6 +25,16 @@ const SecurityDashboard = () => {
   const { isEnabled: biometricEnabled } = useBiometricAuth();
   // Key Information accordion — collapsed by default to save vertical space.
   const [keysOpen, setKeysOpen] = useState(false);
+  const [torState, setTorState] = useState(() => onionCurrentStatus());
+  const [reconnecting, setReconnecting] = useState(false);
+  const [torRetryError, setTorRetryError] = useState<string | null>(null);
+  useEffect(() => onionOnStatus(setTorState), []);
+  const torConnected = torState.running && torState.bootstrapped && !!torState.onion && !torState.lastError;
+  const torStatusText = torConnected
+    ? "Tor подключён — скрытый сервис активен"
+    : torState.running
+      ? `Tor подключается — ${torState.bootstrapPercent}%`
+      : "Tor отключён";
 
   const statusItems = [
     {
@@ -106,7 +118,27 @@ const SecurityDashboard = () => {
               <Wifi size={18} className="text-primary mt-0.5 shrink-0" />
               <div className="min-w-0">
                 <p className="text-sm font-medium text-foreground">{t("p2pNetwork")}</p>
-                <p className="text-xs text-muted-foreground mt-1">Статус подключения смотрите в индикаторе Tor на вкладке «Чаты»</p>
+                <p className={`text-xs mt-1 ${torConnected ? "text-primary" : "text-muted-foreground"}`} role="status" aria-live="polite">{torStatusText}</p>
+                {(torRetryError || torState.lastError) && (
+                  <p className="text-xs text-destructive mt-1 break-words">{torRetryError || torState.lastError}</p>
+                )}
+                {!torConnected && (
+                  <button
+                    type="button"
+                    disabled={reconnecting}
+                    className="mt-2 inline-flex items-center gap-1 text-xs text-primary disabled:opacity-50"
+                    onClick={() => {
+                      setTorRetryError(null);
+                      setReconnecting(true);
+                      void onionInit().catch((error) =>
+                        setTorRetryError(error instanceof Error ? error.message : String(error)),
+                      ).finally(() => setReconnecting(false));
+                    }}
+                  >
+                    <RefreshCw size={12} className={reconnecting ? "animate-spin" : ""} />
+                    {reconnecting ? "Подключение…" : "Подключить Tor повторно"}
+                  </button>
+                )}
               </div>
             </div>
           </div>
