@@ -15,6 +15,7 @@ const vault = registerPlugin<{
 
 export async function eraseIdentityVault(): Promise<void> {
   if (isNative()) await vault.clearIdentity();
+  loadingIdentity = null;
 }
 
 
@@ -80,7 +81,7 @@ export function getOrCreateIdentity(): Promise<IdentityKeys> {
   if (loadingIdentity) return loadingIdentity;
   const task = loadOrCreateIdentity();
   loadingIdentity = task;
-  void task.catch(() => { if (loadingIdentity === task) loadingIdentity = null; });
+  void task.finally(() => { if (loadingIdentity === task) loadingIdentity = null; }).catch(() => undefined);
   return task;
 }
 
