@@ -273,6 +273,9 @@ async function sendEphemeral(
  * Durable dispatch: seal → persist in Dexie outbox ('pending') → attempt now.
  * Returns true when the remote hidden service accepted the bytes.
  */
+// A repeated scheduled item must reuse the exact sealed frame. Guard the
+// check-and-insert phase from concurrent callers in the same WebView.
+const dispatchInFlight = new Map<string, Promise<boolean>>();
 export async function onionSendDispatch(
   peer: string,
   payload: Record<string, unknown>,
@@ -280,23 +283,31 @@ export async function onionSendDispatch(
   const to = normalizeOnion(peer);
   if (!isValidOnion(to)) throw new Error(`Not a valid .onion address: ${peer}`);
   const id = String(payload.id || crypto.randomUUID());
-  // A scheduled retry must never overwrite a previously sealed frame.
-  if (await dxdb.outbox.get(id)) return attemptOutbox(id);
+  if (!id || id.length > 128) throw new Error("Invalid dispatch ID");
   const kind = String(payload.type || "text_message") as OutboxKind;
-  const sealed = await seal(to, { kind: "dispatch", id, body: { payload: { ...payload, id } } });
-  const now = Date.now();
-  await dxdb.outbox.put({
-    id,
-    peer: to,
-    kind,
-    frame: sealed,
-    status: "pending",
-    attempts: 0,
-    nextAttemptAt: now,
-    createdAt: now,
-    updatedAt: now,
-  });
-  return attemptOutbox(id);
+  const inFlight = dispatchInFlight.get(id);
+  if (inFlight) return inFlight;
+  const work = (async () => {
+    const previous = await dxdb.outbox.get(id);
+    if (previous) {
+      if (previous.peer !== to || previous.kind !== kind)
+        throw new Error("Dispatch ID already belongs to a different destination or event");
+      return attemptOutbox(id);
+    }
+    const sealed = await seal(to, { kind: "dispatch", id, body: { payload: { ...payload, id } } });
+    const now = Date.now();
+    await dxdb.outbox.add({
+      id, peer: to, kind, frame: sealed, status: "pending",
+      attempts: 0, nextAttemptAt: now, createdAt: now, updatedAt: now,
+    });
+    return attemptOutbox(id);
+  })();
+  dispatchInFlight.set(id, work);
+  try {
+    return await work;
+  } finally {
+    if (dispatchInFlight.get(id) === work) dispatchInFlight.delete(id);
+  }
 }
 
 function backoff(attempts: number): number {
