@@ -1212,8 +1212,11 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       // the UI forget it was opened after a restart.
       await dxdb.messages.update(msg.id, { media: undefined, oneTimeConsumed: true });
       if (msg.media?.fileId) await purgeConsumedMedia(msg.media.fileId);
-    } catch {
-      /* ignore */
+    } catch (error) {
+      // Do not fake a consumed state if the durable tombstone failed.
+      console.error("[one-time] could not persist consumed marker", error);
+      toast({ title: "Не удалось безопасно удалить одноразовое вложение", variant: "destructive" });
+      return;
     }
     setMessages((prev) =>
       prev.map((m) => (m.id === msg.id ? { ...m, media: undefined, oneTimeConsumed: true } : m)),
