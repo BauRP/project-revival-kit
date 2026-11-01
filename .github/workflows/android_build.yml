@@ -38,10 +38,8 @@ jobs:
       - name: Run unit tests
         run: bunx vitest run
 
-      # Type errors should be visible even when the historical codebase has
-      # unrelated issues; the release gate will be enabled after baseline cleanup.
-      - name: Audit TypeScript (non-blocking baseline)
-        continue-on-error: true
+      # CI confirmed the TypeScript baseline passes: block new type errors.
+      - name: TypeScript strict check
         run: bunx tsc --noEmit --pretty false
 
       - name: Build Web Assets
