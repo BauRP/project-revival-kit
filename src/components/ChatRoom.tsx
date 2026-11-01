@@ -808,6 +808,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       } catch (e) {
         toast({ title: e instanceof Error ? e.message : HISTORY_PROTECTION_NOTICE, variant: "destructive" });
         console.error("[ChatRoom] edit failed", e);
+        return; // Preserve the original text and unfinished draft on failure.
       }
       setInput("");
       setEditingId(null);
@@ -1286,9 +1287,18 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     setShowAttach(false);
   };
 
-  const handleEditStart = () => {
+  const handleEditStart = async () => {
     if (!singleSel) return;
-    if (peerHistoryProtected) { toast({ title: HISTORY_PROTECTION_NOTICE }); return; }
+    try {
+      // Re-read the durable flag: the incoming toggle can race React state.
+      if (peerHistoryProtected || (await getRemoteHistoryProtection(chatId)).enabled) {
+        toast({ title: HISTORY_PROTECTION_NOTICE });
+        return;
+      }
+    } catch (error) {
+      toast({ title: "Не удалось проверить защиту переписки", variant: "destructive" });
+      return;
+    }
     setEditingId(singleSel.id);
     setInput(getEffectiveText(singleSel).text);
     setSelectedIds([]);
@@ -1335,26 +1345,28 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
 
   const handleDeleteForEveryone = async () => {
     if (!userId || selectedMessages.length === 0) return;
-    if (peerHistoryProtected) {
-      setDeleteSheetOpen(false);
-      toast({ title: HISTORY_PROTECTION_NOTICE });
-      return;
-    }
     const ids = selectedMessages.map((m) => m.id);
-    setLifecycle((prev) => {
-      const next = { ...prev };
-      for (const id of ids) {
-        const cur = next[id] || { messageId: id };
-        next[id] = { ...cur, deletedForEveryone: true };
-      }
-      return next;
-    });
-    setDeleteSheetOpen(false);
-    setSelectedIds([]);
     try {
-      await Promise.all(selectedMessages.map((m) => fsDeleteForEveryone(userId, chatId, m.id)));
-    } catch (e) {
-      console.error("[ChatRoom] delete for everyone failed", e);
+      // Do not show an optimistic tombstone before confirming the policy.
+      if (peerHistoryProtected || (await getRemoteHistoryProtection(chatId)).enabled) {
+        setDeleteSheetOpen(false);
+        toast({ title: HISTORY_PROTECTION_NOTICE });
+        return;
+      }
+      await Promise.all(ids.map((id) => fsDeleteForEveryone(userId, chatId, id)));
+      setLifecycle((prev) => {
+        const next = { ...prev };
+        for (const id of ids) {
+          const cur = next[id] || { messageId: id };
+          next[id] = { ...cur, deletedForEveryone: true };
+        }
+        return next;
+      });
+      setDeleteSheetOpen(false);
+      setSelectedIds([]);
+    } catch (error) {
+      toast({ title: error instanceof Error ? error.message : "Не удалось удалить сообщение", variant: "destructive" });
+      console.error("[ChatRoom] delete for everyone failed", error);
     }
   };
 
@@ -1679,7 +1691,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
                       {silent ? t("on") : t("off")}
                     </span>
                   </button>
-                  <button
+                  {isValidOnion(chatId) && <button
                     type="button"
                     onClick={() => {
                       setHeaderMenuOpen(false);
@@ -1693,7 +1705,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
                     <ShieldCheck size={16} className={historyProtected ? "text-[#00FFFF]" : "text-muted-foreground"} />
                     <span className="flex-1 text-left">Защита истории переписки</span>
                     <span className="text-[10px] uppercase font-bold">{historyProtected ? "ВКЛ" : "ВЫКЛ"}</span>
-                  </button>
+                  </button>}
                   <button
                     type="button"
                     onClick={() => {
