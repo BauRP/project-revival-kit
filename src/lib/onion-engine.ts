@@ -45,6 +45,7 @@ import { isLegacyFriendEvent } from "./inbound-durability";
 import { validateIncomingTextMessage } from "./inbound-message";
 import { chunkDigest, matchesChunkDigest } from "./chunk-integrity";
 import { validateSharedProfile } from "./profile-wire";
+import { deniedByHistoryProtection } from "./history-protection-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, type DispatchCommitResult } from "./dispatch-commit";
 import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp } from "./lifecycle-auth";
 
@@ -621,8 +622,7 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         const expectedChatKey = [sender, recipient].sort().join("__");
         const patch = (payload.patch || {}) as Record<string, unknown>;
         const protectedRecord = await dxdb.lifecycle.get(`history-protection::local::${sender}`);
-        if (protectedRecord?.data.enabled === true &&
-            ("editedText" in patch || "isEdited" in patch || "deletedForEveryone" in patch)) {
+        if (deniedByHistoryProtection(protectedRecord?.data.enabled === true, patch)) {
           rejected = true;
           await dxdb.inbox_raw.delete(rawId);
           return;
