@@ -101,7 +101,7 @@ interface PartialReceive {
   name: string;
   mimeType: string;
   totalChunks: number;
-  received: Map<number, string>;
+  received: Set<number>;
   updatedAt: number;
 }
 const partialReceives = new Map<string, PartialReceive>();
@@ -763,7 +763,7 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
     name: String(body.name || fileId),
     mimeType: String(body.mimeType || "application/octet-stream"),
     totalChunks: Number(body.totalChunks || 1),
-    received: new Map<number, string>(),
+    received: new Set<number>(),
     updatedAt: Date.now(),
   };
   // Verify a decoded chunk before accepting it into the assembly buffer.
@@ -773,17 +773,19 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
   if (chunkBytes.length > BLOB_CHUNK_BYTES ||
       (index !== chunks - 1 && chunkBytes.length !== BLOB_CHUNK_BYTES) ||
       !matchesChunkDigest(chunkBytes, body.digest)) return;
-  const priorChunk = entry.received.get(index);
-  if (priorChunk !== undefined && priorChunk !== base64) return;
+  // Keep only received indexes in RAM. The verified bytes live in Dexie,
+  // avoiding gigabytes of base64 strings for large attachments.
   const key = JSON.stringify([fileId, from, index]);
   const diskChunk = await dxdb.partial_chunks.get(key);
-  if (diskChunk && diskChunk.digest !== body.digest) return;
+  if (diskChunk && (diskChunk.digest !== body.digest ||
+      diskChunk.from !== from || diskChunk.name !== entry.name ||
+      diskChunk.mimeType !== entry.mimeType || diskChunk.totalChunks !== chunks)) return;
   if (!diskChunk) await dxdb.partial_chunks.put({
     key, fileId, from, index, totalChunks: chunks,
     name: entry.name, mimeType: entry.mimeType, digest: String(body.digest),
     data: new Blob([chunkBytes as BlobPart]), updatedAt: Date.now(),
   });
-  entry.received.set(index, base64);
+  entry.received.add(index);
   entry.updatedAt = Date.now();
   partialReceives.set(fileId, entry);
   if (entry.received.size < entry.totalChunks) return;
@@ -839,10 +841,10 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
             row.totalChunks === first.totalChunks && row.name === first.name &&
             row.mimeType === first.mimeType &&
             Number.isSafeInteger(row.index) && row.index >= 0 && row.index < first.totalChunks);
-          const received = new Map<number, string>();
+          const received = new Set<number>();
           for (const row of same) {
             const bytes = new Uint8Array(await row.data.arrayBuffer());
-            if (matchesChunkDigest(bytes, row.digest)) received.set(row.index, bytesToBase64(bytes));
+            if (matchesChunkDigest(bytes, row.digest)) received.add(row.index);
           }
           partial = { fileId, from: source, name: first.name,
             mimeType: first.mimeType, totalChunks: first.totalChunks,
