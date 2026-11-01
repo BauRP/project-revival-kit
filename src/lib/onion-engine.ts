@@ -552,6 +552,15 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         });
       }
       fresh = true;
+    } else if (type === "profile_update") {
+      // Only the authenticated peer's profile may reach the UI listener.
+      // The listener checks the contact allowlist before saving it.
+      const profile = payload.profile;
+      if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+        await dxdb.inbox_raw.delete(rawId);
+        return;
+      }
+      fresh = true;
     } else if (type === "message_lifecycle") {
       const ck = String(payload.chatKey || "");
       const mid = String(payload.messageId || "");
