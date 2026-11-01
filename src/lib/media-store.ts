@@ -7,6 +7,7 @@
 import { dxdb, getBlob, putBlob } from "./dexie-db";
 import { onionRequestBlob } from "./onion-engine";
 import { compressImageIfNeeded } from "./image-compress";
+import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 
 export const TRIVO_MAX_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1 GB ceiling
 
@@ -94,12 +95,9 @@ export function uploadFileToTrivo(
 
 /** Permanent local tombstones prevent a consumed one-time attachment from
  * being downloaded again, even after a WebView restart. */
-export function consumedMediaKey(fileId: string): string {
-  return `consumed-media::${fileId}`;
-}
 async function assertNotConsumed(fileId: string): Promise<void> {
   const record = await dxdb.lifecycle.get(consumedMediaKey(fileId));
-  if (record?.data.consumed === true) throw new Error("One-time attachment already viewed");
+  if (isConsumedMediaRecord(record?.data)) throw new Error("One-time attachment already viewed");
 }
 
 const blobUrlCache = new Map<string, string>();
