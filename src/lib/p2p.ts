@@ -4,7 +4,7 @@
 //  the engine owns the sealed outbox and the DELIVERED_ACK lifecycle.
 // ============================================================================
 
-import { dbGet, dbGetAll, dbPut } from "./storage";
+import { dbGet, dbGetAll, dbPut, dbPutStrict } from "./storage";
 import { dxdb, upsertContact, type StoredMessage } from "./dexie-db";
 import {
   onionEnsureConnection,
@@ -136,8 +136,18 @@ export async function getMessagesForChat(peer: string): Promise<P2PMessage[]> {
 export async function migrateLegacyMessages(): Promise<void> {
   if (await dbGet<boolean>("settings", "messages-migrated-to-dexie")) return;
   const legacy = await dbGetAll<P2PMessage>("messages");
-  if (legacy.length) await dxdb.messages.bulkPut(legacy as unknown as StoredMessage[]);
-  await dbPut("settings", "messages-migrated-to-dexie", true);
+  // Migration may be retried after a crash. Never replace a newer Dexie
+  // message or its read/consumed state with an obsolete legacy copy.
+  if (legacy.length) await dxdb.transaction("rw", dxdb.messages, async () => {
+    for (const msg of legacy) {
+      if (typeof msg?.id !== "string" || !msg.id || msg.id.length > 128) continue;
+      if (!(await dxdb.messages.get(msg.id))) {
+        await dxdb.messages.add(msg as unknown as StoredMessage);
+      }
+    }
+  });
+  // Mark complete only if the write to settings actually committed.
+  await dbPutStrict("settings", "messages-migrated-to-dexie", true);
 }
 
 // ─── Chat metadata (display name → Dexie contacts) ───────────
