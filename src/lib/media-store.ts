@@ -130,8 +130,12 @@ export function downloadFromTrivo(fileId: string, peer?: string): Promise<string
     const ok = peer ? await onionRequestBlob(fileId, peer).catch(() => false) : false;
     inFlight.delete(fileId);
     if (!ok) throw new Error(`Blob ${fileId} not available locally or via peer`);
+    // The viewer may have consumed the attachment while the Tor fetch was
+    // in flight. Never return a freshly downloaded copy after revocation.
+    await assertNotConsumed(fileId);
     const fetched = await getBlob(fileId);
     if (!fetched) throw new Error(`Blob ${fileId} not in Dexie after peer fetch`);
+    await assertNotConsumed(fileId);
     const url = URL.createObjectURL(fetched.data);
     blobUrlCache.set(fileId, url);
     return url;
