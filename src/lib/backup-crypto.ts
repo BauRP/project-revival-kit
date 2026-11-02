@@ -57,13 +57,17 @@ export async function encryptBackupV2(plaintext: string, password: string): Prom
 }
 export async function decryptBackupV2(envelope: BackupEnvelopeV2, password: string): Promise<string> {
   if (!envelope || envelope.magic !== MAGIC || envelope.kdf !== "PBKDF2-SHA256" ||
-      envelope.cipher !== "AES-256-GCM" || envelope.iterations !== ITERATIONS)
+      envelope.cipher !== "AES-256-GCM" || envelope.iterations !== ITERATIONS ||
+      typeof envelope.createdAt !== "number" || !Number.isSafeInteger(envelope.createdAt) ||
+      envelope.createdAt <= 0 || envelope.createdAt > Date.now() + 600_000)
     throw new Error("Unsupported or invalid encrypted backup");
   const salt = bytes(envelope.salt, 64);
   const iv = bytes(envelope.iv, 32);
   if (salt.length !== 32 || iv.length !== 12)
     throw new Error("Invalid backup salt or nonce");
   // Avoid allocating massive hostile base64 blobs before the size is checked.
+  // Restrict untrusted uploads before decoding or deriving an expensive key.
+  // The envelope is JSON/base64, so enforce the encoded size as well.
   const ciphertext = bytes(envelope.ciphertext, 256 * 1024 * 1024);
   if (ciphertext.length < 16) throw new Error("Invalid backup ciphertext");
   const key = await derive(password, salt, envelope.iterations);

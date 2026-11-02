@@ -7,3 +7,11 @@ describe("encrypted backup input validation", () => {
     await expect(decryptBackupV2(bad,"long-enough-passphrase")).rejects.toThrow();
   });
 });
+describe("encrypted backup envelope timestamp",()=>{
+  it("rejects implausible future metadata without decrypting",async()=>{
+    const bad={magic:"TRIVO-BACKUP-V2",kdf:"PBKDF2-SHA256",iterations:600000,
+      salt:"AQID",iv:"AQID",cipher:"AES-256-GCM",ciphertext:"AQID",
+      createdAt:Number.MAX_SAFE_INTEGER} as const;
+    await expect(decryptBackupV2(bad,"long-enough-passphrase")).rejects.toThrow("Unsupported");
+  });
+});

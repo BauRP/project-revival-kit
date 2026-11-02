@@ -20,6 +20,10 @@ export function canApplyRemoteLifecycle(
   patch: unknown,
 ): patch is Record<string, unknown> {
   if (!original || !sender || !recipient || sender === recipient) return false;
+  // Only the two exact participants are authorized, never any third party
+  // that happens to provide the right (untrusted) chatKey string.
+  if (original.from !== sender && original.to !== sender) return false;
+  if (original.from !== recipient && original.to !== recipient) return false;
   if (!original.from || !original.to || original.from === original.to) return false;
   if ([original.from, original.to].sort().join("__") !== chatKey) return false;
   if (!([original.from, original.to].includes(sender) &&
@@ -35,6 +39,12 @@ export function canApplyRemoteLifecycle(
       !Number.isSafeInteger(p.pinnedAt) || p.pinnedAt < 0)) return false;
   if ("pinnedBy" in p && p.pinnedBy !== sender) return false;
   if ("clearPin" in p && p.clearPin !== true) return false;
+  if ("isEdited" in p && p.isEdited === true && typeof p.editedText !== "string") return false;
+  if ("editedText" in p && p.isEdited !== true) return false;
+  if ("pinnedAt" in p && !("pinnedBy" in p)) return false;
+  if ("clearPin" in p && ("pinnedAt" in p || "pinnedBy" in p)) return false;
+  if ("deletedForEveryone" in p && p.deletedForEveryone === true &&
+      (p.isEdited === true || typeof p.editedText === "string")) return false;
   const ownerOnly = "isEdited" in p || "editedText" in p || "deletedForEveryone" in p;
   if (ownerOnly && original.from !== sender) return false;
   return true;

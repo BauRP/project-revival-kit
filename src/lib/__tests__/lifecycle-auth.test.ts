@@ -21,3 +21,14 @@ describe("authenticated lifecycle commands", () => {
     expect(acceptsLifecycleTimestamp(200,1_000_000,300)).toBe(false);
   });
 });
+
+describe("lifecycle mutation invariants",()=>{
+  it("requires coherent edit and pin payloads",()=>{
+    expect(canApplyRemoteLifecycle({from,to},from,to,ck,{isEdited:true})).toBe(false);
+    expect(canApplyRemoteLifecycle({from,to},from,to,ck,{editedText:"changed"})).toBe(false);
+    expect(canApplyRemoteLifecycle({from,to},from,to,ck,{pinnedAt:123})).toBe(false);
+    expect(canApplyRemoteLifecycle({from,to},from,to,ck,{pinnedAt:123,pinnedBy:from})).toBe(true);
+    expect(canApplyRemoteLifecycle({from,to},from,to,ck,{clearPin:true,pinnedAt:123,pinnedBy:from})).toBe(false);
+    expect(canApplyRemoteLifecycle({from,to},from,to,ck,{deletedForEveryone:true,isEdited:true,editedText:"x"})).toBe(false);
+  });
+});
