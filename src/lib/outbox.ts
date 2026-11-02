@@ -123,9 +123,9 @@ async function fireDue() {
   const items = await listOutbox();
   for (const item of items) {
     if (scheduledWakeAt(item) > now) break;
-    validateScheduledItem(item);
     const sender = senders.get(item.chatId);
     try {
+      validateScheduledItem(item);
       if (sender) {
         await sender(item);
       } else {
