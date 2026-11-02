@@ -14,6 +14,8 @@ export interface InboundIdentityMessage {
   silent?: unknown;
   oneTimeView?: unknown;
   roundVideo?: unknown;
+  /** Local-only marker set after the single permitted viewing. */
+  oneTimeConsumed?: unknown;
 }
 const mediaIdentity = (media: unknown): string | null => {
   if (media == null) return null;
@@ -27,7 +29,11 @@ export function duplicateMessageMatches(
   return existing.id === incoming.id && existing.from === incoming.from &&
     existing.to === incoming.to && existing.text === incoming.text &&
     existing.timestamp === incoming.timestamp &&
-    mediaIdentity(existing.media) === mediaIdentity(incoming.media) &&
+    // A consumed one-time file has no media metadata left in the local
+    // record; its signed resend is still idempotent. Never restore media.
+    ((existing.oneTimeConsumed === true && existing.oneTimeView === true &&
+      incoming.oneTimeView === true) ||
+     mediaIdentity(existing.media) === mediaIdentity(incoming.media)) &&
     (existing.caption ?? null) === (incoming.caption ?? null) &&
     (existing.deleteAt ?? null) === (incoming.deleteAt ?? null) &&
     (existing.silent === true) === (incoming.silent === true) &&

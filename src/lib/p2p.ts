@@ -86,7 +86,17 @@ export async function sendP2PMessage(toOnion: string, message: P2PMessage): Prom
     await saveLocalMessage({ ...stored, status: "delivered" });
     return false;
   }
-  await saveLocalMessage(stored);
+  // A scheduled send may be retried after the sealed packet has already
+  // been delivered. Preserve read receipts and one-time-consumed markers.
+  await dxdb.transaction("rw", dxdb.messages, async () => {
+    const previous = await dxdb.messages.get(stored.id);
+    if (!previous) {
+      await dxdb.messages.add(stored as unknown as StoredMessage);
+    } else if (previous.from !== stored.from || previous.to !== stored.to ||
+               previous.text !== stored.text || previous.timestamp !== stored.timestamp) {
+      throw new Error("Outbound message ID collision");
+    }
+  });
   const { url: _u, ...mediaNoUrl } = stored.media || ({} as NonNullable<P2PMessage["media"]>);
   void _u;
   const wire = { ...stored, media: stored.media ? { ...mediaNoUrl, url: "" } : undefined };
