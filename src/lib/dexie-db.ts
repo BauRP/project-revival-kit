@@ -8,6 +8,7 @@
 //   - lifecycle : per-chat edit/delete/pin mirror
 
 import Dexie, { type Table } from "dexie";
+import { consumedMediaKey, isConsumedMediaRecord, isProtectedByConsumedTombstone, sanitizeRestoredOneTimeMessage } from "./one-time-policy";
 
 export interface ContactRecord {
   onion: string;
@@ -339,11 +340,22 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
     async () => {
       // Non-destructive restore: current conversations, contacts and attachments
       // must never be erased just because an older backup was imported.
+      // The local consumed-media tombstone is authoritative. An older backup
+      // must never restore one-time files or their message previews.
+      const currentTombstones = await dxdb.lifecycle.where("chatKey").equals("consumed-media").toArray();
+      const restoredTombstones = (dump.lifecycle || []).filter((row) =>
+        row?.chatKey === "consumed-media" && isConsumedMediaRecord(row.data) &&
+        row.key === consumedMediaKey(row.messageId));
+      const revoked = new Set([
+        ...currentTombstones.filter((row) => isConsumedMediaRecord(row.data)).map((row) => row.key),
+        ...restoredTombstones.map((row) => row.key),
+      ]);
       // Existing contact names and preferences take priority over older backups.
       const currentContacts = new Set(await dxdb.contacts.toCollection().primaryKeys());
       await dxdb.contacts.bulkPut((dump.contacts || []).filter((c) => !currentContacts.has(c.onion)));
       const presentIds = new Set(await dxdb.messages.toCollection().primaryKeys());
-      await dxdb.messages.bulkPut((dump.messages || []).filter((m) => !presentIds.has(m.id)));
+      await dxdb.messages.bulkPut((dump.messages || []).filter((m) => !presentIds.has(m.id))
+        .map((m) => sanitizeRestoredOneTimeMessage(m, revoked)));
       const outboxIds = new Set(await dxdb.outbox.toCollection().primaryKeys());
       await dxdb.outbox.bulkPut((dump.outbox || []).filter((m) => !outboxIds.has(m.id)));
       const lifecycleIds = new Set(await dxdb.lifecycle.toCollection().primaryKeys());
@@ -357,7 +369,13 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
         data: base64ToBlob(b.dataB64, b.mimeType),
       }));
       const existingBlobIds = new Set(await dxdb.blobs.toCollection().primaryKeys());
-      await dxdb.blobs.bulkPut(blobRows.filter((b) => !existingBlobIds.has(b.fileId)));
+      await dxdb.blobs.bulkPut(blobRows.filter((b) =>
+        !existingBlobIds.has(b.fileId) && !isProtectedByConsumedTombstone(b.fileId, revoked)));
+      // Clean up corrupted/stale local copies if a previous version kept them.
+      for (const key of revoked) {
+        const fileId = key.slice("consumed-media::".length);
+        await dxdb.blobs.delete(fileId);
+      }
     },
   );
 }
