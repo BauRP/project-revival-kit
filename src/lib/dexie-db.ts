@@ -336,7 +336,7 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
   }
   await dxdb.transaction(
     "rw",
-    [dxdb.contacts, dxdb.messages, dxdb.outbox, dxdb.lifecycle, dxdb.blobs],
+    [dxdb.contacts, dxdb.messages, dxdb.outbox, dxdb.lifecycle, dxdb.blobs, dxdb.partial_chunks],
     async () => {
       // Non-destructive restore: current conversations, contacts and attachments
       // must never be erased just because an older backup was imported.
@@ -371,10 +371,18 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       const existingBlobIds = new Set(await dxdb.blobs.toCollection().primaryKeys());
       await dxdb.blobs.bulkPut(blobRows.filter((b) =>
         !existingBlobIds.has(b.fileId) && !isProtectedByConsumedTombstone(b.fileId, revoked)));
-      // Clean up corrupted/stale local copies if a previous version kept them.
+      // Reconcile already-present messages too: the restored tombstone is
+      // authoritative even when an older local message still references media.
       for (const key of revoked) {
         const fileId = key.slice("consumed-media::".length);
         await dxdb.blobs.delete(fileId);
+        await dxdb.partial_chunks.where("fileId").equals(fileId).delete();
+        const affected = await dxdb.messages.filter((m) => {
+          const media = m.media as { fileId?: string } | undefined;
+          return media?.fileId === fileId;
+        }).toArray();
+        for (const msg of affected)
+          await dxdb.messages.put(sanitizeRestoredOneTimeMessage(msg, revoked));
       }
     },
   );
