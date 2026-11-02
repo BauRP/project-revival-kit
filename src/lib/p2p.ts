@@ -88,16 +88,21 @@ export async function sendP2PMessage(toOnion: string, message: P2PMessage): Prom
     await saveLocalMessage({ ...stored, status: "delivered" });
     return false;
   }
-  // A scheduled send may be retried after the sealed packet has already
-  // been delivered. Preserve read receipts and one-time-consumed markers.
+  // A scheduled retry after a successful ACK is not a new message.
+  // Repeating its dispatch could deliver a second copy or resurrect a prior
+  // one-time attachment. Recheck inside the transaction for consistency.
+  let alreadyDelivered = false;
   await dxdb.transaction("rw", dxdb.messages, async () => {
     const previous = await dxdb.messages.get(stored.id);
     if (!previous) {
       await dxdb.messages.add(stored as unknown as StoredMessage);
     } else if (!duplicateMessageMatches(previous, stored)) {
       throw new Error("Outbound message ID collision");
+    } else if (previous.status === "delivered" || previous.status === "read") {
+      alreadyDelivered = true;
     }
   });
+  if (alreadyDelivered) return true;
   const { url: _u, ...mediaNoUrl } = stored.media || ({} as NonNullable<P2PMessage["media"]>);
   void _u;
   const wire = { ...stored, media: stored.media ? { ...mediaNoUrl, url: "" } : undefined };

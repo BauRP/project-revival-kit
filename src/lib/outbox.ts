@@ -1,3 +1,4 @@
+import { nextScheduledRetry, scheduledWakeAt } from "./scheduled-policy";
 // Local outbox for Scheduled Send (Turn 2).
 //
 // Persists pending messages in IndexedDB so a page reload doesn't lose them.
@@ -21,6 +22,7 @@ export interface ScheduledItem {
   scheduledAt: number; // epoch ms
   createdAt: number;
   attempts?: number; // retained across retries; never reset the scheduled item
+  nextAttemptAt?: number; // separate from immutable scheduledAt
 }
 
 type Sender = (item: ScheduledItem) => Promise<void> | void;
@@ -78,7 +80,7 @@ export async function listOutbox(): Promise<ScheduledItem[]> {
     "readonly",
     (store) => store.getAll() as IDBRequest<ScheduledItem[]>,
   );
-  return all.sort((a, b) => a.scheduledAt - b.scheduledAt);
+  return all.sort((a, b) => scheduledWakeAt(a) - scheduledWakeAt(b));
 }
 
 export async function enqueue(
@@ -110,12 +112,16 @@ export function registerSender(chatId: string, send: Sender): () => void {
   };
 }
 
+let firingDue = false;
 async function fireDue() {
+  if (firingDue) return;
+  firingDue = true;
   timer = null;
+  try {
   const now = Date.now();
   const items = await listOutbox();
   for (const item of items) {
-    if (item.scheduledAt > now) break;
+    if (scheduledWakeAt(item) > now) break;
     const sender = senders.get(item.chatId);
     try {
       if (sender) {
@@ -144,14 +150,15 @@ async function fireDue() {
       console.error("[outbox] send failed", item.id, e);
       // Update the SAME persisted item without deleting it. A failed send
       // must never erase an offline message from the queue.
-      const attempts = (item.attempts ?? 0) + 1;
-      const retryDelay = Math.min(30_000 * 2 ** Math.min(attempts - 1, 7), 60 * 60_000);
       await tx("readwrite", (store) =>
-        store.put({ ...item, attempts, scheduledAt: Date.now() + retryDelay }),
+        store.put(nextScheduledRetry(item, Date.now())),
       );
     }
   }
-  scheduleNextWake();
+  } finally {
+    firingDue = false;
+    scheduleNextWake();
+  }
 }
 
 function scheduleNextWake() {
@@ -163,7 +170,7 @@ function scheduleNextWake() {
   void listOutbox().then((items) => {
     if (!items.length) return;
     const next = items[0];
-    const delay = Math.max(0, next.scheduledAt - Date.now());
+    const delay = Math.max(0, scheduledWakeAt(next) - Date.now());
     // Cap at 60s so we re-evaluate periodically (handles registerSender races).
     timer = setTimeout(() => void fireDue().catch((error) => {
       console.error("[outbox] scheduled delivery failed", error);
