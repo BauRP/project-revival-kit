@@ -1,4 +1,4 @@
-import { nextScheduledRetry, scheduledWakeAt } from "./scheduled-policy";
+import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem } from "./scheduled-policy";
 // Local outbox for Scheduled Send (Turn 2).
 //
 // Persists pending messages in IndexedDB so a page reload doesn't lose them.
@@ -95,7 +95,8 @@ export async function enqueue(
     createdAt: Date.now(),
     attempts: 0,
   };
-  await tx("readwrite", (s) => s.put(full));
+  validateScheduledItem(full);
+  await tx("readwrite", (s) => s.add(full));
   scheduleNextWake();
   return full;
 }
@@ -122,6 +123,7 @@ async function fireDue() {
   const items = await listOutbox();
   for (const item of items) {
     if (scheduledWakeAt(item) > now) break;
+    validateScheduledItem(item);
     const sender = senders.get(item.chatId);
     try {
       if (sender) {

@@ -1389,15 +1389,26 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   useEffect(() => {
     if (!chatId) return;
     return registerSender(chatId, async (item: ScheduledItem) => {
-      // Re-entrant timers must not duplicate a message already in the Tor outbox.
-      const queued = await dxdb.outbox.get(item.id);
-      if (queued) return;
-      const stored = await dxdb.messages.get(item.id);
-      if (stored && stored.status !== "pending") return;
-      await sendMessageRef.current({
-        text: item.text, silent: item.silent, skipClear: true,
-        messageId: item.id, scheduledTimestamp: item.scheduledAt,
-      });
+      // A due item must NOT pass through the live composer: the user may be
+      // editing another message, replying to someone, or toggling translation.
+      // Use the same immutable wire fields as the headless sender.
+      if (isValidOnion(chatId)) {
+        const sender = await ensureLocalIdentity();
+        await sendP2PMessage(chatId, {
+          id: item.id, from: sender, to: chatId, text: item.text,
+          timestamp: item.scheduledAt, status: "pending", silent: item.silent,
+        });
+        setMessages((prev) => prev.some((m) => m.id === item.id) ? prev : [
+          ...prev, { id: item.id, text: item.text, sent: true,
+            time: new Date(item.scheduledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            status: "pending", silent: item.silent },
+        ]);
+      } else {
+        await sendMessageRef.current({
+          text: item.text, silent: item.silent, skipClear: true,
+          messageId: item.id, scheduledTimestamp: item.scheduledAt,
+        });
+      }
     });
   }, [chatId]);
 
