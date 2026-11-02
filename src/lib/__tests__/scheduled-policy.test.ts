@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { nextScheduledRetry, scheduledWakeAt } from "../scheduled-policy";
+import { nextScheduledRetry, scheduledWakeAt, type ScheduledRetryState } from "../scheduled-policy";
 describe("durable scheduled message identity", () => {
-  const original={id:"msg",text:"hi",scheduledAt:1000,attempts:0};
+  const original: ScheduledRetryState & {id:string;text:string}={id:"msg",text:"hi",scheduledAt:1000,attempts:0};
   it("never rewrites scheduledAt when Tor is unavailable",()=>{
     const first=nextScheduledRetry(original,2000);
     expect(first.scheduledAt).toBe(1000);
