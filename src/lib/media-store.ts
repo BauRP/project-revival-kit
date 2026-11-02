@@ -159,6 +159,9 @@ export async function ensureMediaUrl<T extends { fileId?: string; url?: string }
       media.url.startsWith("trivo://") ||
       media.url.length === 0 ||
       media.url.startsWith("blob:") === false);
+  // Do not trust a cached object URL after another tab or background task
+  // revoked the file. The durable one-time tombstone takes precedence.
+  if (media.fileId) await assertNotConsumed(media.fileId);
   // Only fetch when we don't already have a usable local URL.
   if (!needsResolve && media.url) return media;
   if (!media.fileId) return media;
