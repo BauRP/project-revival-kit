@@ -9,6 +9,7 @@
 
 import Dexie, { type Table } from "dexie";
 import { consumedMediaKey, isConsumedMediaRecord, isProtectedByConsumedTombstone, sanitizeRestoredOneTimeMessage } from "./one-time-policy";
+import { validateBackupStructure } from "./backup-validation";
 
 export interface ContactRecord {
   onion: string;
@@ -346,9 +347,7 @@ export async function exportDexieDump(): Promise<DexieDump> {
 }
 
 export async function importDexieDump(dump: DexieDump): Promise<void> {
-  if (!dump || dump.schemaVersion !== 3) {
-    throw new Error("Backup schema version mismatch");
-  }
+  validateBackupStructure(dump);
   await dxdb.transaction(
     "rw",
     [dxdb.contacts, dxdb.messages, dxdb.outbox, dxdb.lifecycle, dxdb.blobs, dxdb.partial_chunks],
