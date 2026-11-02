@@ -362,8 +362,11 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       const presentIds = new Set(await dxdb.messages.toCollection().primaryKeys());
       await dxdb.messages.bulkPut((dump.messages || []).filter((m) => !presentIds.has(m.id))
         .map((m) => sanitizeRestoredOneTimeMessage(m, revoked)));
-      const outboxIds = new Set(await dxdb.outbox.toCollection().primaryKeys());
-      await dxdb.outbox.bulkPut((dump.outbox || []).filter((m) => !outboxIds.has(m.id)));
+      // Do NOT re-activate encrypted frames from an older backup. Those
+      // ciphertexts may belong to a deleted identity, and automatically
+      // resending them could replay an old message or privacy-sensitive edit.
+      // The current live outbox is preserved by this merge operation.
+      // Historic unsent frames remain in the encrypted backup for audit only.
       const lifecycleIds = new Set(await dxdb.lifecycle.toCollection().primaryKeys());
       await dxdb.lifecycle.bulkPut((dump.lifecycle || []).filter((m) => !lifecycleIds.has(m.key)));
       const blobRows: BlobRecord[] = (dump.blobs || []).map((b) => ({
