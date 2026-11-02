@@ -161,13 +161,19 @@ export async function putBlob(
   name: string,
   mimeType: string,
 ): Promise<void> {
-  await dxdb.blobs.put({
-    fileId,
-    mimeType: mimeType || data.type || "application/octet-stream",
-    name: name || `file-${fileId}`,
-    size: data.size,
-    data,
-    storedAt: Date.now(),
+  // Serialize with the one-time purge so an in-flight download cannot
+  // recreate revoked media after the viewer has consumed it.
+  await dxdb.transaction("rw", [dxdb.lifecycle, dxdb.blobs], async () => {
+    if (isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data))
+      throw new Error("One-time attachment already viewed");
+    await dxdb.blobs.put({
+      fileId,
+      mimeType: mimeType || data.type || "application/octet-stream",
+      name: name || `file-${fileId}`,
+      size: data.size,
+      data,
+      storedAt: Date.now(),
+    });
   });
   // Opportunistic cache enforcement (non-blocking, errors swallowed).
   void enforceMediaCacheLimit().catch(() => undefined);
