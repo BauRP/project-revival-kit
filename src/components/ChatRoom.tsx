@@ -42,7 +42,7 @@ import ReportMenu from "./ReportMenu";
 import { uploadMedia, formatFileSize, type MediaAttachment } from "@/lib/media";
 import { ensureMediaUrl, purgeConsumedMedia, TRIVO_MAX_UPLOAD_BYTES } from "@/lib/media-store";
 import { subscribeToPresence, getPresenceStatus } from "@/lib/presence";
-import { onionOnConnectionChange, onionIsConnectedTo } from "@/lib/onion-engine";
+import { onionOnConnectionChange, onionIsConnectedTo, ensureLocalIdentity } from "@/lib/onion-engine";
 import { dxdb, getContactLastSeen, setContactLastSeen } from "@/lib/dexie-db";
 import { toast } from "@/hooks/use-toast";
 import { generateUUIDv4 } from "@/lib/local-peer-cache";
