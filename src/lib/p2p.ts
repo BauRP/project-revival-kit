@@ -4,7 +4,9 @@
 //  the engine owns the sealed outbox and the DELIVERED_ACK lifecycle.
 // ============================================================================
 
-import { dbGet, dbGetAll, dbPut, dbPutStrict } from "./storage";
+import { dbGet, dbGetAll, dbGetStrict, dbGetAllStrict, dbPut, dbPutStrict } from "./storage";
+import { duplicateMessageMatches } from "./inbound-identity";
+import { sanitizeRestoredOneTimeMessage } from "./one-time-policy";
 import { dxdb, upsertContact, type StoredMessage } from "./dexie-db";
 import {
   onionEnsureConnection,
@@ -92,8 +94,7 @@ export async function sendP2PMessage(toOnion: string, message: P2PMessage): Prom
     const previous = await dxdb.messages.get(stored.id);
     if (!previous) {
       await dxdb.messages.add(stored as unknown as StoredMessage);
-    } else if (previous.from !== stored.from || previous.to !== stored.to ||
-               previous.text !== stored.text || previous.timestamp !== stored.timestamp) {
+    } else if (!duplicateMessageMatches(previous, stored)) {
       throw new Error("Outbound message ID collision");
     }
   });
@@ -144,15 +145,18 @@ export async function getMessagesForChat(peer: string): Promise<P2PMessage[]> {
 
 /** One-time move of messages from the legacy key-value DB into Dexie. */
 export async function migrateLegacyMessages(): Promise<void> {
-  if (await dbGet<boolean>("settings", "messages-migrated-to-dexie")) return;
-  const legacy = await dbGetAll<P2PMessage>("messages");
+  if (await dbGetStrict<boolean>("settings", "messages-migrated-to-dexie")) return;
+  // A failed read must NOT be interpreted as an empty legacy database.
+  const legacy = await dbGetAllStrict<P2PMessage>("messages");
   // Migration may be retried after a crash. Never replace a newer Dexie
   // message or its read/consumed state with an obsolete legacy copy.
-  if (legacy.length) await dxdb.transaction("rw", dxdb.messages, async () => {
+  if (legacy.length) await dxdb.transaction("rw", [dxdb.messages, dxdb.lifecycle], async () => {
+    const tombstones = await dxdb.lifecycle.where("chatKey").equals("consumed-media").toArray();
+    const revoked = new Set(tombstones.filter((r) => r.data.consumed === true).map((r) => r.key));
     for (const msg of legacy) {
       if (typeof msg?.id !== "string" || !msg.id || msg.id.length > 128) continue;
       if (!(await dxdb.messages.get(msg.id))) {
-        await dxdb.messages.add(msg as unknown as StoredMessage);
+        await dxdb.messages.add(sanitizeRestoredOneTimeMessage(msg, revoked) as unknown as StoredMessage);
       }
     }
   });

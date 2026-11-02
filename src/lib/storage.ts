@@ -102,6 +102,25 @@ export async function dbPut(store: string, key: string, value: unknown): Promise
   }
 }
 
+/** Use for migrations: storage failures must never turn into an empty result. */
+export async function dbGetAllStrict<T>(store: string): Promise<T[]> {
+  const db = await openDB();
+  return new Promise<T[]>((resolve, reject) => {
+    let result: T[] = [];
+    try {
+      const transaction = db.transaction(store, "readonly");
+      const request = transaction.objectStore(store).getAll();
+      request.onsuccess = () => { result = request.result as T[]; };
+      transaction.oncomplete = () => { db.close(); resolve(result); };
+      transaction.onerror = () => { db.close(); reject(transaction.error || new Error("Migration read failed")); };
+      transaction.onabort = () => { db.close(); reject(transaction.error || new Error("Migration read aborted")); };
+    } catch (error) {
+      db.close();
+      reject(error);
+    }
+  });
+}
+
 export async function dbGetAll<T>(store: string): Promise<T[]> {
   try {
     const db = await openDB();
