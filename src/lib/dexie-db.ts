@@ -180,12 +180,21 @@ export async function putBlob(
 }
 
 export async function getBlob(fileId: string): Promise<BlobRecord | undefined> {
-  return dxdb.blobs.get(fileId);
+  // Read the revocation marker and file from one database snapshot. Older
+  // cached attachments must not be served after a one-time view.
+  return dxdb.transaction("r", [dxdb.lifecycle, dxdb.blobs], async () => {
+    if (isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data))
+      return undefined;
+    return dxdb.blobs.get(fileId);
+  });
 }
 
 export async function hasBlob(fileId: string): Promise<boolean> {
-  const count = await dxdb.blobs.where("fileId").equals(fileId).count();
-  return count > 0;
+  return dxdb.transaction("r", [dxdb.lifecycle, dxdb.blobs], async () => {
+    if (isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data))
+      return false;
+    return (await dxdb.blobs.where("fileId").equals(fileId).count()) > 0;
+  });
 }
 
 // ─── Lifecycle mirror ─────────────────────────────────────────

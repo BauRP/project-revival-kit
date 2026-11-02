@@ -161,7 +161,14 @@ export async function ensureMediaUrl<T extends { fileId?: string; url?: string }
       media.url.startsWith("blob:") === false);
   // Do not trust a cached object URL after another tab or background task
   // revoked the file. The durable one-time tombstone takes precedence.
-  if (media.fileId) await assertNotConsumed(media.fileId);
+  if (media.fileId) {
+    try { await assertNotConsumed(media.fileId); }
+    catch {
+      // Remove a stale cached object URL without throwing from a UI renderer.
+      (media as { url?: string }).url = undefined;
+      return media;
+    }
+  }
   // Only fetch when we don't already have a usable local URL.
   if (!needsResolve && media.url) return media;
   if (!media.fileId) return media;

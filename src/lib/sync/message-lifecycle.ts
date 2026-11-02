@@ -10,7 +10,7 @@
 
 import { onionRegisterIncomingListener, onionSendDispatch } from "../onion-engine";
 import { isValidOnion } from "../onion-id";
-import { getLifecycleMap, putLifecycle } from "../dexie-db";
+import { dxdb, getLifecycleMap } from "../dexie-db";
 import { assertRemoteHistoryAllowsChanges } from "../history-protection";
 
 export interface MessageLifecycle {
@@ -53,15 +53,19 @@ async function writeLocalEntry(
 ): Promise<void> {
   const safeId = messageId.replace(/\//g, "_");
   const ck = chatKey(chatA, chatB);
-  const map = await readLocalMap(chatA, chatB);
-  const prev = map[safeId] || { messageId: safeId };
-  const next: MessageLifecycle = {
-    ...prev,
-    ...patch,
-    messageId: safeId,
-    updatedAt: Date.now(),
-  };
-  await putLifecycle(ck, safeId, next as unknown as Record<string, unknown>);
+  const key = `${ck}::${safeId}`;
+  // Serialize concurrent edits/pins to this one record. Reading the whole
+  // conversation outside a transaction previously lost unrelated changes.
+  await dxdb.transaction("rw", dxdb.lifecycle, async () => {
+    const previous = await dxdb.lifecycle.get(key);
+    const prev = previous?.data || { messageId: safeId };
+    const now = Math.max(Date.now(), (previous?.updatedAt ?? 0) + 1);
+    await dxdb.lifecycle.put({
+      key, chatKey: ck, messageId: safeId,
+      data: { ...prev, ...patch, messageId: safeId, updatedAt: now },
+      updatedAt: now,
+    });
+  });
 }
 
 async function broadcastLifecycle(
@@ -91,8 +95,10 @@ export async function editMessage(
 ): Promise<void> {
   await assertRemoteHistoryAllowsChanges(peerId);
   const patch: Partial<MessageLifecycle> = { isEdited: true, editedText: newText };
-  await writeLocalEntry(selfId, peerId, messageId, patch);
+  // Durable encrypted outbox first. If sealing/storage fails, the UI must
+  // not claim the remote mutation succeeded in the local mirror.
   await broadcastLifecycle(selfId, peerId, messageId, patch);
+  await writeLocalEntry(selfId, peerId, messageId, patch);
 }
 
 export async function deleteMessageForMe(
@@ -120,14 +126,18 @@ export async function deleteMessageForEveryone(
     isEdited: false,
     editedText: undefined,
   };
-  await writeLocalEntry(selfId, peerId, messageId, patch);
+  // Durable encrypted outbox first. If sealing/storage fails, the UI must
+  // not claim the remote mutation succeeded in the local mirror.
   await broadcastLifecycle(selfId, peerId, messageId, patch);
+  await writeLocalEntry(selfId, peerId, messageId, patch);
 }
 
 export async function pinMessage(selfId: string, peerId: string, messageId: string): Promise<void> {
   const patch: Partial<MessageLifecycle> = { pinnedAt: Date.now(), pinnedBy: selfId };
-  await writeLocalEntry(selfId, peerId, messageId, patch);
+  // Durable encrypted outbox first. If sealing/storage fails, the UI must
+  // not claim the remote mutation succeeded in the local mirror.
   await broadcastLifecycle(selfId, peerId, messageId, patch);
+  await writeLocalEntry(selfId, peerId, messageId, patch);
 }
 
 export async function unpinMessage(
@@ -136,11 +146,11 @@ export async function unpinMessage(
   messageId: string,
 ): Promise<void> {
   const patch: Partial<MessageLifecycle> = { pinnedAt: undefined, pinnedBy: undefined };
-  await writeLocalEntry(selfId, peerId, messageId, patch);
   await broadcastLifecycle(selfId, peerId, messageId, {
     ...patch,
     clearPin: true,
   } as unknown as Partial<MessageLifecycle>);
+  await writeLocalEntry(selfId, peerId, messageId, patch);
 }
 
 // ─── Subscription ───────────────────────────────────────────
