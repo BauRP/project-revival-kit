@@ -64,14 +64,14 @@ async function writeLocalEntry(
   await putLifecycle(ck, safeId, next as unknown as Record<string, unknown>);
 }
 
-function broadcastLifecycle(
+async function broadcastLifecycle(
   selfId: string,
   peerId: string,
   messageId: string,
   patch: Partial<MessageLifecycle>,
-): void {
+): Promise<void> {
   if (!isValidOnion(peerId)) return; // local-only chats (support bot)
-  void onionSendDispatch(peerId, {
+  await onionSendDispatch(peerId, {
     type: "message_lifecycle",
     id: `lc-${crypto.randomUUID()}`,
     chatKey: chatKey(selfId, peerId),
@@ -92,7 +92,7 @@ export async function editMessage(
   await assertRemoteHistoryAllowsChanges(peerId);
   const patch: Partial<MessageLifecycle> = { isEdited: true, editedText: newText };
   await writeLocalEntry(selfId, peerId, messageId, patch);
-  broadcastLifecycle(selfId, peerId, messageId, patch);
+  await broadcastLifecycle(selfId, peerId, messageId, patch);
 }
 
 export async function deleteMessageForMe(
@@ -121,13 +121,13 @@ export async function deleteMessageForEveryone(
     editedText: undefined,
   };
   await writeLocalEntry(selfId, peerId, messageId, patch);
-  broadcastLifecycle(selfId, peerId, messageId, patch);
+  await broadcastLifecycle(selfId, peerId, messageId, patch);
 }
 
 export async function pinMessage(selfId: string, peerId: string, messageId: string): Promise<void> {
   const patch: Partial<MessageLifecycle> = { pinnedAt: Date.now(), pinnedBy: selfId };
   await writeLocalEntry(selfId, peerId, messageId, patch);
-  broadcastLifecycle(selfId, peerId, messageId, patch);
+  await broadcastLifecycle(selfId, peerId, messageId, patch);
 }
 
 export async function unpinMessage(
@@ -137,7 +137,7 @@ export async function unpinMessage(
 ): Promise<void> {
   const patch: Partial<MessageLifecycle> = { pinnedAt: undefined, pinnedBy: undefined };
   await writeLocalEntry(selfId, peerId, messageId, patch);
-  broadcastLifecycle(selfId, peerId, messageId, {
+  await broadcastLifecycle(selfId, peerId, messageId, {
     ...patch,
     clearPin: true,
   } as unknown as Partial<MessageLifecycle>);
