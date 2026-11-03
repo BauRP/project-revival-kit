@@ -28,3 +28,11 @@ describe("offline notification privacy", () => {
     expect(second).not.toBe(first);
   });
 });
+
+import { notificationPreferenceUnavailable } from "../notification-policy";
+describe("notification preference storage failures", () => {
+  it("fails closed when notifications cannot be checked", () => {
+    expect(notificationPreferenceUnavailable("trivo-notifications",true)).toBe(false);
+    expect(notificationPreferenceUnavailable("trivo-hide-content",false)).toBe(true);
+  });
+});

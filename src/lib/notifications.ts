@@ -6,14 +6,15 @@ import {
   translateWithBundledDictionary,
 } from "@/lib/translation-config";
 import { isNative } from "@/lib/platform";
-import { safeNotificationText, shouldNotifyChat, nextLocalNotificationId, type NotificationPolicyInput } from "./notification-policy";
+import { safeNotificationText, shouldNotifyChat, nextLocalNotificationId, notificationPreferenceUnavailable, type NotificationPolicyInput } from "./notification-policy";
 
 function preference(key: string, fallback: boolean): boolean {
   try {
     const value = localStorage.getItem(key);
     return value === null ? fallback : value === "true";
   } catch {
-    return fallback;
+    // Storage failure cannot be treated as permission to expose private data.
+    return notificationPreferenceUnavailable(key, fallback);
   }
 }
 

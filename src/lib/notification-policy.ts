@@ -39,3 +39,10 @@ export function nextLocalNotificationId(): number {
   }
   return lastNotificationId;
 }
+
+/** A failed privacy preference read must not reveal notifications. */
+export function notificationPreferenceUnavailable(key: string, fallback: boolean): boolean {
+  if (key === "trivo-notifications") return false;
+  if (key === "trivo-hide-content") return true;
+  return fallback;
+}
