@@ -48,7 +48,7 @@ import { orderedCompleteChunkSet } from "./media-chunks";
 import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
 import { validateDispatchBody, boundedAcknowledgements } from "./inbound-frame-policy";
-import { boundedChunkIndexes } from "./blob-request-policy";
+import { boundedChunkIndexes, validBlobFileId } from "./blob-request-policy";
 import { shouldApplyRemoteReaction } from "./reaction-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage } from "./message-deletion-policy";
@@ -585,9 +585,9 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
       return;
     case "blob_request": {
       await dxdb.inbox_raw.delete(rawId);
-      const fileId = String(inner.body.fileId || "");
+      const fileId = inner.body.fileId;
       const have = boundedChunkIndexes(inner.body.have);
-      if (!have) return;
+      if (!validBlobFileId(fileId) || !have) return;
       if (await hasBlob(fileId) && await canPeerRequestBlob(from, fileId)) {
         await sendBlob(from, fileId, (i) => !have.has(i));
       } else {
@@ -599,7 +599,8 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
       await dxdb.inbox_raw.delete(rawId);
       const missing = boundedChunkIndexes(inner.body.missing);
       if (!missing) return;
-      const requestedFile = String(inner.body.fileId || "");
+      const requestedFile = inner.body.fileId;
+      if (!validBlobFileId(requestedFile)) return;
       if (await canPeerRequestBlob(from, requestedFile)) {
         await sendBlob(from, requestedFile, (i) => missing.has(i));
       }
@@ -613,7 +614,8 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
       return;
     case "blob_missing": {
       await dxdb.inbox_raw.delete(rawId);
-      const fileId = String(inner.body.fileId || "");
+      const fileId = inner.body.fileId;
+      if (!validBlobFileId(fileId)) return;
       const pending = blobRequests.get(fileId);
       if (pending && pending.peer === from && !partialReceives.has(fileId)) {
         blobRequests.delete(fileId);
@@ -923,31 +925,33 @@ async function sendBlob(peer: string, fileId: string, include: (index: number) =
 }
 
 async function acceptBlobChunk(from: string, body: Record<string, unknown>): Promise<void> {
-  const fileId = String(body.fileId || "");
+  const fileId = body.fileId;
+  if (!validBlobFileId(fileId)) return;
   const pending = blobRequests.get(fileId);
   // A consumed one-time attachment may not be re-created by a late Tor frame.
   if (fileId && isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data)) return;
   // Reject unsolicited frames, unexpected senders and abusive chunk counts.
-  const index = Number(body.index);
-  const chunks = Number(body.totalChunks);
-  const base64 = String(body.data || "");
-  if (!fileId || !pending || pending.peer !== from ||
+  const index = body.index;
+  const chunks = body.totalChunks;
+  const base64 = body.data;
+  if (!pending || pending.peer !== from ||
+      typeof index !== "number" || typeof chunks !== "number" ||
+      typeof base64 !== "string" ||
       !Number.isSafeInteger(index) || !Number.isSafeInteger(chunks) ||
       chunks < 1 || chunks > Math.ceil((1024 * 1024 * 1024) / BLOB_CHUNK_BYTES) ||
       index < 0 || index >= chunks ||
       base64.length > 80000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) return;
+  if (typeof body.name !== "string" || !body.name || body.name.length > 255 ||
+      typeof body.mimeType !== "string" || !body.mimeType || body.mimeType.length > 128) return;
   const prior = partialReceives.get(fileId);
   if (prior && (prior.from !== from || prior.totalChunks !== chunks ||
-      prior.name !== String(body.name || fileId) ||
-      prior.mimeType !== String(body.mimeType || "application/octet-stream"))) return;
-  if (typeof body.name !== "string" || body.name.length > 255 ||
-      typeof body.mimeType !== "string" || body.mimeType.length > 128) return;
+      prior.name !== body.name || prior.mimeType !== body.mimeType)) return;
   const entry: PartialReceive = prior || {
     fileId,
     from,
-    name: String(body.name || fileId),
-    mimeType: String(body.mimeType || "application/octet-stream"),
-    totalChunks: Number(body.totalChunks || 1),
+    name: body.name,
+    mimeType: body.mimeType,
+    totalChunks: chunks,
     received: new Set<number>(),
     updatedAt: Date.now(),
   };
@@ -1009,7 +1013,7 @@ async function assemblePersistedBlob(fileId: string, from: string): Promise<bool
 /** Only request encrypted media from its authenticated message sender. */
 export function onionRequestBlob(fileId: string, peer: string): Promise<boolean> {
   const source = normalizeOnion(peer);
-  if (!fileId || !isValidOnion(source)) return Promise.resolve(false);
+  if (!validBlobFileId(fileId) || !isValidOnion(source)) return Promise.resolve(false);
   const existing = blobRequests.get(fileId);
   if (existing) return Promise.resolve(false); // One active owner per file.
   return new Promise<boolean>((resolve) => {

@@ -14,3 +14,11 @@ export function boundedChunkIndexes(value: unknown): Set<number> | null {
   }
   return values;
 }
+
+/** An authenticated peer can still submit invalid JSON types and oversized
+ * identifiers. Never coerce hostile objects with String() or Number().
+ */
+export function validBlobFileId(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= 128 &&
+    !/[\u0000-\u001f\u007f\\/]/.test(value);
+}
