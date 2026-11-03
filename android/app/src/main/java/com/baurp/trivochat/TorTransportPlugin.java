@@ -69,10 +69,15 @@ public class TorTransportPlugin extends Plugin {
     /** Read a bounded batch of previously persisted sealed inbound frames. */
     @PluginMethod
     public void pendingInbound(PluginCall call) {
+        final int offset = call.getInt("offset", 0);
+        if (offset < 0 || offset > 4096) {
+            call.reject("Invalid native inbound queue offset");
+            return;
+        }
         io.execute(() -> {
             try {
                 com.getcapacitor.JSArray entries = new com.getcapacitor.JSArray();
-                for (NativeInboundQueue.Entry entry : NativeInboundQueue.pending(getContext(), 8)) {
+                for (NativeInboundQueue.Entry entry : NativeInboundQueue.pending(getContext(), 8, offset)) {
                     JSObject item = new JSObject();
                     item.put("id", entry.id);
                     item.put("frame", entry.frame);

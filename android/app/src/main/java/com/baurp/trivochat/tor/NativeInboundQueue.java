@@ -107,11 +107,14 @@ public final class NativeInboundQueue {
         }
     }
 
-    public static List<Entry> pending(Context context, int maximum) throws IOException {
+    public static List<Entry> pending(Context context, int maximum, int offset) throws IOException {
+        if (offset < 0 || offset > MAX_ENTRIES)
+            throw new IOException("Invalid inbound queue page offset");
         synchronized (LOCK) {
             File[] files = entries(folder(context));
             List<Entry> result = new ArrayList<>();
             int cap = Math.max(1, Math.min(maximum, 8));
+            int validBefore = 0;
             for (File file : files) {
                 if (result.size() >= cap) break;
                 // Never allocate arbitrary lengths from a damaged queue file.
@@ -136,6 +139,9 @@ public final class NativeInboundQueue {
                     Log.e(TAG, "Persisted Tor frame failed SHA-256 verification: " + file.getName());
                     continue;
                 }
+                // Page through valid frames so one persistently unprocessable
+                // entry cannot keep all later frames behind the first batch.
+                if (validBefore++ < offset) continue;
                 result.add(new Entry(file.getName().replace(".frame", ""), frame));
             }
             return result;

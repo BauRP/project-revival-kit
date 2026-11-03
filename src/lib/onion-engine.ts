@@ -216,6 +216,7 @@ export async function onionInit(): Promise<string> {
 }
 
 let nativeReplay: Promise<void> | null = null;
+let nativeReplayOffset = 0;
 
 /**
  * Native frames may have arrived while the WebView was stopped. The service
@@ -229,9 +230,13 @@ export function replayNativeInbound(): Promise<void> {
     // Bounded per invocation, giving rendering and other work opportunities.
     // pollTick and the native event listener will continue replay as needed.
     for (let batch = 0; batch < 32; batch++) {
-      const { entries } = await TorTransport.pendingInbound();
-      if (entries.length === 0) break;
+      const { entries } = await TorTransport.pendingInbound({ offset: nativeReplayOffset });
+      if (entries.length === 0) {
+        nativeReplayOffset = 0;
+        break;
+      }
       let progressed = 0;
+      let failed = 0;
       for (const entry of entries) {
         try {
           await acceptRawFrame(entry.frame);
@@ -240,11 +245,20 @@ export function replayNativeInbound(): Promise<void> {
         } catch (error) {
           // One temporarily unprocessable frame must not prevent the other
           // entries in the batch from committing to Dexie.
+          failed++;
           console.warn("[onion] retaining uncommitted native frame", error);
         }
       }
-      // No progress means a durable failure; retry during a later poll,
-      // never busy-loop on a poisoned batch.
+      // Entries successfully acknowledged disappear and shift the queue
+      // towards the front. Only failed entries remain before the cursor.
+      // A persistent poison frame cannot block messages behind it.
+      nativeReplayOffset += failed;
+      if (entries.length < 8 || nativeReplayOffset >= 4096) {
+        nativeReplayOffset = 0;
+        break;
+      }
+      // No progress: avoid hammering the failing records. The next poll
+      // resumes after them, so other senders' messages still get through.
       if (progressed === 0) break;
     }
   })();
