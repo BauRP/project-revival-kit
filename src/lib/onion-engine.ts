@@ -47,6 +47,7 @@ import { chunkDigest, matchesChunkDigest } from "./chunk-integrity";
 import { orderedCompleteChunkSet } from "./media-chunks";
 import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
+import { validateDispatchBody, boundedAcknowledgements } from "./inbound-frame-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
 import { deletedMessageKey, isDeletedMessageRecord } from "./message-deletion-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
@@ -521,11 +522,12 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
 
   switch (inner.kind) {
     case "dispatch": {
-      const payload: Record<string, unknown> = {
-        ...(inner.body.payload as Record<string, unknown>),
-        from,
-        to: self,
-      };
+      const body = validateDispatchBody(inner.body.payload);
+      if (!body) {
+        await dxdb.inbox_raw.delete(rawId);
+        return;
+      }
+      const payload: Record<string, unknown> = { ...body, from, to: self };
       const result = await commitDispatch(rawId, payload);
       if (shouldAckDispatch(result))
         await sendEphemeral(from, "ack", { ids: [String(payload.id)] }).catch(() => false);
@@ -533,7 +535,7 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
       return;
     }
     case "ack": {
-      const ids = Array.isArray(inner.body.ids) ? (inner.body.ids as string[]) : [];
+      const ids = boundedAcknowledgements(inner.body.ids);
       const confirmed: string[] = [];
       await dxdb.transaction("rw", [dxdb.outbox, dxdb.messages, dxdb.inbox_raw], async () => {
         for (const mid of ids) {
