@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { localProtectionKey, remoteProtectionKey, validProtectionUpdate, HistoryProtectionError } from "../history-protection";
+import { localProtectionKey, remoteProtectionKey, validProtectionUpdate, HistoryProtectionError, nextProtectionUpdateAt } from "../history-protection";
 
 describe("per-chat protected history", () => {
   it("keeps self and peer settings separate for each chat", () => {
@@ -15,5 +15,14 @@ describe("per-chat protected history", () => {
   });
   it("reports the requested restriction rather than silently deleting a message", () => {
     expect(new HistoryProtectionError().message).toContain("защита истории переписки");
+  });
+});
+describe("rapid history-protection toggles", () => {
+  it("assigns strictly increasing timestamps even within the same millisecond", () => {
+    const first = nextProtectionUpdateAt(100, 100);
+    const next = nextProtectionUpdateAt(first, 100);
+    expect(first).toBe(101);
+    expect(next).toBe(102);
+    expect(nextProtectionUpdateAt(102, 200)).toBe(200);
   });
 });

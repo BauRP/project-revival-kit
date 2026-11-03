@@ -48,6 +48,13 @@ export function validProtectionUpdate(
     typeof updatedAt === "number" && Number.isSafeInteger(updatedAt) &&
     updatedAt > 0 && updatedAt <= now + 10 * 60_000;
 }
+/** Two fast toggles must never share the same timestamp. */
+export function nextProtectionUpdateAt(previous: number, now: number): number {
+  if (!Number.isSafeInteger(previous) || previous < 0 ||
+      !Number.isSafeInteger(now) || now <= 0)
+    throw new Error("Invalid protection timestamp");
+  return Math.max(now, previous + 1);
+}
 function stateOf(data?: Record<string, unknown>): HistoryProtectionState {
   return { enabled: data?.enabled === true, updatedAt: Number(data?.updatedAt || 0) };
 }
@@ -70,15 +77,19 @@ export async function setLocalHistoryProtection(
 ): Promise<HistoryProtectionState> {
   if (!isValidOnion(self) || !isValidOnion(peer) || self === peer)
     throw new Error("History protection requires a valid peer chat");
-  const prev = await getLocalHistoryProtection(peer);
-  const updatedAt = Math.max(Date.now(), prev.updatedAt + 1);
-  const record: LifecycleRecord = {
-    key: localProtectionKey(peer),
-    chatKey: "history-protection-local", messageId: peer,
-    data: { enabled, updatedAt }, updatedAt,
-  };
-  await dxdb.lifecycle.put(record);
-  const state = { enabled, updatedAt };
+  const state = await dxdb.transaction("rw", dxdb.lifecycle, async () => {
+    const prev = await dxdb.lifecycle.get(localProtectionKey(peer));
+    const updatedAt = nextProtectionUpdateAt(
+      Number(prev?.data.updatedAt || 0), Date.now(),
+    );
+    const record: LifecycleRecord = {
+      key: localProtectionKey(peer),
+      chatKey: "history-protection-local", messageId: peer,
+      data: { enabled, updatedAt }, updatedAt,
+    };
+    await dxdb.lifecycle.put(record);
+    return { enabled, updatedAt };
+  });
   emitLocal(peer, state);
   // Network availability is not required. The durable sealed outbox retains
   // the newest toggle until the recipient reconnects.

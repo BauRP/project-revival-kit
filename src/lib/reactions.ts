@@ -1,6 +1,6 @@
 import { dbGet } from "@/lib/storage";
 import { dxdb, type LifecycleRecord } from "./dexie-db";
-import { onionRegisterIncomingListener, onionSendDispatch } from "./onion-engine";
+import { onionRegisterIncomingListener, onionSendDispatch, ensureLocalIdentity } from "./onion-engine";
 import { isValidOnion } from "./onion-id";
 
 /** Reactions are durable Dexie records, with tombstones for removals. */
@@ -29,22 +29,30 @@ export async function getReactions(chatId: string): Promise<ReactionMap> {
   return map;
 }
 
-/** Local user action; write first and only then initiate the sealed Tor send. */
+/** Monotonic local/remote timestamp to preserve rapid successive reaction changes. */
+export function nextReactionUpdatedAt(previous: number, now: number): number {
+  return Math.max(now, previous + 1);
+}
+
+/** Local user action; serialize read/modify/write inside one transaction. */
 export async function toggleReaction(
   chatId: string, messageId: string, reactorId: string, emoji: string,
 ): Promise<ReactionMap> {
   if (!messageId || !reactorId || !emoji || emoji.length > 24)
     throw new Error("Invalid reaction");
-  const current = await getReactions(chatId);
-  const nextEmoji = current[messageId]?.[reactorId] === emoji ? null : emoji;
-  const record: LifecycleRecord = {
-    key: reactionRecordKey(chatId, messageId, reactorId),
-    chatKey: reactionChatKey(chatId),
-    messageId,
-    data: { reactorId, emoji: nextEmoji },
-    updatedAt: Date.now(),
-  };
-  await dxdb.lifecycle.put(record);
+  const legacy = await dbGet<ReactionMap>("settings", legacyKey(chatId));
+  await dxdb.transaction("rw", dxdb.lifecycle, async () => {
+    const key = reactionRecordKey(chatId, messageId, reactorId);
+    const previous = await dxdb.lifecycle.get(key);
+    const oldEmoji = previous ? previous.data.emoji : legacy?.[messageId]?.[reactorId];
+    const nextEmoji = oldEmoji === emoji ? null : emoji;
+    const updatedAt = nextReactionUpdatedAt(previous?.updatedAt || 0, Date.now());
+    const record: LifecycleRecord = {
+      key, chatKey: reactionChatKey(chatId), messageId,
+      data: { reactorId, emoji: nextEmoji }, updatedAt,
+    };
+    await dxdb.lifecycle.put(record);
+  });
   return getReactions(chatId);
 }
 
@@ -65,15 +73,24 @@ onionRegisterIncomingListener((payload) => {
   }).catch((error) => console.warn("[reactions] unable to update UI", error));
 });
 
-export function broadcastReaction(peer: string, messageId: string, emoji: string | null): void {
+export function broadcastReaction(peer: string, messageId: string, _emoji: string | null): void {
   if (!isValidOnion(peer)) return;
-  void onionSendDispatch(peer, {
-    type: "message_reaction",
-    id: crypto.randomUUID(),
-    messageId,
-    emoji,
-    updatedAt: Date.now(),
-  }).catch((error) => console.warn("[reactions] retained for delivery or failed", error));
+  // Read the committed state, not the possibly stale UI callback arguments.
+  // A slower earlier callback can never overwrite the newest toggle remotely.
+  void (async () => {
+    const self = await ensureLocalIdentity();
+    const stored = await dxdb.lifecycle.get(reactionRecordKey(peer, messageId, self));
+    if (!stored) return;
+    const emoji = stored.data.emoji;
+    if (emoji !== null && (typeof emoji !== "string" || emoji.length > 24)) return;
+    await onionSendDispatch(peer, {
+      type: "message_reaction",
+      id: crypto.randomUUID(),
+      messageId,
+      emoji,
+      updatedAt: stored.updatedAt,
+    });
+  })().catch((error) => console.warn("[reactions] durable sync failed", error));
 }
 
 export function aggregate(
