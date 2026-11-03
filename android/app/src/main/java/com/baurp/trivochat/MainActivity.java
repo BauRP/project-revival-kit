@@ -164,7 +164,13 @@ public class MainActivity extends BridgeActivity {
             ViewCompat.setOnApplyWindowInsetsListener(webView, (view, insets) -> {
                 androidx.core.graphics.Insets bars = insets.getInsets(
                     WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
-                view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+                // Android's IME inset is distinct from the gesture/three-button
+                // navigation bar. With edge-to-edge decor disabled, use the
+                // larger bottom inset so the chat composer stays above the
+                // keyboard on Android 7+ and on rotated/folded layouts.
+                androidx.core.graphics.Insets ime = insets.getInsets(WindowInsetsCompat.Type.ime());
+                int bottom = Math.max(bars.bottom, ime.bottom);
+                view.setPadding(bars.left, bars.top, bars.right, bottom);
                 return insets;
             });
             ViewCompat.requestApplyInsets(webView);
