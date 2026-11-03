@@ -60,7 +60,7 @@ export function redactLocalMessage<T extends { text: string; media?: unknown; ca
     if (Object.prototype.hasOwnProperty.call(original, key))
       shell[key] = original[key];
   }
-  return shell as T;
+  return shell as unknown as T;
 }
 
 /** A backup can contain a deletion tombstone and the obsolete attachment.
