@@ -6,7 +6,7 @@ import { recoverInbox, onionStopForAccountDeletion, onionClearNativeInboxForAcco
 import { runAccountWipe } from "@/lib/account-wipe";
 import { nukeAllData } from "@/lib/storage";
 import { safeStorage } from "@/lib/safe-storage";
-import { startAutomaticBackupMonitor } from "@/lib/auto-backup";
+import { startAutomaticBackupMonitor, pauseAutomaticBackupsForWipe } from "@/lib/auto-backup";
 
 interface IdentityContextType {
   identity: IdentityKeys | null;
@@ -84,6 +84,7 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
     // Never erase the identity keys while the databases still exist.
     // On an interrupted wipe, retaining the keys is safer than orphaning
     // existing encrypted messages and making recovery impossible.
+    await pauseAutomaticBackupsForWipe();
     await runAccountWipe({
       stopTransport: onionStopForAccountDeletion,
       deleteDatabases: nukeAllData,

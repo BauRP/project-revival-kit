@@ -503,7 +503,8 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
             {t("deleteAccount")}
           </button>
           <p className="w-full max-w-md px-1 text-center text-[11px] leading-4 text-gray-500 dark:text-neutral-400">
-            {t("deleteAccountWarning")}
+            {t("deleteAccountWarning")} Зашифрованные архивы, ранее сохранённые в Documents,
+            остаются на устройстве. При необходимости удалите их отдельно.
           </p>
         </div>
       </div>

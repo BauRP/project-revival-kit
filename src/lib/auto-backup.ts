@@ -55,10 +55,20 @@ export async function disableAutomaticBackups(): Promise<void> {
 
 let running: Promise<void> | null = null;
 let lastFailedAt = 0;
+let wiping = false;
+const monitors = new Set<() => void>();
+
+/** Stop exports before closing IndexedDB during account deletion. */
+export async function pauseAutomaticBackupsForWipe(): Promise<void> {
+  wiping = true;
+  for (const stop of monitors) stop();
+  monitors.clear();
+  if (running) await running;
+}
 export function runAutomaticBackupIfDue(): Promise<void> {
   if (running) return running;
   const work = (async () => {
-    if (!isNative() || typeof document === "undefined" || document.hidden) return;
+    if (wiping || !isNative() || typeof document === "undefined" || document.hidden) return;
     const now = Date.now();
     if (lastFailedAt && now - lastFailedAt < RETRY_WAIT_MS) return;
     const state = await dbGetStrict<unknown>("settings", KEY);
@@ -70,6 +80,7 @@ export function runAutomaticBackupIfDue(): Promise<void> {
         throw new Error("Stored backup credential is invalid");
       if (await getTotalBlobBytes() > AUTO_MEDIA_LIMIT)
         throw new Error("Automatic backup skipped: media exceeds safe memory limit");
+      if (wiping) return;
       await exportBackup(plaintext);
       // Update only after the encrypted file has been written successfully.
       await dbPutStrict("settings", KEY, { ...state, lastSavedAt: Date.now() });
@@ -85,15 +96,18 @@ export function runAutomaticBackupIfDue(): Promise<void> {
 }
 
 export function startAutomaticBackupMonitor(): () => void {
-  if (!isNative() || typeof window === "undefined") return () => {};
+  if (wiping || !isNative() || typeof window === "undefined") return () => {};
   const run = () => { void runAutomaticBackupIfDue().catch((error) =>
     console.warn("[backup] unable to check snapshot schedule", error)); };
   const initial = window.setTimeout(run, 12_000);
   const timer = window.setInterval(run, 60 * 60 * 1000);
   document.addEventListener("visibilitychange", run);
-  return () => {
+  const stop = () => {
     window.clearTimeout(initial);
     window.clearInterval(timer);
     document.removeEventListener("visibilitychange", run);
+    monitors.delete(stop);
   };
+  monitors.add(stop);
+  return stop;
 }
