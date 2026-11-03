@@ -9,7 +9,8 @@
 //    (ChatMeta.friendAvatar) so every list view renders the latest avatar.
 
 import localPeerCache from "./local-peer-cache";
-import { dbGet, dbPut } from "./storage";
+import { dbGetStrict, dbPutStrict } from "./storage";
+import { validateEditableProfile, nextProfileTimestamp } from "./profile-policy";
 import { getChatMeta, saveChatMeta } from "./p2p";
 import { getAllContacts, dxdb } from "./dexie-db";
 import { onionRegisterIncomingListener, onionSendDispatch } from "./onion-engine";
@@ -37,6 +38,7 @@ const subscriptions = new Map<string, { count: number; stop: () => void }>();
 
 let localProfile: UserProfile | null = null;
 let localLoaded = false;
+let profileMutationTail: Promise<void> = Promise.resolve();
 
 function emptyProfile(userId: string): UserProfile {
   return {
@@ -71,7 +73,7 @@ function normalize(raw: unknown, fallbackId: string): UserProfile | null {
 /** Loads the local user's persisted profile (creates an empty one on first run). */
 export async function loadMyProfile(userId: string): Promise<UserProfile> {
   if (localLoaded && localProfile && localProfile.userId === userId) return localProfile;
-  const stored = await dbGet<UserProfile>("settings", LOCAL_KEY);
+  const stored = await dbGetStrict<UserProfile>("settings", LOCAL_KEY);
   const normalized = normalize(stored, userId);
   localProfile = normalized
     ? { ...normalized, userId: userId || normalized.userId }
@@ -89,29 +91,35 @@ export function getMyProfileSync(): UserProfile | null {
  * Persists a partial profile update, then broadcasts the full profile on the
  * channel keyed by this User ID so every mutual contact re-renders it.
  */
-export async function saveMyProfile(
+export function saveMyProfile(
   userId: string,
   patch: Partial<Omit<UserProfile, "userId" | "updatedAt">>,
 ): Promise<UserProfile> {
-  const current = await loadMyProfile(userId);
-  const next: UserProfile = {
-    ...current,
-    ...patch,
-    userId: userId || current.userId,
-    updatedAt: Date.now(),
-  };
-  localProfile = next;
-  await dbPut("settings", LOCAL_KEY, next);
-  publishProfile(next);
-  void publishProfileToContacts(next).catch((error) => console.warn("[profile] Tor sync failed", error));
-  localListeners.forEach((cb) => {
-    try {
-      cb(next);
-    } catch {
-      /* listener errors must not break saving */
-    }
+  const work = profileMutationTail.then(async (): Promise<UserProfile> => {
+    const current = await loadMyProfile(userId);
+    const next: UserProfile = {
+      ...current,
+      ...patch,
+      userId: userId || current.userId,
+      updatedAt: nextProfileTimestamp(current.updatedAt, Date.now()),
+    };
+    validateEditableProfile(next);
+    // Never inform UI/listeners of success before the database transaction
+    // has committed. A storage failure keeps the previous in-memory profile.
+    await dbPutStrict("settings", LOCAL_KEY, next);
+    localProfile = next;
+    publishProfile(next);
+    void publishProfileToContacts(next).catch((error) =>
+      console.warn("[profile] Tor synchronization unavailable", error));
+    localListeners.forEach((callback) => {
+      try { callback(next); } catch { /* isolate listeners */ }
+    });
+    return next;
   });
-  return next;
+  // Serialize rapid name/avatar/status edits, including the failed operation
+  // case. Each new patch starts from the previous committed state.
+  profileMutationTail = work.then(() => undefined, () => undefined);
+  return work;
 }
 
 function publishProfile(profile: UserProfile): void {
@@ -247,11 +255,21 @@ async function publishProfileToContacts(profile: UserProfile): Promise<void> {
   if (!isValidOnion(profile.userId)) return;
   const shared = makeSharedProfile(profile);
   const contacts = await getAllContacts();
-  await Promise.all(contacts.filter((c) => isValidOnion(c.onion) && c.onion !== profile.userId).map(async (c) => {
-    await onionSendDispatch(c.onion, {
-      type: "profile_update", id: crypto.randomUUID(), profile: shared,
-    });
-  }));
+  const peers = contacts.filter((c) =>
+    isValidOnion(c.onion) && c.onion !== profile.userId);
+  const errors: unknown[] = [];
+  // Limit simultaneous encryption/sealing, IndexedDB writes and Tor dials
+  // rather than spawning thousands of outstanding promises on a large list.
+  for (let i = 0; i < peers.length; i += 4) {
+    const results = await Promise.allSettled(peers.slice(i, i + 4).map((c) =>
+      onionSendDispatch(c.onion, {
+        type: "profile_update", id: crypto.randomUUID(), profile: shared,
+      })));
+    for (const result of results)
+      if (result.status === "rejected") errors.push(result.reason);
+  }
+  if (errors.length) throw new Error(
+    `Profile updates could not be queued for ${errors.length} contact(s)`);
 }
 
 onionRegisterIncomingListener((payload) => {
