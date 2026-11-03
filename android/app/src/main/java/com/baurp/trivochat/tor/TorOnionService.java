@@ -102,6 +102,7 @@ public class TorOnionService extends Service {
     // unreliable Tor circuits. Connections rejected here are NOT ACKed.
     private final Semaphore inboundSlots = new Semaphore(24, true);
     private final AtomicBoolean listenerLoopRunning = new AtomicBoolean(false);
+    private final AtomicBoolean onionProvisioning = new AtomicBoolean(false);
 
     private ServerSocket serverSocket;
     private TorControlConnection control;
@@ -348,6 +349,9 @@ public class TorOnionService extends Service {
                 running = false;
                 bootstrapped = false;
                 torServiceInstance = null;
+                onionAddress = null;
+                control = null;
+                closeServerSocket();
                 publishStatus();
             } catch (Throwable disconnectionFailure) {
                 Log.e(TAG, "tor service disconnect handling failed", disconnectionFailure);
@@ -371,6 +375,9 @@ public class TorOnionService extends Service {
                     || TorService.STATUS_OFF.equals(status)) {
                 bootstrapped = false;
                 bootstrapPercent = 0;
+                onionAddress = null;
+                control = null;
+                closeServerSocket();
                 publishStatus();
             }
         }
@@ -442,7 +449,14 @@ public class TorOnionService extends Service {
 
     /** Runs once tor reports STATUS_ON: read SOCKS port, open listener, ADD_ONION. */
     private void onTorReady() {
+        if (!onionProvisioning.compareAndSet(false, true)) return;
         try {
+            if (!bootstrapped) return;
+            // Duplicate STATUS_ON broadcasts are common during reconnect.
+            // Rebinding the listener can otherwise race with an older accept
+            // loop and strand the hidden service on a closed local socket.
+            if (onionAddress != null && serverSocket != null && !serverSocket.isClosed())
+                return;
             if (torServiceInstance != null) {
                 control = torServiceInstance.getTorControlConnection();
             }
@@ -465,6 +479,8 @@ public class TorOnionService extends Service {
             lastError = "tor ready failed: " + e.getMessage();
             Log.e(TAG, lastError, e);
             publishStatus();
+        } finally {
+            onionProvisioning.set(false);
         }
     }
 
@@ -538,12 +554,14 @@ public class TorOnionService extends Service {
     // ── Inbound listener ────────────────────────────────────────
 
     private void openLocalListener() throws IOException {
+        if (serverSocket != null && !serverSocket.isClosed() && listenerLoopRunning.get())
+            return;
         closeServerSocket();
-        serverSocket = new ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"));
-        localServicePort = serverSocket.getLocalPort();
-        if (listenerLoopRunning.compareAndSet(false, true)) {
-            workers.execute(this::acceptLoop);
-        }
+        final ServerSocket active = new ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"));
+        serverSocket = active;
+        localServicePort = active.getLocalPort();
+        listenerLoopRunning.set(true);
+        workers.execute(() -> acceptLoop(active));
     }
 
     private void closeServerSocket() {
@@ -556,10 +574,10 @@ public class TorOnionService extends Service {
         serverSocket = null;
     }
 
-    private void acceptLoop() {
-        while (listenerLoopRunning.get() && serverSocket != null && !serverSocket.isClosed()) {
+    private void acceptLoop(ServerSocket active) {
+        while (listenerLoopRunning.get() && serverSocket == active && !active.isClosed()) {
             try {
-                final Socket client = serverSocket.accept();
+                final Socket client = active.accept();
                 client.setSoTimeout(120_000);
                 if (!inboundSlots.tryAcquire()) {
                     // No durable write, therefore no delivery ACK: the
@@ -586,7 +604,9 @@ public class TorOnionService extends Service {
                 }
             }
         }
-        listenerLoopRunning.set(false);
+        // A stale worker may exit after a replacement listener starts.
+        // Only the current socket may reset the global running marker.
+        if (serverSocket == active) listenerLoopRunning.set(false);
     }
 
     private void handleInbound(Socket client) {
