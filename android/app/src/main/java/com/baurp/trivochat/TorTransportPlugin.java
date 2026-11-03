@@ -177,17 +177,32 @@ public class TorTransportPlugin extends Plugin {
         });
     }
 
+    /**
+     * Confirm Service.onDestroy has completed before reporting success.
+     * Deleting identity keys immediately after an unconfirmed stop is unsafe.
+     * Never start a new service just to stop an existing one.
+     */
     @PluginMethod
     public void stop(PluginCall call) {
-        try {
-            Intent intent = new Intent(getContext(), TorOnionService.class);
-            intent.setAction(TorOnionService.ACTION_STOP);
-            getContext().startService(intent);
-            getContext().stopService(new Intent(getContext(), TorOnionService.class));
-            call.resolve();
-        } catch (Throwable stopFailure) {
-            call.reject("Unable to stop Tor foreground service", stopFailure.getMessage());
-        }
+        io.execute(() -> {
+            try {
+                getContext().stopService(new Intent(getContext(), TorOnionService.class));
+                long deadline = android.os.SystemClock.elapsedRealtime() + 15_000L;
+                while (TorOnionService.get() != null
+                        && android.os.SystemClock.elapsedRealtime() < deadline) {
+                    Thread.sleep(50L);
+                }
+                if (TorOnionService.get() != null)
+                    call.reject("Tor shutdown not confirmed before timeout");
+                else call.resolve();
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                call.reject("Tor stop interrupted before shutdown");
+            } catch (Throwable stopFailure) {
+                call.reject("Unable to stop Tor foreground service",
+                        String.valueOf(stopFailure.getMessage()));
+            }
+        });
     }
 
     @PluginMethod

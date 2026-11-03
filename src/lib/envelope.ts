@@ -26,6 +26,19 @@ export interface SealedFrame {
   sig: string;
 }
 
+/** A cheap structural ingress check; Ed25519 authentication remains mandatory. */
+export function isPlausibleSealedFrame(value: unknown): value is SealedFrame {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const f = value as Record<string, unknown>;
+  const b64 = (v: unknown, max: number) => typeof v === "string" &&
+    v.length > 0 && v.length <= max && /^[A-Za-z0-9+/]+={0,2}$/.test(v);
+  return f.v === 2 && typeof f.from === "string" &&
+    typeof f.to === "string" &&
+    publicKeyFromOnion(f.from) !== null && publicKeyFromOnion(f.to) !== null &&
+    Number.isSafeInteger(f.ts) && (f.ts as number) > 0 &&
+    b64(f.epk, 44) && b64(f.n, 32) && b64(f.c, 11_200_000) && b64(f.sig, 88);
+}
+
 function signedBytes(f: Omit<SealedFrame, "sig">): Uint8Array {
   return decodeUTF8(`${f.v}|${f.from}|${f.to}|${f.ts}|${f.epk}|${f.n}|${f.c}`);
 }

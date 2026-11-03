@@ -22,7 +22,7 @@ import {
 } from "./tor-native";
 import { getOrCreateIdentity } from "./crypto";
 import { sealFrameAsync, openFrameAsync } from "./crypto-async";
-import type { SealedFrame } from "./envelope";
+import { type SealedFrame, isPlausibleSealedFrame } from "./envelope";
 import {
   isValidOnion,
   normalizeOnion,
@@ -458,8 +458,9 @@ async function acceptRawFrame(raw: string): Promise<void> {
   } catch {
     return;
   }
-  if (!outer || typeof outer.sig !== "string") return;
-  const id = `${outer.from}:${outer.sig.slice(0, 32)}`;
+  if (!isPlausibleSealedFrame(outer)) return;
+  // Persist with full signature to prevent truncated-ID collisions.
+  const id = `${outer.from}:${outer.sig}`;
   await dxdb.inbox_raw.put({ id, raw, receivedAt: Date.now() });
   await processInboxRecord(id, raw);
 }
@@ -468,7 +469,10 @@ async function acceptRawFrame(raw: string): Promise<void> {
 export async function recoverInbox(): Promise<number> {
   await ensureLocalIdentity();
   const rows = await dxdb.inbox_raw.orderBy("receivedAt").toArray();
-  for (const row of rows) await processInboxRecord(row.id, row.raw);
+  for (const row of rows) {
+    try { await processInboxRecord(row.id, row.raw); }
+    catch (error) { console.warn("[onion] retaining failed inbox row for retry", error); }
+  }
   return rows.length;
 }
 
@@ -478,7 +482,13 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
   let inner: InnerFrame;
   try {
     outer = JSON.parse(raw) as SealedFrame;
-    inner = (await openFrameAsync(outer, self, signingSecret as string)) as InnerFrame;
+    const opened = await openFrameAsync(outer, self, signingSecret as string);
+    if (!opened || typeof opened !== "object" || Array.isArray(opened))
+      throw new Error("Invalid decrypted frame");
+    inner = opened as InnerFrame;
+    if (typeof inner.kind !== "string" || !inner.body ||
+        typeof inner.body !== "object" || Array.isArray(inner.body))
+      throw new Error("Invalid decrypted frame body");
   } catch (e) {
     console.warn("[onion] rejected inbound frame:", e instanceof Error ? e.message : e);
     await dxdb.inbox_raw.delete(rawId);

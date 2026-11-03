@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import nacl from "tweetnacl";
 import { encodeBase64 } from "tweetnacl-util";
 import { onionFromPublicKey, publicKeyFromOnion, isValidOnion } from "../onion-id";
-import { sealFrame, openFrame } from "../envelope";
+import { sealFrame, openFrame, isPlausibleSealedFrame } from "../envelope";
 
 const kp = () => {
   const k = nacl.sign.keyPair();
@@ -31,5 +31,18 @@ describe("E2EE envelope", () => {
     expect(openFrame(f, B, b.sec)).toEqual({ hello: "world" });
     expect(() => openFrame({ ...f, to: C }, C, c.sec)).toThrow();
     expect(() => openFrame({ ...f, c: f.c.slice(0, -4) + "AAAA" }, B, b.sec)).toThrow();
+  });
+});
+
+describe("durable inbound frame structural validation", () => {
+  it("rejects forged addressing, signatures and oversized envelope fields", () => {
+    const alice = kp(), bob = kp();
+    const good = sealFrame({ kind: "hello", id: "h", body: {} },
+      onionFromPublicKey(alice.pub), onionFromPublicKey(bob.pub), alice.sec);
+    expect(isPlausibleSealedFrame(good)).toBe(true);
+    expect(isPlausibleSealedFrame({...good, from:"invalid.onion"})).toBe(false);
+    expect(isPlausibleSealedFrame({...good, sig:"!"})).toBe(false);
+    expect(isPlausibleSealedFrame({...good, c:"A".repeat(12_000_000)})).toBe(false);
+    expect(isPlausibleSealedFrame(null)).toBe(false);
   });
 });
