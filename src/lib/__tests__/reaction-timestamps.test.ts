@@ -18,3 +18,13 @@ describe("reaction ordering and identity", () => {
     expect(isSameReactionDispatch({outboundEventId:"event1",outboundPending:false},"event1")).toBe(false);
   });
 });
+
+import { shouldApplyRemoteReaction } from "../reactions";
+describe("authenticated reaction replay ordering", () => {
+  it("accepts the first remote reaction and only strictly newer changes", () => {
+    expect(shouldApplyRemoteReaction(undefined,100)).toBe(true);
+    expect(shouldApplyRemoteReaction(99,100)).toBe(true);
+    expect(shouldApplyRemoteReaction(100,100)).toBe(false);
+    expect(shouldApplyRemoteReaction(101,100)).toBe(false);
+  });
+});
