@@ -3,7 +3,8 @@
 //  Tor outbox (src/lib/onion-engine.ts). Peers are `.onion` addresses only.
 // ============================================================================
 
-import { dbGet, dbGetAll } from "../storage";
+import { dbGetStrict, dbPutStrict, dbGetAllStrict } from "../storage";
+import { validateOutgoingFriendRequest } from "../friend-request-policy";
 import { onionRegisterIncomingListener, onionSendDispatch, recoverInbox } from "../onion-engine";
 
 export interface FriendRequest {
@@ -15,9 +16,9 @@ export interface FriendRequest {
 }
 
 export async function sendFriendRequest(request: Omit<FriendRequest, "status" | "timestamp">) {
+  validateOutgoingFriendRequest(request.from, request.to, request.fromName);
   const timestamp = Date.now();
-  const { dbPut } = await import("../storage");
-  await dbPut("settings", `friend-req-out-${request.to}`, {
+  await dbPutStrict("settings", `friend-req-out-${request.to}`, {
     ...request,
     timestamp,
     status: "pending",
@@ -35,7 +36,7 @@ export function listenForFriendRequests(
   self: string,
   onRequest: (req: FriendRequest) => void,
 ): () => void {
-  void dbGetAll<FriendRequest & { type?: string }>("settings").then((all) => {
+  void dbGetAllStrict<FriendRequest & { type?: string }>("settings").then((all) => {
     for (const r of all) {
       if (r && r.type === "friend_request" && r.to === self && r.status === "pending") onRequest(r);
     }
@@ -53,10 +54,10 @@ export function listenForFriendRequests(
 }
 
 export async function acceptFriendRequest(fromOnion: string): Promise<void> {
-  const { dbPut } = await import("../storage");
-  const stored = await dbGet<FriendRequest>("settings", `friend-req-in-${fromOnion}`);
-  if (stored)
-    await dbPut("settings", `friend-req-in-${fromOnion}`, { ...stored, status: "accepted" });
+  const stored = await dbGetStrict<FriendRequest>("settings", `friend-req-in-${fromOnion}`);
+  if (!stored || stored.status === "declined")
+    throw new Error("No pending friend request for this authenticated peer");
+  await dbPutStrict("settings", `friend-req-in-${fromOnion}`, { ...stored, status: "accepted" });
   await onionSendDispatch(fromOnion, {
     type: "friend_request_status",
     id: `frs-${fromOnion}-${Date.now()}`,
@@ -68,7 +69,7 @@ export async function acceptFriendRequest(fromOnion: string): Promise<void> {
 export async function getOutgoingRequestStatus(
   toOnion: string,
 ): Promise<"pending" | "accepted" | "none"> {
-  const local = await dbGet<FriendRequest>("settings", `friend-req-out-${toOnion}`);
+  const local = await dbGetStrict<FriendRequest>("settings", `friend-req-out-${toOnion}`);
   if (local?.status === "pending" || local?.status === "accepted") return local.status;
   return "none";
 }

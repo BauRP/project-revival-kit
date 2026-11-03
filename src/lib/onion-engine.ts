@@ -47,6 +47,7 @@ import { chunkDigest, matchesChunkDigest } from "./chunk-integrity";
 import { orderedCompleteChunkSet } from "./media-chunks";
 import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
+import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
 import { deletedMessageKey, isDeletedMessageRecord } from "./message-deletion-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
@@ -787,8 +788,15 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
     if (!isLegacyFriendEvent(type)) await dxdb.inbox_raw.delete(rawId);
   });
   if (type === "friend_request") {
-    await dbPutStrict("settings", `friend-req-in-${payload.from}`,
-      { ...payload, status: "pending" });
+    const request = validateIncomingFriendRequest(payload);
+    if (!request) {
+      await dxdb.inbox_raw.delete(rawId);
+      return "rejected";
+    }
+    const key = `friend-req-in-${request.from}`;
+    const previous = await dbGetStrict<{status?: string; timestamp?: number}>("settings", key);
+    if (shouldApplyIncomingFriendRequest(previous, request.timestamp))
+      await dbPutStrict("settings", key, request);
   }
   if (type === "friend_request_status" && payload.status === "accepted") {
     const out = await dbGetStrict<Record<string, unknown>>("settings",
