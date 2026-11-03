@@ -100,6 +100,13 @@ export function simulateSecurityScan(
  * Offline signature checks for a file chosen for upload. A filename or MIME
  * type alone can be forged. This does NOT certify the file as malware-free.
  */
+/** UTF-8 BOM and leading whitespace cannot disguise an executable document. */
+export function isActiveContentHeader(header: Uint8Array): boolean {
+  const head = new TextDecoder("utf-8").decode(header.subarray(0, 128))
+    .replace(/^\uFEFF/, "").trimStart();
+  return /^(?:#!|<\s*(?:!doctype\s+html|html|script|svg|iframe|object|embed)\b|<\?php\b)/i.test(head);
+}
+
 export function inspectAttachmentHeader(
   fileName: string, declaredMime: string, header: Uint8Array,
 ): ScanResult {
@@ -122,7 +129,7 @@ export function inspectAttachmentHeader(
   if (starts(0x4d, 0x5a) || starts(0x7f, 0x45, 0x4c, 0x46) ||
       starts(0x23, 0x21) || starts(0xfe, 0xed, 0xfa, 0xce) ||
       starts(0xcf, 0xfa, 0xed, 0xfe) ||
-      /^(\s*<(!doctype\s+html|html|script|svg)\b)/i.test(ascii(0, 64)))
+      isActiveContentHeader(header))
     return blocked();
   if (/\.(svg|svgz|html?|xhtml|hta|apk|jar|dex|so|dll|msi)$/i.test(name) ||
       mime === "image/svg+xml" || mime === "text/html" ||

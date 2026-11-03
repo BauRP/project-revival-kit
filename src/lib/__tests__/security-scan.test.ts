@@ -84,3 +84,16 @@ describe("untrusted attachment path and script suffixes", () => {
     expect(inspectAttachmentHeader("run.sh","text/plain",new Uint8Array([0x61])).safe).toBe(false);
   });
 });
+
+describe("active document content sniffing", () => {
+  it("blocks HTML and SVG hidden behind Unicode BOM and whitespace", () => {
+    const bytes = new TextEncoder().encode("\uFEFF \n<svg xmlns='http://www.w3.org/2000/svg'></svg>");
+    expect(inspectAttachmentHeader("innocent.txt","text/plain",bytes).safe).toBe(false);
+    const html = new TextEncoder().encode("\uFEFF <iframe src='remote'></iframe>");
+    expect(inspectAttachmentHeader("innocent.txt","text/plain",html).safe).toBe(false);
+  });
+  it("blocks UTF-8 BOM + executable shebang even with a text extension", () => {
+    const shell = new TextEncoder().encode("\uFEFF#!/bin/sh\nrm something");
+    expect(inspectAttachmentHeader("notes.txt","text/plain",shell).safe).toBe(false);
+  });
+});
