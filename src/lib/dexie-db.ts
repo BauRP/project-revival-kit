@@ -350,16 +350,20 @@ export async function exportDexieDump(): Promise<DexieDump> {
     dxdb.lifecycle.toArray(),
     dxdb.blobs.toArray(),
   ]);
-  const blobsEncoded = await Promise.all(
-    blobs.map(async (b) => ({
+  // Avoid starting a separate multi-megabyte ArrayBuffer conversion for
+  // every attachment at once. Sequential encoding limits peak native and
+  // WebView memory while preserving the exact V3 portable archive format.
+  const blobsEncoded: DexieDump["blobs"] = [];
+  for (const b of blobs) {
+    blobsEncoded.push({
       fileId: b.fileId,
       mimeType: b.mimeType,
       name: b.name,
       size: b.size,
       storedAt: b.storedAt,
       dataB64: await blobToBase64(b.data),
-    })),
-  );
+    });
+  }
   return {
     schemaVersion: 3,
     createdAt: Date.now(),
