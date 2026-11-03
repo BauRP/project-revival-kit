@@ -37,3 +37,11 @@ describe("identity recovery validation", () => {
     expect(() => validateIdentityKeys({} as IdentityKeys)).toThrow();
   });
 });
+
+describe("identity creation timestamp integrity", () => {
+  it("refuses invalid and implausibly future-dated identity keys", () => {
+    const now = Date.now();
+    for (const createdAt of [0, -1, NaN, Infinity, now + 700_000])
+      expect(() => validateIdentityKeys({ ...makeIdentity(), createdAt })).toThrow();
+  });
+});

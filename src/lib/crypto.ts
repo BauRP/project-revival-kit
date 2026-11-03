@@ -1,7 +1,8 @@
 // Ed25519 + X25519 + XSalsa20-Poly1305 encryption layer using tweetnacl
 import nacl from "tweetnacl";
 import { encodeBase64, decodeBase64, encodeUTF8, decodeUTF8 } from "tweetnacl-util";
-import { dbGetStrict, dbPutStrict } from "./storage";
+import { dbGetStrict, dbPutStrict, dbCountStrict } from "./storage";
+import { assertCanGenerateNewIdentity } from "./identity-bootstrap-policy";
 import { registerPlugin } from "@capacitor/core";
 import { isNative } from "./platform";
 
@@ -66,7 +67,9 @@ export function generateIdentityKeysSync(): IdentityKeys {
 
 /** Validate stored keypairs before they can be used or restored. */
 export function validateIdentityKeys(value: IdentityKeys): IdentityKeys {
-  if (!value || !value.signing || !value.exchange || !Number.isFinite(value.createdAt))
+  if (!value || !value.signing || !value.exchange ||
+      !Number.isSafeInteger(value.createdAt) || value.createdAt <= 0 ||
+      value.createdAt > Date.now() + 600_000)
     throw new Error("Invalid stored identity structure");
   const signingSecret = decodeBase64(value.signing.secretKey);
   const exchangeSecret = decodeBase64(value.exchange.secretKey);
@@ -128,6 +131,20 @@ async function loadOrCreateIdentity(): Promise<IdentityKeys> {
   } else if (existing && "signing" in existing) {
     return validateIdentityKeys(existing);
   }
+  // A wiped identity record (or lost Android Keystore) is NOT a new user.
+  // Only an actually empty installation may generate a fresh onion address.
+  // Check both current Dexie and legacy stores without reading message text.
+  const { dxdb } = await import("./dexie-db");
+  const counts = await Promise.all([
+    dxdb.contacts.count(), dxdb.messages.count(), dxdb.outbox.count(),
+    dxdb.inbox_raw.count(), dxdb.lifecycle.count(), dxdb.blobs.count(),
+    dxdb.partial_chunks.count(), dbCountStrict("contacts"), dbCountStrict("messages"),
+  ]);
+  assertCanGenerateNewIdentity({
+    contacts: counts[0], messages: counts[1], outbox: counts[2],
+    inbound: counts[3], lifecycle: counts[4], blobs: counts[5],
+    chunks: counts[6], legacyContacts: counts[7], legacyMessages: counts[8],
+  });
   const { generateIdentityKeysAsync } = await import("./crypto-async");
   const identity = await generateIdentityKeysAsync();
   if (isNative()) {

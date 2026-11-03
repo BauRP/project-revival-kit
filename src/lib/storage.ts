@@ -102,6 +102,25 @@ export async function dbPut(store: string, key: string, value: unknown): Promise
   }
 }
 
+/** Count without copying sensitive records into JS memory on identity recovery. */
+export async function dbCountStrict(store: string): Promise<number> {
+  const db = await openDB();
+  return new Promise<number>((resolve, reject) => {
+    let result = 0;
+    try {
+      const transaction = db.transaction(store, "readonly");
+      const request = transaction.objectStore(store).count();
+      request.onsuccess = () => { result = request.result; };
+      transaction.oncomplete = () => { db.close(); resolve(result); };
+      transaction.onerror = () => { db.close(); reject(transaction.error || new Error("Count failed")); };
+      transaction.onabort = () => { db.close(); reject(transaction.error || new Error("Count aborted")); };
+    } catch (error) {
+      db.close();
+      reject(error);
+    }
+  });
+}
+
 /** Use for migrations: storage failures must never turn into an empty result. */
 export async function dbGetAllStrict<T>(store: string): Promise<T[]> {
   const db = await openDB();
