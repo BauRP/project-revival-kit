@@ -50,7 +50,7 @@ import { deniedByHistoryProtection } from "./history-protection-policy";
 import { validateDispatchBody, boundedAcknowledgements } from "./inbound-frame-policy";
 import { boundedChunkIndexes } from "./blob-request-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
-import { deletedMessageKey, isDeletedMessageRecord } from "./message-deletion-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage } from "./message-deletion-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, type DispatchCommitResult } from "./dispatch-commit";
@@ -638,7 +638,10 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
     await dxdb.inbox_raw.delete(rawId);
     return "rejected";
   }
-  await dxdb.transaction("rw", [dxdb.messages, dxdb.inbox_raw, dxdb.lifecycle, dxdb.contacts], async () => {
+  await dxdb.transaction("rw", [
+    dxdb.messages, dxdb.inbox_raw, dxdb.lifecycle, dxdb.contacts,
+    dxdb.blobs, dxdb.partial_chunks,
+  ], async () => {
     if (type === "text_message") {
       const validated = validateIncomingTextMessage(payload);
       if (!validated) rejected = true;
@@ -780,6 +783,33 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         if (patch.clearPin) {
           delete next.pinnedAt;
           delete next.pinnedBy;
+        }
+        if (patch.deletedForEveryone === true) {
+          // A verified deletion should not merely hide text in React while
+          // retaining recoverable plaintext and media in IndexedDB.
+          const originalStored = await dxdb.messages.get(mid);
+          if (originalStored) {
+            const remaining = await dxdb.messages.filter((row) => row.id !== mid).toArray();
+            const orphaned = findUnreferencedMedia(
+              [{ media: originalStored.media }],
+              remaining.map((row) => ({ media: row.media })),
+            );
+            await dxdb.messages.put(redactLocalMessage(originalStored));
+            if (orphaned.length) {
+              await dxdb.blobs.bulkDelete(orphaned);
+              await dxdb.partial_chunks.where("fileId").anyOf(orphaned).delete();
+            }
+          }
+          // Prevent late retries and old backups from recreating the deleted
+          // message body even when a visible tombstone shell is retained.
+          const now = Date.now();
+          await dxdb.lifecycle.put({
+            key: deletedMessageKey(mid),
+            chatKey: LOCAL_DELETED_CHAT_KEY, messageId: mid,
+            data: { deleted: true, deletedAt: now }, updatedAt: now,
+          });
+          delete next.editedText;
+          next.isEdited = false;
         }
         await dxdb.lifecycle.put({
           key,

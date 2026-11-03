@@ -45,3 +45,15 @@ describe("delete for me removes private plaintext while keeping placeholder iden
     expect(message.text).toBe("private text");
   });
 });
+
+describe("remote deletion body erasure", () => {
+  it("preserves the message identity but never retains body or attached media", () => {
+    const input={id:"signed",text:"private",media:{fileId:"file"},caption:"secret",timestamp:300};
+    const erased=redactLocalMessage(input);
+    expect(erased.id).toBe("signed");
+    expect(erased.timestamp).toBe(300);
+    expect(erased.text).toBe("");
+    expect(erased.media).toBeUndefined();
+    expect(erased.caption).toBeUndefined();
+  });
+});
