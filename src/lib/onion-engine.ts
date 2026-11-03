@@ -49,6 +49,7 @@ import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
 import { validateDispatchBody, boundedAcknowledgements } from "./inbound-frame-policy";
 import { boundedChunkIndexes, validBlobFileId } from "./blob-request-policy";
+import { mayQueueOriginalText } from "./outbox-delivery-policy";
 import { shouldApplyRemoteReaction } from "./reaction-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage } from "./message-deletion-policy";
@@ -388,9 +389,23 @@ export async function onionSendDispatch(
     }
     const sealed = await seal(to, { kind: "dispatch", id, body: { payload: { ...payload, id } } });
     const now = Date.now();
-    await dxdb.outbox.add({
-      id, peer: to, kind, frame: sealed, status: "pending",
-      attempts: 0, nextAttemptAt: now, createdAt: now, updatedAt: now,
+    // Sealing is asynchronous. A user may delete the original message while
+    // this frame is being encrypted; atomically check its tombstone BEFORE
+    // the sealed frame can enter the outbound queue.
+    await dxdb.transaction("rw", [dxdb.outbox, dxdb.lifecycle], async () => {
+      if (kind === "text_message" &&
+          !mayQueueOriginalText((await dxdb.lifecycle.get(deletedMessageKey(id)))?.data))
+        throw new Error("Original message was deleted before it could be queued");
+      const concurrent = await dxdb.outbox.get(id);
+      if (concurrent) {
+        if (concurrent.peer !== to || concurrent.kind !== kind)
+          throw new Error("Dispatch ID already belongs to a different destination or event");
+        return;
+      }
+      await dxdb.outbox.add({
+        id, peer: to, kind, frame: sealed, status: "pending",
+        attempts: 0, nextAttemptAt: now, createdAt: now, updatedAt: now,
+      });
     });
     return attemptOutbox(id);
   })();
@@ -419,7 +434,14 @@ async function attemptOutbox(id: string): Promise<boolean> {
   }
 }
 async function sendOutboxOnce(id: string): Promise<boolean> {
-  const rec = await dxdb.outbox.get(id);
+  const rec = await dxdb.transaction("r", [dxdb.outbox, dxdb.lifecycle], async () => {
+    const queued = await dxdb.outbox.get(id);
+    if (!queued) return undefined;
+    if (queued.kind === "text_message" &&
+        !mayQueueOriginalText((await dxdb.lifecycle.get(deletedMessageKey(id)))?.data))
+      return undefined;
+    return queued;
+  });
   if (!rec) return false;
   const ok = await ship(rec.peer, rec.frame, rec.id);
   const attempts = rec.attempts + 1;
