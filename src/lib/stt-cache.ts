@@ -1,42 +1,27 @@
-// Phase 3 §2 — Local STT cache. Avoids re-billing transcription of the same
-// audio. Keyed by a stable hash of the audio URL (Room-equivalent on web).
-
-const KEY = "trivo-stt-cache-v1";
+/**
+ * Private speech transcripts must not be persisted in plaintext localStorage.
+ * Retain only a small ephemeral in-memory cache until application shutdown.
+ */
+const LEGACY_KEY = "trivo-stt-cache-v1";
 const MAX_ENTRIES = 200;
+const cache = new Map<string, string>();
 
-type CacheMap = Record<string, { text: string; ts: number }>;
-
-function read(): CacheMap {
-  try {
-    const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as CacheMap) : {};
-  } catch {
-    return {};
-  }
+if (typeof window !== "undefined") {
+  try { window.localStorage.removeItem(LEGACY_KEY); }
+  catch { /* blocked storage means legacy cache is inaccessible */ }
 }
-
-function write(map: CacheMap): void {
-  try {
-    const entries = Object.entries(map);
-    if (entries.length > MAX_ENTRIES) {
-      entries.sort((a, b) => b[1].ts - a[1].ts);
-      const trimmed = Object.fromEntries(entries.slice(0, MAX_ENTRIES));
-      localStorage.setItem(KEY, JSON.stringify(trimmed));
-    } else {
-      localStorage.setItem(KEY, JSON.stringify(map));
-    }
-  } catch {
-    /* ignore */
-  }
+export function clearCachedTranscriptions(): void {
+  cache.clear();
 }
-
 export function getCachedTranscription(audioUrl: string): string | null {
-  const map = read();
-  return map[audioUrl]?.text ?? null;
+  return cache.get(audioUrl) ?? null;
 }
-
 export function cacheTranscription(audioUrl: string, text: string): void {
-  const map = read();
-  map[audioUrl] = { text, ts: Date.now() };
-  write(map);
+  if (!audioUrl || audioUrl.length > 2048 || !text || text.length > 100_000) return;
+  cache.delete(audioUrl);
+  cache.set(audioUrl, text);
+  if (cache.size > MAX_ENTRIES) {
+    const oldest = cache.keys().next().value;
+    if (oldest) cache.delete(oldest);
+  }
 }

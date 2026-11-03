@@ -20,7 +20,7 @@ function preference(key: string, fallback: boolean): boolean {
 /** Respect privacy preferences BEFORE constructing any notification payload. */
 export async function notifyIncomingMessage(title: string, body: string, policy: Omit<NotificationPolicyInput, "enabled"> = {}): Promise<void> {
   if (!shouldNotifyChat({ ...policy, enabled: preference("trivo-notifications", true) })) return;
-  const { title: safeTitle, body: safeBody } = safeNotificationText(title, body, preference("trivo-hide-content", false));
+  const { title: safeTitle, body: safeBody } = safeNotificationText(title, body, preference("trivo-hide-content", true));
 
   if (!isNative()) {
     if ("Notification" in window && Notification.permission === "granted") {

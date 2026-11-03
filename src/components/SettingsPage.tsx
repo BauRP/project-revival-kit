@@ -140,7 +140,7 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
     readStoredBoolean("trivo-notifications", true),
   );
   const [hideContent, setHideContent] = useState(() =>
-    readStoredBoolean("trivo-hide-content", false),
+    readStoredBoolean("trivo-hide-content", true),
   );
   const [dataSaver, setDataSaver] = useState(() => isDataSaverEnabled());
   const [coverTraffic, setCoverTraffic] = useState(() => readStoredBoolean("trivo-cover-traffic", false));
