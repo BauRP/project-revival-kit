@@ -17,6 +17,24 @@ export function canScrubImageType(mime: string): boolean {
   return ["image/jpeg", "image/png", "image/webp", "image/bmp"].includes(mime.toLowerCase());
 }
 
+/**
+ * Bound decoded canvas memory while preserving aspect ratio. 50-200 MP
+ * phone images would otherwise allocate enormous RGBA canvases during EXIF
+ * removal and crash the Android WebView before the file could be sent.
+ */
+export function safeScrubCanvasSize(width: number, height: number): { width: number; height: number } {
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) ||
+      width <= 0 || height <= 0 || width > 65_535 || height > 65_535 ||
+      width * height > 250_000_000)
+    throw new Error("Image dimensions are unsupported for private metadata stripping");
+  const max = 4096;
+  const factor = Math.min(1, max / Math.max(width, height));
+  return {
+    width: Math.max(1, Math.round(width * factor)),
+    height: Math.max(1, Math.round(height * factor)),
+  };
+}
+
 export async function stripExifMetadata(file: File): Promise<File> {
   if (!file.type.startsWith("image/")) return file;
   if (!canScrubImageType(file.type))
@@ -30,16 +48,13 @@ export async function stripExifMetadata(file: File): Promise<File> {
       img.onerror = () => reject(new Error("Unable to decode image for metadata removal"));
       img.src = url;
     });
-    if (img.naturalWidth <= 0 || img.naturalHeight <= 0 ||
-        img.naturalWidth * img.naturalHeight > 80_000_000)
-      throw new Error("Image dimensions exceed safe metadata processing limits");
-
+    const bounds = safeScrubCanvasSize(img.naturalWidth, img.naturalHeight);
     const canvas = document.createElement("canvas");
-    canvas.width = img.naturalWidth;
-    canvas.height = img.naturalHeight;
+    canvas.width = bounds.width;
+    canvas.height = bounds.height;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Secure image re-encoding is unavailable");
-    ctx.drawImage(img, 0, 0);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
     // Canvas normally does not encode BMP; use JPEG and update the filename.
     const outputType = file.type === "image/bmp" ? "image/jpeg" : file.type;

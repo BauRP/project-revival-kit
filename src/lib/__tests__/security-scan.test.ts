@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { inspectAttachmentHeader, inspectAttachmentBlob, canScrubImageType } from "../security-scan";
+import { inspectAttachmentHeader, inspectAttachmentBlob, canScrubImageType, safeScrubCanvasSize } from "../security-scan";
 
 const check = (name: string, mime: string, bytes: number[]) =>
   inspectAttachmentHeader(name, mime, new Uint8Array(bytes));
@@ -50,5 +50,21 @@ describe("received attachment safety", () => {
   it("accepts a correctly labelled PNG from Tor", async () => {
     const blob = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])]);
     expect((await inspectAttachmentBlob("pic.png", "image/png", blob)).safe).toBe(true);
+  });
+});
+
+describe("bounded metadata-stripping canvas for high-resolution phones", () => {
+  it("keeps a normal screenshot at its original dimensions", () => {
+    expect(safeScrubCanvasSize(1920,1080)).toEqual({width:1920,height:1080});
+  });
+  it("downsamples a 50 MP camera photo before allocating a canvas", () => {
+    const size = safeScrubCanvasSize(8192,6144);
+    expect(size.width).toBe(4096);
+    expect(size.height).toBe(3072);
+  });
+  it("fails closed on impossible and corrupted dimensions", () => {
+    expect(() => safeScrubCanvasSize(0,100)).toThrow();
+    expect(() => safeScrubCanvasSize(2e9,2e9)).toThrow();
+    expect(() => safeScrubCanvasSize(NaN,1)).toThrow();
   });
 });
