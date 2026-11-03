@@ -11,6 +11,7 @@ import Dexie, { type Table } from "dexie";
 import { consumedMediaKey, isConsumedMediaRecord, isProtectedByConsumedTombstone, sanitizeRestoredOneTimeMessage } from "./one-time-policy";
 import { validateBackupStructure } from "./backup-validation";
 import { stripSessionMediaUrl } from "./backup-media-policy";
+import { assertPortableBackupFits } from "./backup-budget";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY } from "./message-deletion-policy";
 
 export interface ContactRecord {
@@ -319,7 +320,29 @@ function base64ToBlob(b64: string, mime: string): Blob {
   return new Blob([out], { type: mime });
 }
 
+/**
+ * The current JSON-based portable format cannot encode gigabyte blobs.
+ * Estimate a conservative bound before loading or base64-encoding them.
+ */
+async function assertExportPreflight(): Promise<void> {
+  const [contacts, messages, outbox, lifecycle, blobs] = await Promise.all([
+    dxdb.contacts.count(), dxdb.messages.count(), dxdb.outbox.count(),
+    dxdb.lifecycle.count(), dxdb.blobs.count(),
+  ]);
+  let mediaBytes = 0;
+  let textCodeUnits = 0;
+  await Promise.all([
+    dxdb.blobs.each((r) => { mediaBytes += r.size || 0; }),
+    dxdb.messages.each((r) => { textCodeUnits += r.text?.length || 0; }),
+  ]);
+  assertPortableBackupFits({
+    mediaBytes, textCodeUnits,
+    records: contacts + messages + outbox + lifecycle + blobs,
+  });
+}
+
 export async function exportDexieDump(): Promise<DexieDump> {
+  await assertExportPreflight();
   const [contacts, messages, outbox, lifecycle, blobs] = await Promise.all([
     dxdb.contacts.toArray(),
     dxdb.messages.toArray(),
