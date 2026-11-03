@@ -49,7 +49,10 @@ export async function toggleReaction(
     const updatedAt = nextReactionUpdatedAt(previous?.updatedAt || 0, Date.now());
     const record: LifecycleRecord = {
       key, chatKey: reactionChatKey(chatId), messageId,
-      data: { reactorId, emoji: nextEmoji }, updatedAt,
+      // Before the encrypted Tor outbox accepts this event, keep a durable
+      // recovery marker. Each toggle has a unique immutable dispatch ID.
+      data: { reactorId, emoji: nextEmoji, outboundEventId: crypto.randomUUID(),
+        outboundPending: isValidOnion(chatId) }, updatedAt,
     };
     await dxdb.lifecycle.put(record);
   });
@@ -73,24 +76,65 @@ onionRegisterIncomingListener((payload) => {
   }).catch((error) => console.warn("[reactions] unable to update UI", error));
 });
 
+/** A stale completion must never clear the pending flag of a newer toggle. */
+export function isSameReactionDispatch(
+  current: Record<string, unknown> | undefined,
+  expectedId: string,
+): boolean {
+  return current?.outboundEventId === expectedId &&
+    current.outboundPending === true;
+}
+
+async function persistReactionToOutbox(peer: string, messageId: string, self: string): Promise<void> {
+  if (!isValidOnion(peer)) return;
+  const key = reactionRecordKey(peer, messageId, self);
+  const stored = await dxdb.lifecycle.get(key);
+  if (!stored) return;
+  const emoji = stored.data.emoji;
+  if (emoji !== null && (typeof emoji !== "string" || emoji.length > 24)) return;
+  const eventId = typeof stored.data.outboundEventId === "string"
+    ? stored.data.outboundEventId : crypto.randomUUID();
+  // A false result means Tor delivery is pending, not that the durable
+  // encrypted outbox failed. Only rejected writes leave the marker intact.
+  await onionSendDispatch(peer, {
+    type: "message_reaction", id: eventId,
+    messageId, emoji, updatedAt: stored.updatedAt,
+  });
+  await dxdb.transaction("rw", dxdb.lifecycle, async () => {
+    const current = await dxdb.lifecycle.get(key);
+    if (!current || !isSameReactionDispatch(current.data, eventId)) return;
+    await dxdb.lifecycle.put({
+      ...current,
+      data: { ...current.data, outboundPending: false },
+    });
+  });
+}
+
 export function broadcastReaction(peer: string, messageId: string, _emoji: string | null): void {
   if (!isValidOnion(peer)) return;
-  // Read the committed state, not the possibly stale UI callback arguments.
-  // A slower earlier callback can never overwrite the newest toggle remotely.
-  void (async () => {
-    const self = await ensureLocalIdentity();
-    const stored = await dxdb.lifecycle.get(reactionRecordKey(peer, messageId, self));
-    if (!stored) return;
-    const emoji = stored.data.emoji;
-    if (emoji !== null && (typeof emoji !== "string" || emoji.length > 24)) return;
-    await onionSendDispatch(peer, {
-      type: "message_reaction",
-      id: crypto.randomUUID(),
-      messageId,
-      emoji,
-      updatedAt: stored.updatedAt,
-    });
-  })().catch((error) => console.warn("[reactions] durable sync failed", error));
+  void ensureLocalIdentity().then((self) =>
+    persistReactionToOutbox(peer, messageId, self))
+    .catch((error) => console.warn("[reactions] encrypted dispatch failed; will retry", error));
+}
+
+/** Recover reactions committed immediately before WebView death or a crash. */
+export async function recoverPendingReactionSync(): Promise<number> {
+  const self = await ensureLocalIdentity();
+  const rows = await dxdb.lifecycle.where("chatKey").startsWith("reaction::").toArray();
+  let recovered = 0;
+  for (const row of rows) {
+    if (row.data.reactorId !== self || row.data.outboundPending !== true ||
+        !row.chatKey.startsWith("reaction::")) continue;
+    const peer = row.chatKey.slice("reaction::".length);
+    if (!isValidOnion(peer)) continue;
+    try {
+      await persistReactionToOutbox(peer, row.messageId, self);
+      recovered++;
+    } catch (error) {
+      console.warn("[reactions] pending reaction retained for later recovery", error);
+    }
+  }
+  return recovered;
 }
 
 export function aggregate(

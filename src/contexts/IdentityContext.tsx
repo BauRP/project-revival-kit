@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode, useCallback 
 import { getOrCreateIdentity, getKeyFingerprint, eraseIdentityVault, type IdentityKeys } from "@/lib/crypto";
 import { getOrCreateUserId } from "@/lib/identity";
 import { migrateLegacyMessages } from "@/lib/p2p";
+import { recoverPendingReactionSync } from "@/lib/reactions";
 import { recoverInbox, onionStopForAccountDeletion, onionClearNativeInboxForAccountDeletion } from "@/lib/onion-engine";
 import { runAccountWipe } from "@/lib/account-wipe";
 import { nukeAllData } from "@/lib/storage";
@@ -49,6 +50,8 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
           await migrateLegacyMessages();
           const recovered = await recoverInbox();
           if (recovered > 0) console.info(`[trivo] recovered ${recovered} inbound frame(s)`);
+          void recoverPendingReactionSync().catch((error) =>
+            console.warn("[trivo] pending reaction recovery unavailable", error));
         } catch (error) {
           console.warn("[trivo] inbox recovery failed:", error);
         }
