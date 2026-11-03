@@ -14,8 +14,9 @@ import { isNative } from "./platform";
 import { encryptBackupV2, decryptBackupV2, type BackupEnvelopeV2 } from "./backup-crypto";
 import { getOrCreateIdentity, validateIdentityKeys } from "./crypto";
 import { makePortableBackupPackage, readPortableBackupPayload, assertMatchingBackupIdentity } from "./backup-package";
+import { createDatedBackupFilename, isSafeBackupFilename, newestBackupFilename } from "./backup-files";
 
-const FILE_NAME_DEFAULT = "TrivoBackup.tvc";
+
 const MAGIC = "TRIVO-BACKUP-V1";
 
 interface EncryptedEnvelope {
@@ -68,8 +69,9 @@ export interface BackupExportResult {
  */
 export async function exportBackup(
   password: string,
-  filename: string = FILE_NAME_DEFAULT,
+  filename: string = createDatedBackupFilename(),
 ): Promise<BackupExportResult> {
+  if (!isSafeBackupFilename(filename)) throw new Error("Invalid backup filename");
   // Include both the message database and the validated signing/exchange keys
   // in the password-encrypted payload. Plaintext keys are never written to disk.
   const identity = validateIdentityKeys(await getOrCreateIdentity());
@@ -108,13 +110,18 @@ export async function exportBackup(
  */
 export async function importBackup(
   password: string,
-  filename: string = FILE_NAME_DEFAULT,
+  filename?: string,
 ): Promise<void> {
   let json: string;
 
   if (isNative()) {
+    const fileToRead = filename ?? newestBackupFilename(
+      (await Filesystem.readdir({ path: "", directory: Directory.Documents })).files.map((f) => f.name),
+    );
+    if (!fileToRead) throw new Error("No local Trivo backup found");
+    if (!isSafeBackupFilename(fileToRead)) throw new Error("Invalid backup filename");
     const res = await Filesystem.readFile({
-      path: filename,
+      path: fileToRead,
       directory: Directory.Documents,
       encoding: Encoding.UTF8,
     });
