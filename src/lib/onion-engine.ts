@@ -34,7 +34,6 @@ import {
   getAllContacts,
   getBlob,
   hasBlob,
-  putBlob,
   putReceivedBlob,
   setContactLastSeen,
   type OutboxKind,
