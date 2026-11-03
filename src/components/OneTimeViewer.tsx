@@ -32,10 +32,13 @@ const OneTimeViewer = ({ open, url, mediaType, onClose }: OneTimeViewerProps) =>
   useEffect(() => {
     if (!isNative()) return;
     void secureView.setSecure({ enabled: open }).catch((error) =>
-      console.warn('[one-time] Android screen protection unavailable', error),
+      console.warn("[one-time] Android screen protection unavailable", error),
     );
+    // Important: the parent already enables FLAG_SECURE BEFORE the first
+    // one-time frame renders. Cleanup from the previous CLOSED state must
+    // never unset that flag during the transition into the viewer.
     return () => {
-      void secureView.setSecure({ enabled: false }).catch(() => undefined);
+      if (open) void secureView.setSecure({ enabled: false }).catch(() => undefined);
     };
   }, [open]);
 
