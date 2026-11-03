@@ -184,7 +184,6 @@ export async function onionInit(): Promise<string> {
       throw new Error("TOR_UNAVAILABLE: native Android runtime required");
     }
     await bindNativeListeners();
-    await replayNativeInbound();
     const res = await TorTransport.start({
       label: onion,
       secretKey: torServiceKeyFromSigningSecret(signingSecret as string),
@@ -202,6 +201,10 @@ export async function onionInit(): Promise<string> {
           ? "Published onion does not match the local identity key"
           : (res.lastError ?? null),
     });
+    // Replay after the hidden service starts, so deferred application ACKs
+    // have a usable route. Do not delay opening the app on a large backlog.
+    void replayNativeInbound().catch((error) =>
+      console.warn("[onion] native inbox replay failed", error));
     void drainOutbox();
     return onion;
   })();
@@ -214,19 +217,35 @@ export async function onionInit(): Promise<string> {
 
 let nativeReplay: Promise<void> | null = null;
 
-/** Native entries are deleted only after JS has persisted/decrypted the frame. */
+/**
+ * Native frames may have arrived while the WebView was stopped. The service
+ * already durably committed their sealed bytes before its transport ACK.
+ * Deleting a native entry is only safe AFTER acceptRawFrame has completed.
+ */
 export function replayNativeInbound(): Promise<void> {
   if (!isTorNativeAvailable()) return Promise.resolve();
   if (nativeReplay) return nativeReplay;
   const work = (async () => {
-    // Each batch is small to avoid shipping megabytes across the JS bridge.
+    // Bounded per invocation, giving rendering and other work opportunities.
+    // pollTick and the native event listener will continue replay as needed.
     for (let batch = 0; batch < 32; batch++) {
       const { entries } = await TorTransport.pendingInbound();
-      if (!entries.length) break;
+      if (entries.length === 0) break;
+      let progressed = 0;
       for (const entry of entries) {
-        await acceptRawFrame(entry.frame);
-        await TorTransport.acknowledgeInbound({ id: entry.id });
+        try {
+          await acceptRawFrame(entry.frame);
+          await TorTransport.acknowledgeInbound({ id: entry.id });
+          progressed++;
+        } catch (error) {
+          // One temporarily unprocessable frame must not prevent the other
+          // entries in the batch from committing to Dexie.
+          console.warn("[onion] retaining uncommitted native frame", error);
+        }
       }
+      // No progress means a durable failure; retry during a later poll,
+      // never busy-loop on a poisoned batch.
+      if (progressed === 0) break;
     }
   })();
   nativeReplay = work;
@@ -236,12 +255,19 @@ export function replayNativeInbound(): Promise<void> {
 
 async function bindNativeListeners(): Promise<void> {
   if (listenersBound) return;
-  listenersBound = true;
-  await TorTransport.addListener("onionMessage", () => {
-    // Trigger durable replay instead of trusting a transient JS event.
-    void replayNativeInbound();
+  // Registration is a two-step native operation. If either listener fails,
+  // remove any partial registration and allow the next startup to retry.
+  const message = await TorTransport.addListener("onionMessage", () => {
+    void replayNativeInbound().catch((error) =>
+      console.warn("[onion] native notification replay failed", error));
   });
-  await TorTransport.addListener("onionStatus", (status) => notifyStatus(status));
+  try {
+    await TorTransport.addListener("onionStatus", (status) => notifyStatus(status));
+    listenersBound = true;
+  } catch (error) {
+    await message.remove().catch(() => undefined);
+    throw error;
+  }
 }
 
 // ─── Egress ──────────────────────────────────────────────────

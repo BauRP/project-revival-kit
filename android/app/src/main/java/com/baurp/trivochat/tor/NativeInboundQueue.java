@@ -72,7 +72,9 @@ public final class NativeInboundQueue {
     private static File[] entries(File folder) {
         File[] files = folder.listFiles((dir, name) -> name.matches("[a-f0-9]{64}\\.frame"));
         if (files == null) return new File[0];
-        Arrays.sort(files, Comparator.comparing(File::getName));
+        // Frame hashes are not chronological. Replay oldest persisted frames first.
+        Arrays.sort(files, Comparator.comparingLong(File::lastModified)
+                .thenComparing(File::getName));
         return files;
     }
 
@@ -112,7 +114,13 @@ public final class NativeInboundQueue {
             int cap = Math.max(1, Math.min(maximum, 8));
             for (File file : files) {
                 if (result.size() >= cap) break;
-                byte[] bytes = new byte[(int) file.length()];
+                // Never allocate arbitrary lengths from a damaged queue file.
+                long length = file.length();
+                if (length <= 0 || length > Socks5Client.MAX_FRAME_BYTES) {
+                    Log.e(TAG, "Invalid persisted Tor frame length: " + file.getName());
+                    continue;
+                }
+                byte[] bytes = new byte[(int) length];
                 try (FileInputStream in = new FileInputStream(file)) {
                     int pos = 0;
                     while (pos < bytes.length) {
@@ -121,8 +129,14 @@ public final class NativeInboundQueue {
                         pos += n;
                     }
                 }
-                result.add(new Entry(file.getName().replace(".frame", ""),
-                        new String(bytes, StandardCharsets.UTF_8)));
+                String frame = new String(bytes, StandardCharsets.UTF_8);
+                // Reject corrupted on-disk entries without stopping the replay
+                // of unrelated sealed messages; retain the entry for diagnostics.
+                if (!hash(frame).equals(file.getName().replace(".frame", ""))) {
+                    Log.e(TAG, "Persisted Tor frame failed SHA-256 verification: " + file.getName());
+                    continue;
+                }
+                result.add(new Entry(file.getName().replace(".frame", ""), frame));
             }
             return result;
         }
