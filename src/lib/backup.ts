@@ -17,6 +17,7 @@ import { restoreIdentityOnFreshDevice } from "./identity-transfer";
 import { purgeExpiredLocalMessages } from "./p2p";
 import { makePortableBackupPackage, readPortableBackupPayload, assertMatchingBackupIdentity } from "./backup-package";
 import { createDatedBackupFilename, isSafeBackupFilename, newestBackupFilename } from "./backup-files";
+import { validateLegacyBackupEnvelope } from "./legacy-backup-policy";
 
 
 const MAGIC = "TRIVO-BACKUP-V1";
@@ -50,10 +51,12 @@ function legacyEncryptDump(dump: DexieDump, password: string): EncryptedEnvelope
 }
 
 function decryptDump(env: EncryptedEnvelope, password: string): DexieDump {
-  if (!env || env.magic !== MAGIC) throw new Error("Not a Trivo backup file");
+  // Validate malicious/corrupt legacy JSON BEFORE allocating ciphertext or
+  // invoking its costly NaCl decryption. V1 support remains read-only.
+  const safe = validateLegacyBackupEnvelope(env);
   const key = deriveKey(password);
-  const nonce = decodeBase64(env.nonce);
-  const ct = decodeBase64(env.ciphertext);
+  const nonce = decodeBase64(safe.nonce);
+  const ct = decodeBase64(safe.ciphertext);
   const plain = nacl.secretbox.open(ct, nonce, key);
   if (!plain) throw new Error("Wrong password or corrupted backup");
   return JSON.parse(encodeUTF8(plain)) as DexieDump;

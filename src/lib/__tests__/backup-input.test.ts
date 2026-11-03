@@ -15,3 +15,22 @@ describe("encrypted backup envelope timestamp",()=>{
     await expect(decryptBackupV2(bad,"long-enough-passphrase")).rejects.toThrow("Unsupported");
   });
 });
+
+import { validateLegacyBackupEnvelope } from "../legacy-backup-policy";
+describe("read-only legacy backup input bounds", () => {
+  const valid = {
+    magic: "TRIVO-BACKUP-V1" as const,
+    createdAt: 1000,
+    nonce: "A".repeat(32),
+    ciphertext: "AQID".repeat(6),
+  };
+  it("accepts a structurally valid historical envelope for later authentication", () => {
+    expect(validateLegacyBackupEnvelope(valid, 1000).magic).toBe("TRIVO-BACKUP-V1");
+  });
+  it("rejects oversized, invalid base64 and future-dated legacy input before decoding", () => {
+    expect(() => validateLegacyBackupEnvelope({ ...valid, nonce: "?" }, 1000)).toThrow();
+    expect(() => validateLegacyBackupEnvelope({ ...valid, ciphertext: "%%%" }, 1000)).toThrow();
+    expect(() => validateLegacyBackupEnvelope({ ...valid, createdAt: Number.MAX_SAFE_INTEGER }, 1000)).toThrow();
+    expect(() => validateLegacyBackupEnvelope({ ...valid, ciphertext: "A".repeat(240*1024*1024+4) }, 1000)).toThrow();
+  });
+});

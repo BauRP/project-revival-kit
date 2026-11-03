@@ -38,7 +38,7 @@ function makeFileId(): string {
 
 /**
  * Persist the file blob locally in Dexie and return a stable fileId.
- * Progress reflects the real chunked copy into the local store.
+ * Progress reports preparation, then 100% only after the IndexedDB commit.
  */
 export function uploadFileToTrivo(
   file: File | Blob,
@@ -76,25 +76,26 @@ export function uploadFileToTrivo(
     const total = working.size || 1;
     onProgress?.({ loaded: 0, total, percent: 0 });
 
-    const CHUNK = 512 * 1024;
-    let offset = 0;
-    const parts: Blob[] = [];
-    while (offset < working.size) {
+    // Do not allocate an array of ~2000 slices and reassemble a 1 GB Blob.
+    // The validated File/Blob is already immutable and can be written into
+    // IndexedDB directly. Preparation progress is capped below 100% until
+    // the transaction has committed (older code falsely showed completion).
+    const PREPARE_CHUNK = 8 * 1024 * 1024;
+    for (let offset = 0; offset < working.size; offset += PREPARE_CHUNK) {
       if (aborted) throw new Error("Upload aborted");
-      const end = Math.min(offset + CHUNK, working.size);
-      parts.push(working.slice(offset, end));
-      offset = end;
-      onProgress?.({
-        loaded: offset,
-        total,
-        percent: total > 0 ? Math.min(100, (offset / total) * 100) : 100,
-      });
-      await new Promise((r) => setTimeout(r, 0));
+      const accounted = Math.min(offset + PREPARE_CHUNK, working.size);
+      onProgress?.({ loaded: accounted, total,
+        percent: Math.min(95, Math.floor(accounted / total * 95)) });
+      if (accounted < working.size)
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
     }
     if (aborted) throw new Error("Upload aborted");
-
-    const blob = new Blob(parts, { type: outputMime });
-    await putBlob(fileId, blob, outputName, outputMime);
+    await putBlob(fileId, working, outputName, outputMime);
+    if (aborted) {
+      // Cancellation during the actual disk commit must not leave an orphan.
+      await dxdb.blobs.delete(fileId);
+      throw new Error("Upload aborted");
+    }
     onProgress?.({ loaded: total, total, percent: 100 });
     return { fileId, prepared: working, name: outputName, mimeType: outputMime, size: working.size };
   })();
