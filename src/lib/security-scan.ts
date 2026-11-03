@@ -74,6 +74,59 @@ export function simulateSecurityScan(
 }
 
 /**
+ * Offline signature checks for a file chosen for upload. A filename or MIME
+ * type alone can be forged. This does NOT certify the file as malware-free.
+ */
+export function inspectAttachmentHeader(
+  fileName: string, declaredMime: string, header: Uint8Array,
+): ScanResult {
+  const byName = simulateSecurityScan(fileName);
+  if (!byName.safe) return byName;
+  const blocked = (): ScanResult => ({ safe: false, threatType: "malware", fileName });
+  const mime = declaredMime.toLowerCase().split(";")[0].trim();
+  const name = fileName.toLowerCase();
+  const starts = (...bytes: number[]) => bytes.every((b, i) => header[i] === b);
+  const ascii = (start: number, count: number) =>
+    String.fromCharCode(...header.subarray(start, start + count));
+  // Known executable formats, scripts and active HTML/SVG are not safe to
+  // silently accept just because they have been renamed to .jpg or .txt.
+  if (starts(0x4d, 0x5a) || starts(0x7f, 0x45, 0x4c, 0x46) ||
+      starts(0x23, 0x21) || starts(0xfe, 0xed, 0xfa, 0xce) ||
+      starts(0xcf, 0xfa, 0xed, 0xfe) ||
+      /^(\s*<(!doctype\s+html|html|script|svg)\b)/i.test(ascii(0, 64)))
+    return blocked();
+  if (/\.(svg|svgz|html?|xhtml|hta|apk|jar|dex|so|dll|msi)$/i.test(name) ||
+      mime === "image/svg+xml" || mime === "text/html" ||
+      mime === "application/x-msdownload")
+    return blocked();
+
+  const detectedImage =
+    starts(0xff, 0xd8, 0xff) ? "image/jpeg" :
+    starts(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a) ? "image/png" :
+    (ascii(0, 6) === "GIF87a" || ascii(0, 6) === "GIF89a") ? "image/gif" :
+    (ascii(0, 4) === "RIFF" && ascii(8, 4) === "WEBP") ? "image/webp" :
+    starts(0x42, 0x4d) ? "image/bmp" :
+    (ascii(4, 4) === "ftyp" && /^(heic|heix|hevc|mif1)$/.test(ascii(8, 4))) ? "image/heic" :
+    (ascii(4, 4) === "ftyp" && /^(avif|avis)$/.test(ascii(8, 4))) ? "image/avif" :
+    null;
+
+  if (mime.startsWith("image/")) {
+    const normalMime = mime === "image/jpg" ? "image/jpeg" :
+      mime === "image/heif" ? "image/heic" : mime;
+    if (!detectedImage || normalMime !== detectedImage) return blocked();
+  }
+  // A PDF declaring itself to be an image or vice versa is rejected above.
+  // Non-image types are still untrusted attachments, never "scanned clean".
+  return { safe: true, fileName };
+}
+
+export async function inspectAttachmentFile(file: File): Promise<ScanResult> {
+  // Read only the signature, never a gigabyte-scale attachment into memory.
+  const header = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+  return inspectAttachmentHeader(file.name, file.type, header);
+}
+
+/**
  * Get localized blocked file message
  */
 export function getBlockedFileMessage(

@@ -30,6 +30,7 @@ type Sender = (item: ScheduledItem) => Promise<void> | void;
 let dbPromise: Promise<IDBDatabase> | null = null;
 const senders = new Map<string, Sender>(); // chatId → sender
 let timer: ReturnType<typeof setTimeout> | null = null;
+let wakeGeneration = 0;
 
 function openDB(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
@@ -103,6 +104,7 @@ export async function enqueue(
 
 export async function remove(id: string): Promise<void> {
   await tx("readwrite", (s) => s.delete(id));
+  scheduleNextWake();
 }
 
 export function registerSender(chatId: string, send: Sender): () => void {
@@ -110,6 +112,7 @@ export function registerSender(chatId: string, send: Sender): () => void {
   scheduleNextWake();
   return () => {
     if (senders.get(chatId) === send) senders.delete(chatId);
+    scheduleNextWake();
   };
 }
 
@@ -165,12 +168,13 @@ async function fireDue() {
 
 function scheduleNextWake() {
   if (typeof window === "undefined") return;
+  const generation = ++wakeGeneration;
   if (timer) {
     clearTimeout(timer);
     timer = null;
   }
   void listOutbox().then((items) => {
-    if (!items.length) return;
+    if (generation !== wakeGeneration || !items.length) return;
     const next = items[0];
     const delay = Math.max(0, scheduledWakeAt(next) - Date.now());
     // Cap at 60s so we re-evaluate periodically (handles registerSender races).
@@ -179,6 +183,7 @@ function scheduleNextWake() {
       scheduleNextWake();
     }), Math.min(delay, 60_000));
   }).catch((error) => {
+    if (generation !== wakeGeneration) return;
     console.error("[outbox] unable to read pending messages", error);
     timer = setTimeout(scheduleNextWake, 30_000);
   });
@@ -186,6 +191,7 @@ function scheduleNextWake() {
 
 /** Release the scheduled IndexedDB connection before a full account wipe. */
 export async function closeScheduledOutbox(): Promise<void> {
+  ++wakeGeneration; // invalidate asynchronous wake planners during account wipe
   if (timer) { clearTimeout(timer); timer = null; }
   senders.clear();
   const pending = dbPromise;

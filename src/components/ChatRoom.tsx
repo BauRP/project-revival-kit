@@ -48,6 +48,7 @@ import { toast } from "@/hooks/use-toast";
 import { generateUUIDv4 } from "@/lib/local-peer-cache";
 import {
   simulateSecurityScan,
+  inspectAttachmentFile,
   stripExifMetadata,
   getBlockedFileMessage,
 } from "@/lib/security-scan";
@@ -1094,8 +1095,10 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
 
     beginUpload(file.name, file.size);
     try {
-      file = await stripExifMetadata(file);
-      const scanResult = simulateSecurityScan(file.name, false);
+      // Reject renamed executables and files whose image headers contradict
+      // their MIME type before any image decoding or upload begins.
+      const scanResult = await inspectAttachmentFile(file);
+      if (scanResult.safe) file = await stripExifMetadata(file);
       if (!scanResult.safe) {
         toast({
           title: getBlockedFileMessage(language, file.type.startsWith("image") ? "photo" : "file")
