@@ -1403,17 +1403,30 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
         toast({ title: HISTORY_PROTECTION_NOTICE });
         return;
       }
-      await Promise.all(ids.map((id) => fsDeleteForEveryone(userId, chatId, id)));
-      setLifecycle((prev) => {
-        const next = { ...prev };
-        for (const id of ids) {
-          const cur = next[id] || { messageId: id };
-          next[id] = { ...cur, deletedForEveryone: true };
-        }
-        return next;
-      });
+      // A batch can succeed for some messages and fail for others. Reflect
+      // only those whose authenticated Tor deletion was durably queued and
+      // whose local plaintext was erased, never all-or-nothing fake success.
+      const results = await Promise.allSettled(ids.map((id) => fsDeleteForEveryone(userId, chatId, id)));
+      const committed = ids.filter((_, index) => results[index].status === "fulfilled");
+      if (committed.length) {
+        setLifecycle((prev) => {
+          const next = { ...prev };
+          for (const id of committed) {
+            const cur = next[id] || { messageId: id };
+            next[id] = { ...cur, deletedForEveryone: true, editedText: undefined, isEdited: false };
+          }
+          return next;
+        });
+      }
       setDeleteSheetOpen(false);
       setSelectedIds([]);
+      if (committed.length !== ids.length) {
+        toast({
+          title: "Не все сообщения удалось удалить у всех",
+          description: `Выполнено: ${committed.length} из ${ids.length}. Остальные можно повторить.`,
+          variant: "destructive",
+        });
+      }
     } catch (error) {
       toast({ title: error instanceof Error ? error.message : "Не удалось удалить сообщение", variant: "destructive" });
       console.error("[ChatRoom] delete for everyone failed", error);
