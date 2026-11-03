@@ -108,6 +108,19 @@ public class TorTransportPlugin extends Plugin {
         });
     }
 
+    /** Explicit account wipe only, never invoked on ordinary app closure. */
+    @PluginMethod
+    public void clearInbound(PluginCall call) {
+        io.execute(() -> {
+            try {
+                NativeInboundQueue.clear(getContext());
+                call.resolve();
+            } catch (Exception error) {
+                call.reject("Cannot erase native Tor inbox", error);
+            }
+        });
+    }
+
     @PluginMethod
     public void start(PluginCall call) {
         String secretKey = call.getString("secretKey", null);

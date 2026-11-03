@@ -1002,6 +1002,19 @@ export function stopPolling(): void {
   pollTimer = null;
 }
 
+/** Account deletion must detect a failed stop, not silently continue
+ * and erase the identity while native Tor still holds it in memory.
+ */
+export async function onionStopForAccountDeletion(): Promise<void> {
+  stopPolling();
+  if (isTorNativeAvailable()) await TorTransport.stop();
+  notifyStatus({ ...TOR_UNAVAILABLE_STATUS });
+}
+
+export async function onionClearNativeInboxForAccountDeletion(): Promise<void> {
+  if (isTorNativeAvailable()) await TorTransport.clearInbound();
+}
+
 export async function onionShutdownNative(): Promise<void> {
   stopPolling();
   if (isTorNativeAvailable()) await TorTransport.stop().catch(() => undefined);

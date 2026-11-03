@@ -2,7 +2,8 @@ import { createContext, useContext, useState, useEffect, ReactNode, useCallback 
 import { getOrCreateIdentity, getKeyFingerprint, eraseIdentityVault, type IdentityKeys } from "@/lib/crypto";
 import { getOrCreateUserId } from "@/lib/identity";
 import { migrateLegacyMessages } from "@/lib/p2p";
-import { recoverInbox, onionShutdownNative } from "@/lib/onion-engine";
+import { recoverInbox, onionStopForAccountDeletion, onionClearNativeInboxForAccountDeletion } from "@/lib/onion-engine";
+import { runAccountWipe } from "@/lib/account-wipe";
 import { nukeAllData } from "@/lib/storage";
 import { safeStorage } from "@/lib/safe-storage";
 
@@ -72,10 +73,15 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
   const toggleStealth = useCallback(() => setStealthMode((p) => !p), []);
 
   const deleteAccount = useCallback(async () => {
-    // Stop native transports before removing the databases they use.
-    await onionShutdownNative();
-    await eraseIdentityVault();
-    await nukeAllData();
+    // Never erase the identity keys while the databases still exist.
+    // On an interrupted wipe, retaining the keys is safer than orphaning
+    // existing encrypted messages and making recovery impossible.
+    await runAccountWipe({
+      stopTransport: onionStopForAccountDeletion,
+      deleteDatabases: nukeAllData,
+      clearNativeInbound: onionClearNativeInboxForAccountDeletion,
+      eraseIdentityKeys: eraseIdentityVault,
+    });
     try {
       localStorage.clear();
     } catch {

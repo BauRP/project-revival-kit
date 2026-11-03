@@ -148,6 +148,21 @@ public final class NativeInboundQueue {
         }
     }
 
+    /** Account deletion: erase every queued sealed frame, including atomic
+     * write remnants. This must never be called on ordinary Tor shutdown.
+     */
+    public static void clear(Context context) throws IOException {
+        synchronized (LOCK) {
+            File dir = folder(context);
+            File[] files = dir.listFiles();
+            if (files == null) throw new IOException("Cannot list native inbox");
+            for (File file : files) {
+                if (!file.isFile() || !file.delete())
+                    throw new IOException("Cannot erase native inbound queue file");
+            }
+        }
+    }
+
     /** Delete only after a durable JS-side commit or explicit invalid-frame rejection. */
     public static boolean acknowledge(Context context, String id) throws IOException {
         if (!safeId(id)) throw new IOException("Invalid inbound queue ID");
