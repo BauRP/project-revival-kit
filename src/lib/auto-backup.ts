@@ -34,8 +34,13 @@ function isAutoBackupState(x: unknown): x is AutoBackupState {
     Number.isSafeInteger((x as AutoBackupState).lastSavedAt);
 }
 export function shouldRunAutomaticBackup(lastSavedAt: number, now = Date.now()): boolean {
-  return Number.isSafeInteger(lastSavedAt) && lastSavedAt >= 0 &&
-    now >= lastSavedAt + AUTO_BACKUP_INTERVAL_MS;
+  if (!Number.isSafeInteger(lastSavedAt) || lastSavedAt < 0 ||
+      !Number.isSafeInteger(now) || now < 0) return false;
+  // A device may boot with the wrong clock and later sync to the real time.
+  // Do not silently stop all backups for months because lastSavedAt lies in
+  // the future. A fresh encrypted snapshot is safer than a stale archive.
+  if (lastSavedAt > now + 10 * 60_000) return true;
+  return now >= lastSavedAt + AUTO_BACKUP_INTERVAL_MS;
 }
 export async function isAutomaticBackupEnabled(): Promise<boolean> {
   if (!isNative()) return false;
