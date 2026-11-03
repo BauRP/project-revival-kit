@@ -14,6 +14,7 @@ import { isNative } from "./platform";
 import { encryptBackupV2, decryptBackupV2, type BackupEnvelopeV2 } from "./backup-crypto";
 import { getOrCreateIdentity, validateIdentityKeys } from "./crypto";
 import { restoreIdentityOnFreshDevice } from "./identity-transfer";
+import { purgeExpiredLocalMessages } from "./p2p";
 import { makePortableBackupPackage, readPortableBackupPayload, assertMatchingBackupIdentity } from "./backup-package";
 import { createDatedBackupFilename, isSafeBackupFilename, newestBackupFilename } from "./backup-files";
 
@@ -153,6 +154,9 @@ export async function importBackup(
     }
   }
   await importDexieDump(dump);
+  // An older archive must not make already-expired disappearing messages
+  // visible again, even briefly after restore.
+  await purgeExpiredLocalMessages();
   return { identityChanged: false };
 }
 

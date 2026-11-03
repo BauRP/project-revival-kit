@@ -8,6 +8,7 @@ import { dbGet, dbGetAll, dbGetStrict, dbGetAllStrict, dbPut, dbPutStrict } from
 import { duplicateMessageMatches } from "./inbound-identity";
 import { sanitizeRestoredOneTimeMessage } from "./one-time-policy";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia } from "./message-deletion-policy";
+import { hasExpiredMessage } from "./message-retention";
 import { dxdb, upsertContact, type StoredMessage } from "./dexie-db";
 import {
   onionEnsureConnection,
@@ -179,8 +180,7 @@ export async function deleteLocalMessage(id: string): Promise<void> {
 
 export async function purgeExpiredLocalMessages(): Promise<number> {
   const now = Date.now();
-  return eraseLocalMessages((m) =>
-    typeof m.deleteAt === "number" && Number.isFinite(m.deleteAt) && m.deleteAt <= now);
+  return eraseLocalMessages((m) => hasExpiredMessage(m.deleteAt, now));
 }
 
 export async function clearMessagesForChat(peer: string): Promise<void> {

@@ -9,6 +9,7 @@ import { safeStorage } from "@/lib/safe-storage";
 import { startAutomaticBackupMonitor, pauseAutomaticBackupsForWipe } from "@/lib/auto-backup";
 import { startNetworkNoise, stopNetworkNoise } from "@/lib/stealth";
 import { isNative } from "@/lib/platform";
+import { startMessageRetentionMonitor } from "@/lib/message-retention";
 
 interface IdentityContextType {
   identity: IdentityKeys | null;
@@ -68,6 +69,13 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
       if (initTimer !== undefined) window.clearTimeout(initTimer);
     };
   }, []);
+
+  // Enforce disappearing-message deadlines without relying on the chat
+  // screen being open. Crash/restart and foreground recovery run immediately.
+  useEffect(() => {
+    if (!identity) return;
+    return startMessageRetentionMonitor();
+  }, [identity]);
 
   // Run only after the local identity has been initialized; never block the
   // first paint or attempt expensive snapshots when the app is backgrounded.
