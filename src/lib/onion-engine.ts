@@ -750,7 +750,16 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         const sender = String(payload.from || "");
         const recipient = String(payload.to || "");
         const expectedChatKey = [sender, recipient].sort().join("__");
-        const patch = (payload.patch || {}) as Record<string, unknown>;
+        // An authenticated sender may still send null, arrays or primitives.
+        // "in" checks inside history protection must never throw on them,
+        // leaving a hostile frame stuck in the durable inbox.
+        const patchInput = payload.patch;
+        if (!patchInput || typeof patchInput !== "object" || Array.isArray(patchInput)) {
+          rejected = true;
+          await dxdb.inbox_raw.delete(rawId);
+          return;
+        }
+        const patch = patchInput as Record<string, unknown>;
         const protectedRecord = await dxdb.lifecycle.get(`history-protection::local::${sender}`);
         if (deniedByHistoryProtection(protectedRecord?.data.enabled === true, patch)) {
           rejected = true;
