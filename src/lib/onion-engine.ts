@@ -35,6 +35,7 @@ import {
   getBlob,
   hasBlob,
   putBlob,
+  putReceivedBlob,
   setContactLastSeen,
   type OutboxKind,
   type OutboxRecord,
@@ -1027,9 +1028,13 @@ async function assemblePersistedBlob(fileId: string, from: string): Promise<bool
   const first = ordered[0];
   // Recheck after digest verification: revocation can race a large assembly.
   if (isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data)) return false;
-  await putBlob(fileId, new Blob(parts, { type: first.mimeType }), first.name, first.mimeType);
+  const saved = await putReceivedBlob(
+    fileId, new Blob(parts, { type: first.mimeType }),
+    first.name, first.mimeType, from, await ensureLocalIdentity(),
+  );
+  // A deleted message must not leave completed but unreferenced chunks behind.
   await dxdb.partial_chunks.where("fileId").equals(fileId).delete();
-  return true;
+  return saved;
 }
 
 /** Only request encrypted media from its authenticated message sender. */

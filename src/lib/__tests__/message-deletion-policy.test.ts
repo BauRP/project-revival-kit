@@ -100,3 +100,15 @@ describe("local deletion lifecycle cannot retain prior plaintext", () => {
     expect(JSON.stringify(shell)).not.toContain("SECRET");
   });
 });
+
+import { isExpectedIncomingAttachment } from "../message-deletion-policy";
+describe("late Tor media after local message deletion", () => {
+  const message={from:"sender",to:"recipient",media:{fileId:"f_secret"}};
+  it("only stores a received file belonging to the authenticated message", () => {
+    expect(isExpectedIncomingAttachment(message,"sender","recipient","f_secret")).toBe(true);
+    expect(isExpectedIncomingAttachment(message,"other","recipient","f_secret")).toBe(false);
+    expect(isExpectedIncomingAttachment(message,"sender","other","f_secret")).toBe(false);
+    expect(isExpectedIncomingAttachment({...message,media:undefined},"sender","recipient","f_secret")).toBe(false);
+    expect(isExpectedIncomingAttachment(message,"sender","recipient","other")).toBe(false);
+  });
+});

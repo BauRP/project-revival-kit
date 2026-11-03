@@ -12,7 +12,7 @@ import { consumedMediaKey, isConsumedMediaRecord, isProtectedByConsumedTombstone
 import { validateBackupStructure } from "./backup-validation";
 import { stripSessionMediaUrl } from "./backup-media-policy";
 import { assertPortableBackupFits } from "./backup-budget";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, unusedBackupMedia } from "./message-deletion-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, unusedBackupMedia, isExpectedIncomingAttachment } from "./message-deletion-policy";
 
 export interface ContactRecord {
   onion: string;
@@ -181,6 +181,38 @@ export async function putBlob(
   });
   // Opportunistic cache enforcement (non-blocking, errors swallowed).
   void enforceMediaCacheLimit().catch(() => undefined);
+}
+
+/**
+ * Commit received Tor media only while a non-deleted message from that
+ * authenticated peer still references it. This check shares one IndexedDB
+ * transaction with the write: a deletion cannot race between the check and
+ * the write and silently recreate an already removed attachment.
+ */
+export async function putReceivedBlob(
+  fileId: string, data: Blob, name: string, mimeType: string,
+  sender: string, recipient: string,
+): Promise<boolean> {
+  const saved = await dxdb.transaction("rw",
+    [dxdb.messages, dxdb.lifecycle, dxdb.blobs], async () => {
+      if (isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data))
+        return false;
+      const candidates = await dxdb.messages.where("from").equals(sender).toArray();
+      for (const msg of candidates) {
+        if (!isExpectedIncomingAttachment(msg, sender, recipient, fileId)) continue;
+        if (isDeletedMessageRecord((await dxdb.lifecycle.get(deletedMessageKey(msg.id)))?.data))
+          continue;
+        await dxdb.blobs.put({
+          fileId, mimeType: mimeType || data.type || "application/octet-stream",
+          name: name || \`file-\${fileId}\`,
+          size: data.size, data, storedAt: Date.now(),
+        });
+        return true;
+      }
+      return false;
+    });
+  if (saved) void enforceMediaCacheLimit().catch(() => undefined);
+  return saved;
 }
 
 export async function getBlob(fileId: string): Promise<BlobRecord | undefined> {

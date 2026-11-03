@@ -104,3 +104,16 @@ export function deletedLifecycleShell(
       ? previous.remoteUpdatedAt : undefined,
   };
 }
+
+/** An inbound Tor file may only be saved while its original received message
+ * still refers to that exact opaque file ID.
+ */
+export function isExpectedIncomingAttachment(
+  message: { from: string; to: string; media?: unknown },
+  sender: string,
+  recipient: string,
+  fileId: string,
+): boolean {
+  return !!fileId && message.from === sender && message.to === recipient &&
+    messageMediaFileId(message) === fileId;
+}
