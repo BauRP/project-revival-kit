@@ -1363,26 +1363,33 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     setSelectedIds([]);
   };
 
-  // Optimistic UI: tombstone appears instantly via local lifecycle state,
-  // then the local lifecycle write reconciles. Real text is never re-rendered.
+  // Privacy deletion is confirmed ONLY after the IndexedDB transaction
+  // commits. An optimistic tombstone would falsely tell the user the private
+  // text was erased when the disk is full or storage is unavailable.
   const handleDeleteForMe = async () => {
     if (!userId || selectedMessages.length === 0) return;
     const ids = selectedMessages.map((m) => m.id);
-    setLifecycle((prev) => {
-      const next = { ...prev };
-      for (const id of ids) {
-        const cur = next[id] || { messageId: id };
-        const deletedFor = Array.from(new Set([...(cur.deletedFor || []), userId]));
-        next[id] = { ...cur, deletedFor };
-      }
-      return next;
-    });
     setDeleteSheetOpen(false);
     setSelectedIds([]);
-    try {
-      await Promise.all(selectedMessages.map((m) => fsDeleteForMe(userId, chatId, m.id)));
-    } catch (e) {
-      console.error("[ChatRoom] delete for me failed", e);
+    const results = await Promise.allSettled(ids.map((id) => fsDeleteForMe(userId, chatId, id)));
+    const committed = ids.filter((_, index) => results[index].status === "fulfilled");
+    if (committed.length) {
+      setLifecycle((prev) => {
+        const next = { ...prev };
+        for (const id of committed) {
+          const cur = next[id] || { messageId: id };
+          const deletedFor = Array.from(new Set([...(cur.deletedFor || []), userId]));
+          next[id] = { ...cur, editedText: undefined, deletedFor };
+        }
+        return next;
+      });
+    }
+    if (committed.length !== ids.length) {
+      toast({
+        title: "Не все сообщения удалось удалить",
+        description: `Удалено: ${committed.length} из ${ids.length}. Проверьте свободное место и повторите.`,
+        variant: "destructive",
+      });
     }
   };
 
