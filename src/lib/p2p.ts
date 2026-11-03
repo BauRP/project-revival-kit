@@ -140,7 +140,10 @@ async function eraseLocalMessages(
     const ids = removed.map((m) => m.id);
     const idSet = new Set(ids);
     const retained = all.filter((m) => !idSet.has(m.id));
-    const orphanedFiles = findUnreferencedMedia(removed, retained);
+    const orphanedFiles = findUnreferencedMedia(
+      removed.map((m) => ({ media: m.media })),
+      retained.map((m) => ({ media: m.media })),
+    );
     const now = Date.now();
     for (const id of ids) {
       await dxdb.lifecycle.put({

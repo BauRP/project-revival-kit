@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp } from "../lifecycle-auth";
+import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp, canMutateDeletedMessage } from "../lifecycle-auth";
 const from = "alice.onion", to = "bob.onion", ck = [from,to].sort().join("__");
 describe("authenticated lifecycle commands", () => {
   it("allows only the original author to edit or delete for everyone", () => {
@@ -30,5 +30,16 @@ describe("lifecycle mutation invariants",()=>{
     expect(canApplyRemoteLifecycle({from,to},from,to,ck,{pinnedAt:123,pinnedBy:from})).toBe(true);
     expect(canApplyRemoteLifecycle({from,to},from,to,ck,{clearPin:true,pinnedAt:123,pinnedBy:from})).toBe(false);
     expect(canApplyRemoteLifecycle({from,to},from,to,ck,{deletedForEveryone:true,isEdited:true,editedText:"x"})).toBe(false);
+  });
+});
+
+
+describe("permanent remote deletion", () => {
+  it("refuses a later authenticated edit or pin after delete-for-everyone", () => {
+    const previous = { deletedForEveryone: true, remoteUpdatedAt: 100 };
+    expect(canMutateDeletedMessage(previous, { isEdited: true, editedText: "resurrect" })).toBe(false);
+    expect(canMutateDeletedMessage(previous, { pinnedAt: 200, pinnedBy: from })).toBe(false);
+    expect(canMutateDeletedMessage(previous, { deletedForEveryone: true })).toBe(false);
+    expect(canMutateDeletedMessage({}, { isEdited: true, editedText: "before deletion" })).toBe(true);
   });
 });

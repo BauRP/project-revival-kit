@@ -51,7 +51,7 @@ import { deletedMessageKey, isDeletedMessageRecord } from "./message-deletion-po
 import { duplicateMessageMatches } from "./inbound-identity";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, type DispatchCommitResult } from "./dispatch-commit";
-import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp } from "./lifecycle-auth";
+import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp, canMutateDeletedMessage } from "./lifecycle-auth";
 
 export const ONION_SERVICE_PORT = 8443;
 export const POLL_INTERVAL_MS = 5_000;
@@ -717,6 +717,11 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         const key = `${ck}::${mid}`;
         const priorRecord = await dxdb.lifecycle.get(key);
         const prev = priorRecord?.data || { messageId: mid };
+        if (!canMutateDeletedMessage(prev, patch)) {
+          rejected = true;
+          await dxdb.inbox_raw.delete(rawId);
+          return;
+        }
         if (!acceptsLifecycleTimestamp(prev.remoteUpdatedAt, payload.updatedAt)) {
           await dxdb.inbox_raw.delete(rawId);
           return;

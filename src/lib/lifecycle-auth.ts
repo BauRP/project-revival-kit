@@ -60,3 +60,17 @@ export function acceptsLifecycleTimestamp(
       incomingAt <= 0 || incomingAt > now + 10 * 60_000) return false;
   return typeof lastRemoteAt !== "number" || incomingAt > lastRemoteAt;
 }
+
+
+/**
+ * Delete-for-everyone is terminal for the message on this recipient.
+ * A compromised or outdated sender must not revive a deleted message by
+ * delivering another (larger timestamp) signed edit/pin command.
+ */
+export function canMutateDeletedMessage(
+  previous: Record<string, unknown> | null | undefined,
+  patch: Record<string, unknown>,
+): boolean {
+  if (previous?.deletedForEveryone !== true) return true;
+  return false;
+}
