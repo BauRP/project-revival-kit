@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { shouldNotifyChat, safeNotificationText } from "../notification-policy";
+import { shouldNotifyChat, safeNotificationText, nextLocalNotificationId } from "../notification-policy";
+
 describe("offline notification privacy", () => {
   it("suppresses disabled, muted, blocked and silent notifications", () => {
     expect(shouldNotifyChat({enabled:false})).toBe(false);
@@ -13,5 +14,17 @@ describe("offline notification privacy", () => {
       title:"Trivo Chat",body:"Новое сообщение",
     });
     expect(safeNotificationText("Peer","Hello",false)).toEqual({title:"Peer",body:"Hello"});
+  });
+  it("removes invisible controls and line breaks from untrusted remote names", () => {
+    expect(safeNotificationText("Peer\nSystem", "Hello\r\nworld", false))
+      .toEqual({title:"Peer System",body:"Hello world"});
+    expect(safeNotificationText("", "", false)).toEqual({
+      title:"Trivo Chat",body:"Новое сообщение",
+    });
+  });
+  it("never replaces two consecutive messages due to the same Android ID", () => {
+    const first=nextLocalNotificationId(), second=nextLocalNotificationId();
+    expect(first).toBeGreaterThan(0);
+    expect(second).not.toBe(first);
   });
 });

@@ -6,7 +6,7 @@ import {
   translateWithBundledDictionary,
 } from "@/lib/translation-config";
 import { isNative } from "@/lib/platform";
-import { safeNotificationText, shouldNotifyChat, type NotificationPolicyInput } from "./notification-policy";
+import { safeNotificationText, shouldNotifyChat, nextLocalNotificationId, type NotificationPolicyInput } from "./notification-policy";
 
 function preference(key: string, fallback: boolean): boolean {
   try {
@@ -35,7 +35,7 @@ export async function notifyIncomingMessage(title: string, body: string, policy:
     await LocalNotifications.schedule({
       notifications: [
         {
-          id: Date.now() % 2147483647,
+          id: nextLocalNotificationId(),
           title: safeTitle,
           body: safeBody,
           smallIcon: "ic_launcher_foreground",
