@@ -37,5 +37,7 @@ describe("metadata privacy policy", () => {
 
   it("rejects images with no declared MIME, preventing unsanitized upload", () => {
     expect(check("photo.jpg", "", [0xff, 0xd8, 0xff, 0xe0]).safe).toBe(false);
+    expect(check("photo.txt", "text/plain", [0xff, 0xd8, 0xff, 0xe0]).safe).toBe(false);
+    expect(check("photo.bin", "application/octet-stream", [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).safe).toBe(false);
   });
 });

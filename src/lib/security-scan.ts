@@ -118,8 +118,9 @@ export function inspectAttachmentHeader(
     (ascii(4, 4) === "ftyp" && /^(avif|avis)$/.test(ascii(8, 4))) ? "image/avif" :
     null;
 
-  // Missing or forged MIME on an image must not bypass EXIF stripping.
-  if (!mime && detectedImage) return blocked();
+  // A renamed/incorrectly labelled image must never bypass metadata
+  // stripping by claiming to be text/plain or application/octet-stream.
+  if (detectedImage && !mime.startsWith("image/")) return blocked();
   if (mime.startsWith("image/")) {
     const normalMime = mime === "image/jpg" ? "image/jpeg" :
       mime === "image/heif" ? "image/heic" : mime;
