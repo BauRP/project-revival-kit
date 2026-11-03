@@ -1,4 +1,6 @@
 import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem, sameScheduledIdentity } from "./scheduled-policy";
+import { protectScheduledText, revealScheduledText, isSealedScheduledText } from "./scheduled-encryption";
+import { isNative } from "./platform";
 // Local outbox for Scheduled Send (Turn 2).
 //
 // Persists pending messages in IndexedDB so a page reload doesn't lose them.
@@ -106,7 +108,12 @@ export async function enqueue(
   };
   validateScheduledItem(full);
   if (closed) throw new Error("Scheduled outbox is closed");
-  await serialized(() => tx("readwrite", (s) => s.add(full)));
+  // Never persist unencrypted text on Android. A Keystore failure aborts
+  // enqueue rather than quietly saving a plaintext fallback.
+  await serialized(async () => {
+    const persisted: ScheduledItem = { ...full, text: await protectScheduledText(full.text) };
+    await tx("readwrite", (s) => s.add(persisted));
+  });
   scheduleNextWake();
   return full;
 }
@@ -145,10 +152,12 @@ async function fireDue() {
           "readonly", (store) => store.get(item.id) as IDBRequest<ScheduledItem | undefined>,
         );
         if (!current || !sameScheduledIdentity(item, current)) return;
-        validateScheduledItem(current);
+        const decrypted = await revealScheduledText(current.text);
+        const dispatch: ScheduledItem = { ...current, text: decrypted };
+        validateScheduledItem(dispatch);
         const sender = senders.get(current.chatId);
         if (sender) {
-          await sender(current);
+          await sender(dispatch);
         } else {
         // The scheduled message must not depend on the chat screen being open.
         // The onion outbox becomes the durable owner after sendP2PMessage.
@@ -158,14 +167,14 @@ async function fireDue() {
         if (!isValidOnion(item.chatId))
           throw new Error("Scheduled destination cannot be sent without its chat screen");
         const self = await ensureLocalIdentity();
-        await sendP2PMessage(item.chatId, {
-          id: item.id,
+        await sendP2PMessage(dispatch.chatId, {
+          id: dispatch.id,
           from: self,
-          to: item.chatId,
-          text: item.text,
-          timestamp: item.scheduledAt,
+          to: dispatch.chatId,
+          text: dispatch.text,
+          timestamp: dispatch.scheduledAt,
           status: "pending",
-          silent: item.silent,
+          silent: dispatch.silent,
         });
       }
         await tx("readwrite", (store) => store.delete(item.id));
@@ -231,7 +240,30 @@ export async function closeScheduledOutbox(): Promise<void> {
   }
 }
 
-// Kick off on import so a reload picks up persisted items.
+/**
+ * Transparently upgrade plaintext scheduled messages from older Android builds.
+ * Keep the original id/time so the encrypted Tor outbox can de-duplicate.
+ * Never delete data after a Keystore failure: retain the legacy item and
+ * report the failure so the next startup can retry migration.
+ */
+export async function migrateLegacyScheduledTexts(): Promise<number> {
+  if (!isNative()) return 0;
+  return serialized(async () => {
+    let changed = 0;
+    for (const item of await listOutbox()) {
+      if (isSealedScheduledText(item.text)) continue;
+      validateScheduledItem(item);
+      const sealed = await protectScheduledText(item.text);
+      await tx("readwrite", (store) => store.put({ ...item, text: sealed }));
+      changed++;
+    }
+    return changed;
+  });
+}
+
+// Migration precedes timer activation; new enqueues remain serialized with it.
 if (typeof window !== "undefined") {
-  scheduleNextWake();
+  void migrateLegacyScheduledTexts()
+    .catch((error) => console.error("[outbox] scheduled text migration failed", error))
+    .finally(scheduleNextWake);
 }

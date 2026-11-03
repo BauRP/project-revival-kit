@@ -38,6 +38,7 @@ public class SecureVaultPlugin extends Plugin {
     private static final int IV_BYTES = 12;
     private static final int TAG_BITS = 128;
     private static final int MAX_IDENTITY_BYTES = 32 * 1024;
+    private static final int MAX_SCHEDULE_BYTES = 1024 * 1024;
     private final SecureRandom random = new SecureRandom();
 
     private synchronized SecretKey key() throws Exception {
@@ -58,8 +59,12 @@ public class SecureVaultPlugin extends Plugin {
     }
 
     private String seal(String plaintext) throws Exception {
+        return seal(plaintext, MAX_IDENTITY_BYTES);
+    }
+
+    private String seal(String plaintext, int maxBytes) throws Exception {
         byte[] input = plaintext.getBytes(StandardCharsets.UTF_8);
-        if (input.length > MAX_IDENTITY_BYTES) throw new IllegalArgumentException("Identity too large");
+        if (input.length > maxBytes) throw new IllegalArgumentException("Vault plaintext too large");
         byte[] iv = new byte[IV_BYTES];
         random.nextBytes(iv);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
@@ -70,7 +75,11 @@ public class SecureVaultPlugin extends Plugin {
     }
 
     private String open(String encrypted) throws Exception {
-        if (encrypted == null || encrypted.length() > MAX_IDENTITY_BYTES * 2)
+        return open(encrypted, MAX_IDENTITY_BYTES);
+    }
+
+    private String open(String encrypted, int maxBytes) throws Exception {
+        if (encrypted == null || encrypted.length() > maxBytes * 2)
             throw new IllegalArgumentException("Invalid vault payload");
         String[] parts = encrypted.split("\\.", -1);
         if (parts.length != 2) throw new IllegalArgumentException("Invalid vault format");
@@ -103,6 +112,34 @@ public class SecureVaultPlugin extends Plugin {
             call.resolve(data);
         } catch (Exception error) {
             call.reject("Cannot unlock local identity", error.getMessage(), error);
+        }
+    }
+
+    /** Scheduled chat text uses the same non-exportable Keystore key but
+     * never enters the identity's on-disk recovery file.
+     */
+    @PluginMethod
+    public void sealScheduledText(PluginCall call) {
+        try {
+            String plaintext = call.getString("plaintext");
+            if (plaintext == null || plaintext.isEmpty())
+                throw new IllegalArgumentException("Missing scheduled text");
+            JSObject result = new JSObject();
+            result.put("sealed", seal(plaintext, MAX_SCHEDULE_BYTES));
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("Cannot encrypt scheduled text", error.getMessage(), error);
+        }
+    }
+
+    @PluginMethod
+    public void openScheduledText(PluginCall call) {
+        try {
+            JSObject result = new JSObject();
+            result.put("plaintext", open(call.getString("sealed"), MAX_SCHEDULE_BYTES));
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("Cannot decrypt scheduled text", error.getMessage(), error);
         }
     }
 
