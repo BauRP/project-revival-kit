@@ -7,6 +7,7 @@
 import { dbGet, dbGetAll, dbGetStrict, dbGetAllStrict, dbPut, dbPutStrict } from "./storage";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { sanitizeRestoredOneTimeMessage } from "./one-time-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia } from "./message-deletion-policy";
 import { dxdb, upsertContact, type StoredMessage } from "./dexie-db";
 import {
   onionEnsureConnection,
@@ -92,7 +93,9 @@ export async function sendP2PMessage(toOnion: string, message: P2PMessage): Prom
   // Repeating its dispatch could deliver a second copy or resurrect a prior
   // one-time attachment. Recheck inside the transaction for consistency.
   let alreadyDelivered = false;
-  await dxdb.transaction("rw", dxdb.messages, async () => {
+  await dxdb.transaction("rw", [dxdb.messages, dxdb.lifecycle], async () => {
+    if (isDeletedMessageRecord((await dxdb.lifecycle.get(deletedMessageKey(stored.id)))?.data))
+      throw new Error("This message was deleted locally and cannot be resent");
     const previous = await dxdb.messages.get(stored.id);
     if (!previous) {
       await dxdb.messages.add(stored as unknown as StoredMessage);
@@ -119,25 +122,66 @@ export async function saveLocalMessage(msg: P2PMessage): Promise<void> {
   await dxdb.messages.put(msg as unknown as StoredMessage);
 }
 
+/**
+ * One transactional erase for chat clear, expiry and individual deletion.
+ * Preserve shared attachments referenced by other messages. Keep the tiny
+ * deletion tombstones so old Tor deliveries and restores cannot resurrect
+ * user-removed messages.
+ */
+async function eraseLocalMessages(
+  shouldRemove: (message: StoredMessage) => boolean,
+): Promise<number> {
+  const orphaned = await dxdb.transaction("rw", [
+    dxdb.messages, dxdb.outbox, dxdb.lifecycle, dxdb.blobs, dxdb.partial_chunks,
+  ], async () => {
+    const all = await dxdb.messages.toArray();
+    const removed = all.filter(shouldRemove);
+    if (!removed.length) return { count: 0, fileIds: [] as string[] };
+    const ids = removed.map((m) => m.id);
+    const idSet = new Set(ids);
+    const retained = all.filter((m) => !idSet.has(m.id));
+    const orphanedFiles = findUnreferencedMedia(removed, retained);
+    const now = Date.now();
+    for (const id of ids) {
+      await dxdb.lifecycle.put({
+        key: deletedMessageKey(id), chatKey: LOCAL_DELETED_CHAT_KEY,
+        messageId: id, data: { deleted: true, deletedAt: now }, updatedAt: now,
+      });
+    }
+    await dxdb.messages.bulkDelete(ids);
+    // A canceled/expired outgoing dispatch must not be replayed on reconnect.
+    await dxdb.outbox.bulkDelete(ids);
+    const toDelete = await dxdb.lifecycle.where("messageId").anyOf(ids)
+      .filter((r) => r.chatKey !== LOCAL_DELETED_CHAT_KEY &&
+        r.chatKey !== "consumed-media").primaryKeys();
+    if (toDelete.length) await dxdb.lifecycle.bulkDelete(toDelete);
+    if (orphanedFiles.length) {
+      await dxdb.blobs.bulkDelete(orphanedFiles);
+      await dxdb.partial_chunks.where("fileId").anyOf(orphanedFiles).delete();
+    }
+    return { count: removed.length, fileIds: orphanedFiles };
+  });
+  if (orphaned.fileIds.length) {
+    // Import lazily outside the Dexie transaction; revoke previews already
+    // resolved into this WebView's memory.
+    const { revokeStoredMediaUrls } = await import("./media-store");
+    revokeStoredMediaUrls(orphaned.fileIds);
+  }
+  return orphaned.count;
+}
+
 export async function deleteLocalMessage(id: string): Promise<void> {
-  await dxdb.messages.delete(id);
+  await eraseLocalMessages((m) => m.id === id);
 }
 
 export async function purgeExpiredLocalMessages(): Promise<number> {
   const now = Date.now();
-  const expired = await dxdb.messages
-    .filter((m) => typeof m.deleteAt === "number" && (m.deleteAt as number) <= now)
-    .primaryKeys();
-  await dxdb.transaction("rw", [dxdb.messages, dxdb.outbox], async () => {
-    await dxdb.messages.bulkDelete(expired);
-    await dxdb.outbox.bulkDelete(expired);
-  });
-  return expired.length;
+  return eraseLocalMessages((m) =>
+    typeof m.deleteAt === "number" && Number.isFinite(m.deleteAt) && m.deleteAt <= now);
 }
 
 export async function clearMessagesForChat(peer: string): Promise<void> {
-  const ids = await dxdb.messages.filter((m) => m.from === peer || m.to === peer).primaryKeys();
-  await dxdb.messages.bulkDelete(ids);
+  await eraseLocalMessages((m) => m.from === peer || m.to === peer);
 }
 
 export async function getMessagesForChat(peer: string): Promise<P2PMessage[]> {
@@ -160,7 +204,8 @@ export async function migrateLegacyMessages(): Promise<void> {
     const revoked = new Set(tombstones.filter((r) => r.data.consumed === true).map((r) => r.key));
     for (const msg of legacy) {
       if (typeof msg?.id !== "string" || !msg.id || msg.id.length > 128) continue;
-      if (!(await dxdb.messages.get(msg.id))) {
+      if (!(await dxdb.messages.get(msg.id)) &&
+          !isDeletedMessageRecord((await dxdb.lifecycle.get(deletedMessageKey(msg.id)))?.data)) {
         await dxdb.messages.add(sanitizeRestoredOneTimeMessage(msg, revoked) as unknown as StoredMessage);
       }
     }

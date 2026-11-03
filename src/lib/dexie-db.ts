@@ -11,6 +11,7 @@ import Dexie, { type Table } from "dexie";
 import { consumedMediaKey, isConsumedMediaRecord, isProtectedByConsumedTombstone, sanitizeRestoredOneTimeMessage } from "./one-time-policy";
 import { validateBackupStructure } from "./backup-validation";
 import { stripSessionMediaUrl } from "./backup-media-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY } from "./message-deletion-policy";
 
 export interface ContactRecord {
   onion: string;
@@ -369,7 +370,16 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       const currentContacts = new Set(await dxdb.contacts.toCollection().primaryKeys());
       await dxdb.contacts.bulkPut((dump.contacts || []).filter((c) => !currentContacts.has(c.onion)));
       const presentIds = new Set(await dxdb.messages.toCollection().primaryKeys());
-      await dxdb.messages.bulkPut((dump.messages || []).filter((m) => !presentIds.has(m.id))
+      const currentDeleted = await dxdb.lifecycle.where("chatKey").equals(LOCAL_DELETED_CHAT_KEY).toArray();
+      const restoredDeleted = (dump.lifecycle || []).filter((row) =>
+        row?.chatKey === LOCAL_DELETED_CHAT_KEY && isDeletedMessageRecord(row.data) &&
+        row.key === deletedMessageKey(row.messageId));
+      const deletedIds = new Set([
+        ...currentDeleted.filter((r) => isDeletedMessageRecord(r.data)).map((r) => r.messageId),
+        ...restoredDeleted.map((r) => r.messageId),
+      ]);
+      await dxdb.messages.bulkPut((dump.messages || []).filter((m) =>
+        !presentIds.has(m.id) && !deletedIds.has(m.id))
         .map((m) => sanitizeRestoredOneTimeMessage(stripSessionMediaUrl(m), revoked)));
       // Do NOT re-activate encrypted frames from an older backup. Those
       // ciphertexts may belong to a deleted identity, and automatically

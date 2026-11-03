@@ -47,6 +47,7 @@ import { chunkDigest, matchesChunkDigest } from "./chunk-integrity";
 import { orderedCompleteChunkSet } from "./media-chunks";
 import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
+import { deletedMessageKey, isDeletedMessageRecord } from "./message-deletion-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, type DispatchCommitResult } from "./dispatch-commit";
@@ -598,13 +599,19 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
       const validated = validateIncomingTextMessage(payload);
       if (!validated) rejected = true;
       if (validated) {
-        const existing = await dxdb.messages.get(id);
-        if (!existing) {
-          await dxdb.messages.add(validated as StoredMessage);
-          fresh = true;
-        } else if (!duplicateMessageMatches(existing, validated)) {
+        const erased = await dxdb.lifecycle.get(deletedMessageKey(id));
+        if (isDeletedMessageRecord(erased?.data)) {
+          // Locally deleted messages remain deleted even after sender retry.
+          // Acknowledge this as a handled duplicate, without notifying the UI.
+        } else {
+          const existing = await dxdb.messages.get(id);
+          if (!existing) {
+            await dxdb.messages.add(validated as StoredMessage);
+            fresh = true;
+          } else if (!duplicateMessageMatches(existing, validated)) {
           // A collision from another sender is NOT a successful duplicate.
-          rejected = true;
+            rejected = true;
+          }
         }
       }
     } else if (type === "message_status") {

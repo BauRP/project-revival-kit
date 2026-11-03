@@ -102,6 +102,16 @@ async function assertNotConsumed(fileId: string): Promise<void> {
 }
 
 const blobUrlCache = new Map<string, string>();
+
+/** Erase this WebView's in-memory preview handles after local deletion. */
+export function revokeStoredMediaUrls(fileIds: readonly string[]): void {
+  for (const id of fileIds) {
+    const url = blobUrlCache.get(id);
+    if (!url) continue;
+    URL.revokeObjectURL(url);
+    blobUrlCache.delete(id);
+  }
+}
 const inFlight = new Map<string, Promise<string>>();
 
 async function assertSafeToOpen(record: { name: string; mimeType: string; data: Blob }): Promise<void> {
