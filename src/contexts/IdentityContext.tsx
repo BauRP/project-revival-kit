@@ -6,6 +6,7 @@ import { recoverInbox, onionStopForAccountDeletion, onionClearNativeInboxForAcco
 import { runAccountWipe } from "@/lib/account-wipe";
 import { nukeAllData } from "@/lib/storage";
 import { safeStorage } from "@/lib/safe-storage";
+import { startAutomaticBackupMonitor } from "@/lib/auto-backup";
 
 interface IdentityContextType {
   identity: IdentityKeys | null;
@@ -65,6 +66,13 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
       if (initTimer !== undefined) window.clearTimeout(initTimer);
     };
   }, []);
+
+  // Run only after the local identity has been initialized; never block the
+  // first paint or attempt expensive snapshots when the app is backgrounded.
+  useEffect(() => {
+    if (!identity) return;
+    return startAutomaticBackupMonitor();
+  }, [identity]);
 
   useEffect(() => {
     safeStorage.set("trivo-stealth", String(stealthMode));

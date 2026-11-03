@@ -18,7 +18,7 @@ import {
   Download,
   Upload,
 } from "lucide-react";
-import { type ReactNode, useCallback, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useTheme } from "@/contexts/ThemeContext";
 import { useIdentity } from "@/contexts/IdentityContext";
@@ -33,6 +33,7 @@ import { isDataSaverEnabled, setDataSaverEnabled } from "@/lib/data-saver";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { isNative } from "@/lib/platform";
 import { exportBackup, importBackup } from "@/lib/backup";
+import { disableAutomaticBackups, enableAutomaticBackups, isAutomaticBackupEnabled } from "@/lib/auto-backup";
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -148,6 +149,7 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
   const [backupPassword, setBackupPassword] = useState("");
   const [backupBusy, setBackupBusy] = useState(false);
   const [allowIdentityTransfer, setAllowIdentityTransfer] = useState(false);
+  const [autoBackupEnabled, setAutoBackupEnabled] = useState(false);
   const [backupFeedback, setBackupFeedback] = useState("");
 
   // Android hardware Back / web Back / Esc must pop THIS screen back to
@@ -224,6 +226,15 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
     toggleStealth();
   }, [toggleStealth]);
 
+  // Existing opt-in is read from the protected local settings, not a guessed default.
+  useEffect(() => {
+    let cancelled = false;
+    void isAutomaticBackupEnabled().then((enabled) => {
+      if (!cancelled) setAutoBackupEnabled(enabled);
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+
   const handleBackup = async (restore: boolean) => {
     if (backupBusy) return;
     if (backupPassword.trim().length < 12) {
@@ -244,7 +255,9 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
         setBackupFeedback("Переписка восстановлена без удаления текущих сообщений");
       } else {
         const result = await exportBackup(backupPassword);
-        setBackupFeedback("Зашифрованная копия создана: " + result.filename);
+        if (autoBackupEnabled) await enableAutomaticBackups(backupPassword);
+        setBackupFeedback("Зашифрованная копия создана: " + result.filename +
+          (autoBackupEnabled ? ". Ежедневные автокопии включены." : ""));
       }
     } catch (error) {
       setBackupFeedback(error instanceof Error ? error.message : "Не удалось обработать резервную копию");
@@ -381,6 +394,21 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
               onChange={(event) => setBackupPassword(event.target.value)}
               className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm text-gray-900 dark:border-neutral-700 dark:text-neutral-100"
             />
+            <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-neutral-300">
+              <input type="checkbox" checked={autoBackupEnabled}
+                disabled={backupBusy || !isNative()}
+                onChange={(event) => {
+                  const enabled = event.target.checked;
+                  setAutoBackupEnabled(enabled);
+                  if (!enabled) void disableAutomaticBackups().catch((error) =>
+                    setBackupFeedback(error instanceof Error ? error.message : "Ошибка отключения автокопий"));
+                }}
+                className="mt-0.5 shrink-0"
+              />
+              <span>Ежедневные зашифрованные автокопии при открытом приложении.
+                Чтобы включить, отметьте и создайте первую копию. Пароль
+                сохранится только в Android Keystore в зашифрованном виде.</span>
+            </label>
             <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-neutral-300">
               <input type="checkbox" checked={allowIdentityTransfer}
                 disabled={backupBusy}
