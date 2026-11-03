@@ -204,7 +204,7 @@ export async function putReceivedBlob(
           continue;
         await dxdb.blobs.put({
           fileId, mimeType: mimeType || data.type || "application/octet-stream",
-          name: name || \`file-\${fileId}\`,
+          name: name || `file-${fileId}`,
           size: data.size, data, storedAt: Date.now(),
         });
         return true;
