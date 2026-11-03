@@ -17,6 +17,25 @@ const MAX_SEEN_UUIDS = 10000;
 const LOCAL_CACHE_PREFIX = "trivo:local-cache:";
 const KEYS_PREFIX = "trivo:keys:";
 const listeners = new Map<string, Set<CacheCallback>>();
+const sessionCache = new Map<string, Record<string, unknown>>();
+let legacyCleared = false;
+/**
+ * Old versions duplicated names, avatars and status into plaintext browser
+ * storage. IndexedDB is already the authoritative profile store. Never
+ * persist a second copy of these payloads outside the current session.
+ */
+function clearLegacyPlaintextCache(): void {
+  if (legacyCleared || typeof localStorage === "undefined") return;
+  legacyCleared = true;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(LOCAL_CACHE_PREFIX)) keys.push(key);
+    }
+    for (const key of keys) localStorage.removeItem(key);
+  } catch { /* unavailable storage is already inaccessible */ }
+}
 // NOTE: both the client id and the BroadcastChannel are created lazily.
 // Module-scope randomness / channel construction is a "disallowed operation in
 // global scope" on the Cloudflare Worker that serves the preview, which makes
@@ -80,26 +99,16 @@ export function generateUUIDv4(): string {
   );
 }
 
-function storageKey(channelId: string): string {
-  return `${LOCAL_CACHE_PREFIX}${channelId}`;
-}
-
 function readEntries(channelId: string): Record<string, any> {
-  try {
-    return JSON.parse(localStorage.getItem(storageKey(channelId)) || "{}") || {};
-  } catch {
-    return {};
-  }
+  clearLegacyPlaintextCache();
+  return sessionCache.get(channelId) || {};
 }
 
 function writeEntry(channelId: string, key: string, data: any): void {
-  try {
-    const entries = readEntries(channelId);
-    entries[key] = data;
-    localStorage.setItem(storageKey(channelId), JSON.stringify(entries));
-  } catch {
-    // Local persistence is best effort in restricted WebViews.
-  }
+  clearLegacyPlaintextCache();
+  const entries = sessionCache.get(channelId) || {};
+  entries[key] = data;
+  sessionCache.set(channelId, entries);
 }
 
 function emit(channelId: string, data: any, key: string): void {
