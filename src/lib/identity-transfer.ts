@@ -5,6 +5,7 @@ import { getOrCreateIdentity, installRecoveredIdentity, type IdentityKeys } from
 import { onionStopForAccountDeletion } from "./onion-engine";
 import { TorTransport, isTorNativeAvailable } from "./tor-native";
 import { validateBackupStructure } from "./backup-validation";
+import { isBuiltInWelcomeMessage, isBuiltInSupportContact } from "./transfer-pristine-policy";
 
 export interface TransferTargetCounts {
   contacts: number; messages: number; outbox: number; inbox: number;
@@ -21,7 +22,7 @@ export function assertEmptyTransferTarget(counts: TransferTargetCounts): void {
 async function assertPristineDevice(): Promise<void> {
   const [contacts, messages, outbox, inbox, lifecycle, blobs, partialChunks, legacy,
     legacyContacts, schedules] = await Promise.all([
-      dxdb.contacts.count(), dxdb.messages.count(), dxdb.outbox.count(),
+      dxdb.contacts.count(), dxdb.messages.toArray(), dxdb.outbox.count(),
       dxdb.inbox_raw.count(), dxdb.lifecycle.count(), dxdb.blobs.count(),
       dxdb.partial_chunks.count(), dbGetAllStrict("messages"),
       dbGetAllStrict("contacts"), listOutbox(),
@@ -29,10 +30,18 @@ async function assertPristineDevice(): Promise<void> {
   // Native count includes damaged frames which cannot be decoded by
   // pendingInbound(); do not let such frames survive a key replacement.
   const nativeFrames = isTorNativeAvailable() ? (await TorTransport.inboundCount()).count : 0;
+  // First launch creates a local-only support welcome before the user can
+  // open the restore screen. It is not another real identity/conversation.
+  // Ignore ONLY that exact built-in fixture. Any user reply or real contact
+  // still makes the target nonempty and forbids identity replacement.
   assertEmptyTransferTarget({
-    contacts, messages, outbox, inbox, lifecycle, blobs,
-    partialChunks, legacyMessages: legacy.length,
-    legacyContacts: legacyContacts.length, scheduledMessages: schedules.length,
+    contacts,
+    messages: messages.filter((m) => !isBuiltInWelcomeMessage(m)).length,
+    outbox, inbox, lifecycle, blobs,
+    partialChunks,
+    legacyMessages: legacy.filter((m) => !isBuiltInWelcomeMessage(m)).length,
+    legacyContacts: legacyContacts.filter((c) => !isBuiltInSupportContact(c)).length,
+    scheduledMessages: schedules.length,
     nativeFrames,
   });
 }
