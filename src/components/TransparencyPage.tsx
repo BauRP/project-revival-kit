@@ -28,154 +28,40 @@ interface Topic {
 
 const TOPICS: Topic[] = [
   {
-    id: "tor",
-    icon: Shield,
-    title: { en: "Tor Network Protection", ru: "Защита сети Tor" },
-    summary: {
-      en: "Every byte leaves your device inside the Tor circuit.",
-      ru: "Каждый байт покидает устройство внутри цепочки Tor.",
-    },
-    body: {
-      en: [
-        "Trivo Chat Elite ships a real Tor daemon inside the Android application (the Guardian Project tor-android build, controlled over the standard Tor control port with jtorctl). When the app starts, that daemon bootstraps its own circuits and then publishes a version 3 Onion Service that belongs exclusively to your handset. The private key of that service is generated on the device, stored in the app's private storage and never transmitted anywhere.",
-        "Because the address is an Onion Service, there is no IP address to leak. Two Trivo users never learn each other's network location: the connection is established inside the Tor network itself, at the rendezvous point, and both sides only ever see a 56-character .onion identifier. All outbound traffic is pushed through the local SOCKS5 port opened by the daemon, so nothing bypasses the circuit — there is no fallback to a plain HTTPS server anywhere in the messaging path.",
-        "This also means Trivo works in environments where classic messengers are blocked: there is no central domain, no API host, and no push gateway that a network operator can filter. If the circuit is temporarily unavailable, frames are kept in the encrypted local queue and delivered as soon as Tor is bootstrapped again.",
-      ],
-      ru: [
-        "Trivo Chat Elite содержит настоящий демон Tor внутри Android-приложения (сборка tor-android от Guardian Project, управляемая через стандартный control-порт с помощью jtorctl). При запуске демон строит собственные цепочки и публикует Onion Service версии 3, принадлежащий только вашему устройству. Приватный ключ этой службы генерируется на устройстве, хранится в приватном хранилище приложения и никуда не передаётся.",
-        "Поскольку адрес является Onion Service, утечь IP-адресу просто неоткуда. Два пользователя Trivo никогда не узнают сетевое расположение друг друга: соединение устанавливается внутри самой сети Tor, в точке рандеву, и обе стороны видят только 56-символьный идентификатор .onion. Весь исходящий трафик проходит через локальный порт SOCKS5, открытый демоном, поэтому ничто не обходит цепочку — в тракте доставки сообщений нет запасного HTTPS-сервера.",
-        "Благодаря этому Trivo работает там, где классические мессенджеры заблокированы: нет центрального домена, нет API-хоста и нет push-шлюза, который оператор связи мог бы отфильтровать. Если цепочка временно недоступна, кадры хранятся в зашифрованной локальной очереди и отправляются сразу после восстановления Tor.",
-      ],
-    },
+    id: "tor", icon: Shield,
+    title: {"en":"Tor network transport","ru":"Передача сообщений через Tor"},
+    summary: {"en":"Tor onion transport is used for Trivo chat frames, not every device connection.","ru":"Tor используется для сообщений Trivo, но не для всего интернет-трафика устройства."},
+    body: {"en":["Messages sent through the Trivo transport are sealed and delivered over a local Tor SOCKS5 connection to the other user's v3 onion service. The native Android service buffers inbound encrypted frames when the WebView is asleep.","This does not mean every connection made by Android or by other app features goes through Tor. Language-pack downloads, system updates and external links may use other network routes. Tor lowers exposure of network addresses, but cannot eliminate every traffic-analysis or device compromise risk.","A stable onion address comes from the signing identity. A service restarted after process death can recover that identity from an Android Keystore-protected local copy; it must refuse startup if recovery fails."],"ru":["Сообщения Trivo передаются через локальный SOCKS5-интерфейс Tor на onion-службу собеседника. Нативная Android-служба сохраняет входящие зашифрованные пакеты, когда интерфейс приложения не работает.","Это не означает, что абсолютно весь трафик Android или других функций приложения проходит через Tor. Загрузка языковых пакетов, системные обновления и внешние ссылки могут пользоваться другими маршрутами. Tor снижает раскрытие сетевых адресов, но не гарантирует защиту от любого анализа трафика и взлома устройства.","Постоянный onion-адрес связан с ключами личности. После перезапуска процесса служба может восстановить прежний ключ из локальной копии, защищённой Android Keystore. Если восстановление невозможно, служба не должна создавать другую личность вместо прежней."]},
   },
   {
-    id: "e2ee",
-    icon: Lock,
-    title: { en: "End-to-End Encryption (NaCl)", ru: "Сквозное шифрование (NaCl)" },
-    summary: {
-      en: "X25519 key exchange, XSalsa20-Poly1305 payloads, Ed25519 signatures.",
-      ru: "Обмен ключами X25519, полезная нагрузка XSalsa20-Poly1305, подписи Ed25519.",
-    },
-    body: {
-      en: [
-        "Your identity consists of two key pairs generated locally with TweetNaCl the first time the app runs: an Ed25519 pair used to sign everything you send, and an X25519 pair used for key agreement. Both secret keys stay in device storage; only the public halves are ever shared, and they travel with each frame so the receiving device can verify authorship immediately.",
-        "Message bodies are sealed with NaCl box — X25519 key agreement combined with the XSalsa20-Poly1305 authenticated cipher — using a fresh 24-byte random nonce for every single message. Authenticated encryption means a modified ciphertext is not merely garbled, it is rejected outright: the Poly1305 tag fails and the frame is dropped before it ever reaches the chat list.",
-        "On top of that, every frame carries an Ed25519 detached signature computed over its canonical form (kind, sender, recipient, timestamp and body). The receiver recomputes that canonical string and verifies the signature before doing anything with the frame, so replayed, forged or reordered frames are discarded. All of these operations run in a dedicated Web Worker, off the interface thread, so cryptography never freezes the UI.",
-      ],
-      ru: [
-        "Ваша личность состоит из двух пар ключей, сгенерированных локально библиотекой TweetNaCl при первом запуске: пара Ed25519 подписывает всё, что вы отправляете, а пара X25519 используется для согласования ключей. Оба секретных ключа остаются в хранилище устройства; наружу уходят только публичные части, и они передаются вместе с каждым кадром, чтобы получатель мог сразу проверить авторство.",
-        "Тела сообщений запечатываются через NaCl box — согласование ключей X25519 в связке с аутентифицированным шифром XSalsa20-Poly1305 — со свежим случайным 24-байтным nonce для каждого сообщения. Аутентифицированное шифрование означает, что изменённый шифротекст не просто испортится: тег Poly1305 не сойдётся, и кадр будет отброшен до того, как попадёт в список чатов.",
-        "Сверх этого каждый кадр несёт отсоединённую подпись Ed25519 по канонической форме (тип, отправитель, получатель, время и тело). Получатель заново собирает эту каноническую строку и проверяет подпись, прежде чем что-либо делать с кадром, поэтому повторно проигранные, поддельные или переставленные кадры отбрасываются. Все эти операции выполняются в отдельном Web Worker, вне потока интерфейса, поэтому криптография никогда не подвешивает UI.",
-      ],
-    },
+    id: "e2ee", icon: Lock,
+    title: {"en":"Current message encryption","ru":"Текущее шифрование сообщений"},
+    summary: {"en":"Authenticated NaCl encryption; PQXDH and forward secrecy are not implemented.","ru":"Шифрование NaCl с проверкой подлинности; PQXDH и прямая секретность не реализованы."},
+    body: {"en":["The messenger uses Ed25519 signatures, X25519 key agreement and NaCl authenticated encryption for Tor messaging frames. A recipient rejects messages with invalid signatures or authentication tags.","The application does not implement a reviewed post-quantum key exchange or a double-ratchet protocol. The disabled PQXDH compatibility function intentionally reports that this capability is unavailable. Do not interpret ordinary encryption as post-quantum protection.","End-to-end encryption protects messages in transit. It does not automatically mean that copies held in local IndexedDB or shown on screen are encrypted at rest."],"ru":["Для кадров сообщений через Tor используются подписи Ed25519, согласование ключей X25519 и аутентифицированное шифрование NaCl. Неверные подписи и теги аутентификации отклоняются.","В приложении пока нет проверенного постквантового обмена ключами и протокола Double Ratchet. Заглушка PQXDH специально сообщает об отсутствии такой возможности. Обычное шифрование нельзя называть постквантовым.","Сквозное шифрование защищает переписку при передаче. Оно не означает, что копии сообщений в локальной базе IndexedDB или на экране автоматически зашифрованы при хранении."]},
   },
   {
-    id: "serverless",
-    icon: Network,
-    title: { en: "Serverless P2P Architecture", ru: "Бессерверная P2P-архитектура" },
-    summary: {
-      en: "No accounts, no cloud, no database that belongs to us.",
-      ru: "Нет аккаунтов, нет облака, нет нашей базы данных.",
-    },
-    body: {
-      en: [
-        "Trivo Chat Elite has no backend. There is no sign-up, no phone number, no e-mail, no session token and no server-side account record — because there is no server that could hold one. Your contacts, chats, folders, media blobs and delivery queue live in the device's own IndexedDB database (Dexie), and nothing is mirrored to a remote host.",
-        "Historical builds of this app used cloud backends; those integrations have been fully removed from the codebase. There is no analytics SDK, no crash-reporting upload, no advertising identifier collection tied to your messages and no remote configuration channel. The synchronisation modules that remain are pure local queues that hand frames to the Tor transport.",
-        "The practical consequence is simple: no one — including us — can hand over your message history, because no copy of it exists outside your handset. If you uninstall the app or use the panic wipe, that data is gone permanently. This is also why an encrypted local backup is the only way to move your identity to a new device.",
-      ],
-      ru: [
-        "У Trivo Chat Elite нет бэкенда. Нет регистрации, номера телефона, e-mail, сессионного токена и серверной учётной записи — просто потому, что нет сервера, который мог бы её хранить. Контакты, чаты, папки, медиафайлы и очередь доставки находятся в собственной базе IndexedDB устройства (Dexie), и ничего не дублируется на удалённый хост.",
-        "Ранние сборки приложения использовали облачные бэкенды; эти интеграции полностью удалены из кода. Нет SDK аналитики, нет отправки отчётов о сбоях, нет сбора рекламных идентификаторов, связанного с вашими сообщениями, и нет канала удалённой конфигурации. Оставшиеся модули синхронизации — это чисто локальные очереди, передающие кадры транспорту Tor.",
-        "Практический вывод прост: никто, включая нас, не может выдать вашу переписку, потому что её копии не существует за пределами устройства. Если вы удалите приложение или используете экстренную очистку, эти данные исчезнут навсегда. Именно поэтому зашифрованная локальная резервная копия — единственный способ перенести личность на новое устройство.",
-      ],
-    },
+    id: "storage", icon: Fingerprint,
+    title: {"en":"Local data and identity keys","ru":"Локальные данные и ключи личности"},
+    summary: {"en":"Identity and scheduled text are Keystore-protected; the full chat database is not.","ru":"Ключи и отложенный текст защищены Keystore, вся база переписки пока нет."},
+    body: {"en":["The Android identity vault encrypts its recoverable key material with a non-exportable Android Keystore key. Scheduled outgoing message text is encrypted before its IndexedDB queue write. Older scheduled entries are migrated when possible.","The main Dexie message database and several older metadata stores are not yet fully encrypted at rest. Device unlock and app access controls matter. Do not store sensitive conversations on a device you do not trust.","Private speech transcripts are no longer transmitted to a hosted AI gateway or kept as plaintext browser storage. Offline speech recognition needs a separately bundled and validated model."],"ru":["Хранилище личности Android шифрует локальную копию ключей с помощью неэкспортируемого ключа Android Keystore. Текст отложенных сообщений шифруется до записи в очередь IndexedDB; старые записи при возможности переводятся в новый формат.","Основная база переписки Dexie и часть старых метаданных ещё не полностью зашифрованы при хранении. Защита экрана и самого устройства остаётся важной. Не следует считать локальную базу безопасной на скомпрометированном телефоне.","Голосовые расшифровки больше не отправляются внешнему AI-сервису и не хранятся открытым текстом в браузерных настройках. Для полноценного офлайн-распознавания нужна отдельная проверенная модель."]},
   },
   {
-    id: "routing",
-    icon: RouteIcon,
-    title: {
-      en: "How Messages are Routed via Tor",
-      ru: "Как сообщения маршрутизируются через Tor",
-    },
-    summary: {
-      en: "Sealed frame → local queue → SOCKS5 → peer's onion service.",
-      ru: "Запечатанный кадр → локальная очередь → SOCKS5 → onion-служба собеседника.",
-    },
-    body: {
-      en: [
-        "When you press send, the app builds a frame: a compact JSON envelope containing the message kind, your identifier, your current onion address, your public keys, a timestamp, the encrypted body and an Ed25519 signature. The frame is written into the local Dexie outbox first, so it survives an app kill, a reboot or a dead battery.",
-        "Delivery is then attempted through the Tor SOCKS5 port to the recipient's .onion address, which was learned earlier through trust-on-first-use pinning. If the peer is reachable, the frame is streamed directly to their onion service, their device verifies the signature, decrypts the body and immediately acknowledges. If the peer is offline, the frame stays queued and the native foreground service retries it on a schedule, including while the interface is closed.",
-        "Large media travels the same path but is split into numbered chunks. The receiver tracks which indices actually arrived and can ask for exactly the missing ones with a sync request, so a transfer interrupted by a lost circuit resumes instead of restarting. Nothing about this flow touches a relay server owned by anyone: your device and your contact's device are the only two endpoints that ever hold the plaintext.",
-      ],
-      ru: [
-        "Когда вы нажимаете «отправить», приложение собирает кадр: компактный JSON-конверт с типом сообщения, вашим идентификатором, текущим onion-адресом, публичными ключами, отметкой времени, зашифрованным телом и подписью Ed25519. Сначала кадр записывается в локальную очередь Dexie, поэтому переживает закрытие приложения, перезагрузку или разряженную батарею.",
-        "Затем выполняется попытка доставки через порт SOCKS5 сети Tor на .onion-адрес получателя, полученный ранее по принципу доверия при первом контакте с закреплением ключа. Если собеседник доступен, кадр передаётся напрямую его onion-службе, устройство проверяет подпись, расшифровывает тело и сразу подтверждает доставку. Если собеседник офлайн, кадр остаётся в очереди, а нативная foreground-служба повторяет попытки по расписанию, в том числе при закрытом интерфейсе.",
-        "Крупные медиафайлы идут тем же путём, но разбиваются на нумерованные части. Получатель отслеживает, какие индексы действительно пришли, и может запросить ровно недостающие, поэтому прерванная передача продолжается, а не начинается заново. Ни один этап этого процесса не задействует чужой ретранслятор: открытый текст есть только на вашем устройстве и на устройстве собеседника.",
-      ],
-    },
+    id: "backup", icon: Network,
+    title: {"en":"Encrypted backups and account transfer","ru":"Зашифрованные копии и перенос аккаунта"},
+    summary: {"en":"Password-encrypted archives include chat history and keys; automatic copies are opt-in.","ru":"Зашифрованные архивы с перепиской и ключами; автоматические копии по согласию."},
+    body: {"en":["New portable backups are encrypted using a password-derived key with PBKDF2-SHA256 and AES-256-GCM. They contain conversation history, attachments and identity keys, subject to the format's size limits.","On Android, automatic backups can run while the app is active after explicit setup. Their credential is wrapped by Keystore; older automatic snapshots are pruned while manually exported copies are kept. This is not an always-running WorkManager backup.","Restoring a different identity requires explicit confirmation on an empty installation. An exported backup in Documents may remain after account deletion: remove it separately if you no longer want it."],"ru":["Новые переносимые резервные копии шифруются паролем с PBKDF2-SHA256 и AES-256-GCM. В архив попадают переписка, вложения и ключи личности в пределах текущих ограничений размера.","На Android автоматические копии могут создаваться при работающем приложении после явного включения. Пароль защищён Android Keystore; старые автоматические копии очищаются, а ручные архивы сохраняются. Это пока не постоянное фоновое резервирование через WorkManager.","Перенос другой личности требует отдельного подтверждения на пустой установке. Экспортированный архив в папке Documents может остаться после удаления аккаунта. При необходимости удалите его отдельно."]},
   },
   {
-    id: "background",
-    icon: BellRing,
-    title: { en: "Why the Background Service is Required", ru: "Зачем нужна фоновая служба" },
-    summary: {
-      en: "An onion service only receives messages while it is actually running.",
-      ru: "Onion-служба принимает сообщения, только пока она действительно работает.",
-    },
-    body: {
-      en: [
-        "Trivo receives messages by hosting a server, not by polling one. Your handset is the endpoint of your own onion service, which means it must be listening at the moment a contact sends something. Android aggressively suspends normal processes, so the only supported way to keep that listener alive is a foreground service — and Android requires every foreground service to display a persistent notification.",
-        'That is the notification titled "P2P Tor Onion Network: Presence and Connectivity Check". It does not send anything anywhere and it deliberately shows no onion address, no contact name and no message preview: it exists purely because the operating system demands a visible marker for a long-running service. Dismissing it is not possible while the transport is active; stopping the transport is done from inside the app.',
-        "While the service runs, it keeps the Tor daemon bootstrapped, accepts inbound streams, buffers frames that arrive while the interface is closed, and retries anything sitting in the outbox. When you open the app again, those buffered frames are drained into the chat list instantly, which is why messages appear immediately rather than after a manual refresh.",
-      ],
-      ru: [
-        "Trivo принимает сообщения, размещая сервер, а не опрашивая его. Ваше устройство — конечная точка собственной onion-службы, а значит, оно должно слушать в тот момент, когда контакт что-то отправляет. Android агрессивно усыпляет обычные процессы, поэтому единственный поддерживаемый способ сохранить слушателя живым — это foreground-служба, а для неё система требует постоянного уведомления.",
-        "Это и есть уведомление «P2P Tor Onion Network: Presence and Connectivity Check». Оно ничего никуда не отправляет и намеренно не показывает onion-адрес, имя контакта или текст сообщения: оно существует лишь потому, что операционная система требует видимого маркера долгоживущей службы. Убрать его во время работы транспорта нельзя; остановить транспорт можно изнутри приложения.",
-        "Пока служба работает, она поддерживает демон Tor в загруженном состоянии, принимает входящие потоки, буферизует кадры, пришедшие при закрытом интерфейсе, и повторяет отправку из очереди. При следующем открытии приложения буфер мгновенно выгружается в список чатов — поэтому сообщения появляются сразу, а не после ручного обновления.",
-      ],
-    },
+    id: "background", icon: BellRing,
+    title: {"en":"Background availability and delivery","ru":"Фоновый приём и доставка"},
+    summary: {"en":"The native Tor receiver persists inbound frames; background delivery still has limits.","ru":"Нативный Tor сохраняет входящие кадры; фоновая доставка всё ещё ограничена."},
+    body: {"en":["Android uses a foreground service with a persistent notification to keep a Tor onion listener available. On Android 14 and later the service uses the remote-messaging foreground-service type instead of time-limited dataSync.","Incoming sealed frames are persisted by the native service. When the WebView resumes, it processes the queue and updates chats. The JavaScript outgoing queue can resume its retries, but it does not provide a verified, fully independent native sender when the interface is stopped.","Android may stop background processes due to system policy or battery restrictions. Reliability across Android 7–17 and between two real handsets still needs device testing."],"ru":["Android использует foreground-службу с постоянным уведомлением, чтобы поддерживать onion-приёмник. Начиная с Android 14 служба использует тип remoteMessaging вместо ограниченного по времени dataSync.","Входящие зашифрованные кадры сохраняет нативная служба. После пробуждения интерфейса WebView очередь обрабатывается, а чаты обновляются. Очередь исходящих сообщений на JavaScript возобновляет повторы, но полноценный независимый нативный отправитель при закрытом интерфейсе пока не подтверждён.","Android может завершать фоновые процессы по системным причинам и ради экономии батареи. Надёжность на Android 7–17 и между двумя реальными телефонами ещё необходимо проверить."]},
   },
   {
-    id: "battery",
-    icon: BatteryCharging,
-    title: { en: "Battery Consumption and Optimization", ru: "Расход батареи и оптимизация" },
-    summary: {
-      en: "Low-priority notification, idle circuits, worker-offloaded crypto.",
-      ru: "Уведомление низкого приоритета, простаивающие цепочки, криптография в воркере.",
-    },
-    body: {
-      en: [
-        "A permanently running Tor daemon does cost energy, and we optimise for that instead of hiding it. The circuit is kept warm rather than rebuilt for every message, because rebuilding circuits is far more expensive than holding them. Presence checks use lightweight ping/pong frames on a fixed interval rather than a constant open stream, so the radio can return to a low-power state between checks.",
-        "The notification channel is registered at low importance and the notification itself is silent, so it never wakes the screen or plays a sound. Retries for queued frames are scheduled, not busy-looped: when a peer is offline, the queue simply waits for the next attempt window instead of hammering the circuit.",
-        "On the application side, NaCl encryption, signature verification and large JSON parsing run inside a dedicated Web Worker, and all database access goes through asynchronous IndexedDB transactions. Keeping heavy work off the interface thread avoids the CPU spikes that both drain the battery and produce the frame drops Android reports as ANRs. If you want maximum battery life, you can stop the transport from the app — you will simply receive messages only while the app is in the foreground.",
-      ],
-      ru: [
-        "Постоянно работающий демон Tor действительно расходует энергию, и мы это оптимизируем, а не скрываем. Цепочка поддерживается «тёплой», а не пересобирается под каждое сообщение, потому что пересборка стоит намного дороже, чем удержание. Проверки присутствия используют лёгкие кадры ping/pong с фиксированным интервалом вместо постоянно открытого потока, поэтому радиомодуль между проверками возвращается в энергосберегающий режим.",
-        "Канал уведомления зарегистрирован с низкой важностью, а само уведомление беззвучное, поэтому оно никогда не будит экран и не издаёт звук. Повторы отправки из очереди выполняются по расписанию, а не в холостом цикле: если собеседник офлайн, очередь просто ждёт следующего окна попытки.",
-        "На стороне приложения шифрование NaCl, проверка подписей и разбор крупного JSON выполняются в отдельном Web Worker, а все обращения к базе идут через асинхронные транзакции IndexedDB. Вынос тяжёлой работы из потока интерфейса устраняет всплески нагрузки на процессор, которые и сажают батарею, и вызывают пропуски кадров, фиксируемые Android как ANR. Если нужна максимальная автономность, транспорт можно остановить в приложении — тогда сообщения будут приходить только при открытом приложении.",
-      ],
-    },
-  },
-  {
-    id: "identity",
-    icon: Fingerprint,
-    title: { en: "Anonymity and Identity Verification", ru: "Анонимность и проверка личности" },
-    summary: {
-      en: "Key fingerprints, trust-on-first-use pinning, no personal data.",
-      ru: "Отпечатки ключей, закрепление при первом контакте, никаких персональных данных.",
-    },
-    body: {
-      en: [
-        "You are never asked for a phone number, an e-mail address or a real name. Your identity is your key pair, and the identifier other people see is derived from your public signing key by hashing it and formatting the result as a short fingerprint. Two people add each other by exchanging that fingerprint and onion address, typically through a QR code, which keeps the exchange offline and out of band.",
-        "Trivo uses trust-on-first-use pinning. The first time a contact's frame arrives, its signing key is stored against that contact. Every later frame must be signed by exactly the same key: if it is not, the frame is rejected and a mismatch warning is logged rather than silently accepted. That is what makes an impersonation attempt visible instead of invisible.",
-        "You can confirm a contact out of band by comparing the fingerprint shown in their profile with the one they read to you over a channel you already trust. Because the fingerprint is a hash of the public key, matching fingerprints means matching keys, and matching keys mean the encryption is terminating on the device you think it is — not on an intermediary.",
-      ],
-      ru: [
-        "У вас никогда не запрашивают номер телефона, адрес e-mail или настоящее имя. Ваша личность — это пара ключей, а идентификатор, который видят другие, вычисляется из публичного ключа подписи путём хеширования и форматирования в короткий отпечаток. Люди добавляют друг друга, обмениваясь этим отпечатком и onion-адресом, обычно через QR-код, что делает обмен офлайновым и внеполосным.",
-        "Trivo использует закрепление ключа при первом контакте. Когда кадр контакта приходит впервые, его ключ подписи сохраняется за этим контактом. Любой последующий кадр должен быть подписан ровно тем же ключом: если нет, кадр отклоняется, а несовпадение фиксируется предупреждением, а не принимается молча. Именно это делает попытку подмены заметной.",
-        "Контакт можно подтвердить внеполосно, сравнив отпечаток в его профиле с тем, который он назовёт вам по уже доверенному каналу. Поскольку отпечаток — это хеш публичного ключа, совпадение отпечатков означает совпадение ключей, а совпадение ключей означает, что шифрование заканчивается именно на том устройстве, на котором вы думаете, а не на посреднике.",
-      ],
-    },
+    id: "limits", icon: BatteryCharging,
+    title: {"en":"Privacy limits and user controls","ru":"Ограничения защиты и настройки"},
+    summary: {"en":"Security claims are limited to implemented and verified features.","ru":"Защитные возможности описываются только в пределах реализации и проверок."},
+    body: {"en":["The optional encrypted Tor cover frames are experimental. They consume traffic and battery and do not amount to Vuvuzela, Alpenhorn or guaranteed traffic-analysis resistance.","Offline attachment signature checks block several suspicious formats, but they are not malware or antivirus scanning. One-time media is removed on first viewing, with a native screen-capture protection attempt; cameras or compromised devices are outside its protection.","A successful CI build means tests, type-checking and packaging passed. It does not prove a security audit, full compatibility with every Android device or complete resilience against targeted attacks."],"ru":["Дополнительные зашифрованные пустые кадры Tor включаются отдельно и остаются экспериментальными. Они расходуют трафик и батарею и не обеспечивают уровень анонимности Vuvuzela, Alpenhorn или гарантированную защиту от анализа трафика.","Локальная проверка сигнатур вложений блокирует некоторые подозрительные форматы, но не является антивирусом. Одноразовые вложения удаляются при первом открытии, а Android пытается заблокировать снимки экрана. Внешняя камера и взломанный телефон остаются вне этой защиты.","Успешная сборка CI означает, что прошли тесты, проверка типов и упаковка приложения. Она не заменяет аудит безопасности, испытания каждого Android-устройства и проверку устойчивости к целевым атакам."]},
   },
 ];
 
