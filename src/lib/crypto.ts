@@ -216,26 +216,26 @@ export function getKeyFingerprint(publicKey: string): string {
 }
 
 /**
- * Post-Quantum Hybrid layer.
+ * PQXDH is not implemented in this application.
+ *
+ * This fail-closed compatibility stub intentionally rejects calls rather
+ * than mislabeling random padding plus classic NaCl as post-quantum crypto.
+ * Implement a real, reviewed ML-KEM + authenticated hybrid handshake with
+ * versioned wire formats before enabling a PQXDH capability flag.
  */
 export function pqxdhEncrypt(
-  plaintext: string,
-  recipientPublicKey: string,
-  senderSecretKey: string,
+  _plaintext: string,
+  _recipientPublicKey: string,
+  _senderSecretKey: string,
 ): { ciphertext: string; nonce: string; pqEntropy: string } {
-  const pqEntropy = nacl.randomBytes(32);
-  const combinedPlaintext = encodeBase64(pqEntropy) + "||" + plaintext;
-  const result = encryptMessage(combinedPlaintext, recipientPublicKey, senderSecretKey);
-  return { ...result, pqEntropy: encodeBase64(pqEntropy) };
+  throw new Error("PQXDH is not available: post-quantum key agreement is not implemented");
 }
 
 export function pqxdhDecrypt(
-  ciphertext: string,
-  nonce: string,
-  senderPublicKey: string,
-  recipientSecretKey: string,
+  _ciphertext: string,
+  _nonce: string,
+  _senderPublicKey: string,
+  _recipientSecretKey: string,
 ): string {
-  const decrypted = decryptMessage(ciphertext, nonce, senderPublicKey, recipientSecretKey);
-  const parts = decrypted.split("||");
-  return parts.length > 1 ? parts.slice(1).join("||") : decrypted;
+  throw new Error("PQXDH is not available: post-quantum key agreement is not implemented");
 }
