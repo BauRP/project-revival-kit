@@ -48,3 +48,21 @@ describe("backup preflight validation", () => {
     })).toThrow();
   });
 });
+
+describe("encrypted outgoing records in portable backups", () => {
+  const old = {
+    id: "msg-1", peer: "peer.onion", kind: "text_message",
+    frame: '{"v":2,"c":"encrypted"}',
+    status: "sent", attempts: 3,
+    createdAt: 1000, updatedAt: 2000, nextAttemptAt: 3000,
+  };
+  it("accepts historical encrypted outbox metadata without activating it", () => {
+    expect(() => validateBackupStructure({ ...dump(), outbox: [old] })).not.toThrow();
+  });
+  it("rejects invalid future retry counters and oversized/missing ciphertext", () => {
+    expect(() => validateBackupStructure({ ...dump(), outbox: [{ ...old, attempts: -1 }] })).toThrow();
+    expect(() => validateBackupStructure({ ...dump(), outbox: [{ ...old, frame: "" }] })).toThrow();
+    expect(() => validateBackupStructure({ ...dump(), outbox: [{ ...old, nextAttemptAt: "soon" }] })).toThrow();
+    expect(() => validateBackupStructure({ ...dump(), outbox: [{ ...old, status: "delivered" }] })).toThrow();
+  });
+});

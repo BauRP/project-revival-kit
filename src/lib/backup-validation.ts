@@ -70,6 +70,23 @@ export function validateBackupStructure(dump: unknown): void {
     }
   }
 
+  // Outgoing ciphertext in a backup is inert after restore, but is still
+  // untrusted input. Avoid accepting executable shapes or multi-megabyte
+  // "frame" fields into a database that may be inspected later.
+  for (const x of outbox) {
+    if (!record(x) || !id(x.id, 128) || !id(x.peer, 128) ||
+        typeof x.kind !== "string" || !id(x.kind, 64) ||
+        typeof x.frame !== "string" || x.frame.length < 1 ||
+        x.frame.length > 12 * 1024 * 1024 ||
+        !["pending", "sent", "failed"].includes(String(x.status)) ||
+        !Number.isSafeInteger(x.attempts) || (x.attempts as number) < 0 ||
+        (x.attempts as number) > 1_000_000 ||
+        !Number.isSafeInteger(x.createdAt) || (x.createdAt as number) <= 0 ||
+        !Number.isSafeInteger(x.updatedAt) || (x.updatedAt as number) <= 0 ||
+        !Number.isSafeInteger(x.nextAttemptAt) || (x.nextAttemptAt as number) < 0)
+      throw new Error("Invalid backup outbox record");
+  }
+
   for (const x of lifecycle)
     if (!record(x) || !id(x.key, 1024) || !id(x.chatKey, 256) ||
         !id(x.messageId, 256) || !record(x.data))
