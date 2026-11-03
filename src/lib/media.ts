@@ -48,7 +48,7 @@ export async function uploadMedia(file: File, opts: UploadOptions = {}): Promise
     fileId,
     type: getMediaType(scrubbed.type),
     url: localUrl,
-    name: file.name,
+    name: scrubbed.name,
     size: scrubbed.size,
     mimeType: scrubbed.type,
   };
