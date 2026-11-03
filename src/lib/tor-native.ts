@@ -48,6 +48,7 @@ export interface TorTransportPlugin {
   stop(): Promise<void>;
   pendingInbound(options?: { offset?: number }): Promise<{ entries: Array<{ id: string; frame: string }> }>;
   acknowledgeInbound(options: { id: string }): Promise<void>;
+  inboundCount(): Promise<{ count: number }>;
   /** Destructive operation for explicit account deletion, not normal Tor stop. */
   clearInbound(): Promise<void>;
   getStatus(): Promise<TorStatus>;

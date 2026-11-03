@@ -1,5 +1,6 @@
 import { dxdb, importDexieDump, type DexieDump } from "./dexie-db";
 import { dbGetAllStrict } from "./storage";
+import { listOutbox } from "./outbox";
 import { getOrCreateIdentity, installRecoveredIdentity, type IdentityKeys } from "./crypto";
 import { onionStopForAccountDeletion } from "./onion-engine";
 import { TorTransport, isTorNativeAvailable } from "./tor-native";
@@ -7,7 +8,8 @@ import { validateBackupStructure } from "./backup-validation";
 
 export interface TransferTargetCounts {
   contacts: number; messages: number; outbox: number; inbox: number;
-  lifecycle: number; blobs: number; partialChunks: number; legacyMessages: number;
+  lifecycle: number; blobs: number; partialChunks: number;
+  legacyMessages: number; legacyContacts: number; scheduledMessages: number; nativeFrames: number;
 }
 
 /** A transfer must not overwrite an established identity with real user data. */
@@ -17,22 +19,22 @@ export function assertEmptyTransferTarget(counts: TransferTargetCounts): void {
 }
 
 async function assertPristineDevice(): Promise<void> {
-  const [contacts, messages, outbox, inbox, lifecycle, blobs, partialChunks, legacy] =
-    await Promise.all([
+  const [contacts, messages, outbox, inbox, lifecycle, blobs, partialChunks, legacy,
+    legacyContacts, schedules] = await Promise.all([
       dxdb.contacts.count(), dxdb.messages.count(), dxdb.outbox.count(),
       dxdb.inbox_raw.count(), dxdb.lifecycle.count(), dxdb.blobs.count(),
       dxdb.partial_chunks.count(), dbGetAllStrict("messages"),
+      dbGetAllStrict("contacts"), listOutbox(),
     ]);
+  // Native count includes damaged frames which cannot be decoded by
+  // pendingInbound(); do not let such frames survive a key replacement.
+  const nativeFrames = isTorNativeAvailable() ? (await TorTransport.inboundCount()).count : 0;
   assertEmptyTransferTarget({
     contacts, messages, outbox, inbox, lifecycle, blobs,
     partialChunks, legacyMessages: legacy.length,
+    legacyContacts: legacyContacts.length, scheduledMessages: schedules.length,
+    nativeFrames,
   });
-  if (isTorNativeAvailable()) {
-    // Do not throw away sealed frames for an identity that might have received
-    // a message while the user was on the confirmation screen.
-    const { entries } = await TorTransport.pendingInbound({ offset: 0 });
-    if (entries.length) throw new Error("Pending Tor messages must be processed before replacing the identity");
-  }
 }
 
 /**

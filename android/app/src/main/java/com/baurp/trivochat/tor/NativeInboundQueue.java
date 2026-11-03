@@ -148,6 +148,14 @@ public final class NativeInboundQueue {
         }
     }
 
+    /** Count raw pending entries, including corrupted frames. Identity
+     * transfer must not assume the queue is empty when decoding fails. */
+    public static int count(Context context) throws IOException {
+        synchronized (LOCK) {
+            return entries(folder(context)).length;
+        }
+    }
+
     /** Account deletion: erase every queued sealed frame, including atomic
      * write remnants. This must never be called on ordinary Tor shutdown.
      */

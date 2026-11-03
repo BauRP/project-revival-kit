@@ -93,6 +93,19 @@ public class TorTransportPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void inboundCount(PluginCall call) {
+        io.execute(() -> {
+            try {
+                JSObject result = new JSObject();
+                result.put("count", NativeInboundQueue.count(getContext()));
+                call.resolve(result);
+            } catch (Exception error) {
+                call.reject("Cannot count native sealed inbox", error);
+            }
+        });
+    }
+
+    @PluginMethod
     public void acknowledgeInbound(PluginCall call) {
         String id = call.getString("id", "");
         io.execute(() -> {

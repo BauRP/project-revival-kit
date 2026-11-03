@@ -4,6 +4,7 @@ import { assertEmptyTransferTarget } from "../identity-transfer";
 const empty = () => ({
   contacts: 0, messages: 0, outbox: 0, inbox: 0,
   lifecycle: 0, blobs: 0, partialChunks: 0, legacyMessages: 0,
+  legacyContacts: 0, scheduledMessages: 0, nativeFrames: 0,
 });
 describe("fresh device identity migration safeguards", () => {
   it("permits a truly unused identity", () => {
