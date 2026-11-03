@@ -74,3 +74,16 @@ export function canMutateDeletedMessage(
   if (previous?.deletedForEveryone !== true) return true;
   return false;
 }
+
+/** A repeated valid signed deletion is idempotent and needs an ACK. Never ACK
+ * a post-deletion edit/pin or mutate the terminal deleted state.
+ */
+export function isDuplicateRemoteDeletion(
+  previous: Record<string, unknown> | null | undefined,
+  patch: Record<string, unknown>,
+): boolean {
+  return previous?.deletedForEveryone === true &&
+    patch.deletedForEveryone === true &&
+    !("editedText" in patch) && patch.isEdited !== true &&
+    !("pinnedAt" in patch) && !("pinnedBy" in patch) && !("clearPin" in patch);
+}

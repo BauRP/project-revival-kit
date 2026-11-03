@@ -43,3 +43,17 @@ describe("permanent remote deletion", () => {
     expect(canMutateDeletedMessage({}, { isEdited: true, editedText: "before deletion" })).toBe(true);
   });
 });
+
+import { isDuplicateRemoteDeletion } from "../lifecycle-auth";
+describe("durable terminal deletion ACK policy", () => {
+  const erased={deletedForEveryone:true,remoteUpdatedAt:100};
+  it("accepts an authenticated retransmission of terminal deletion", () => {
+    expect(isDuplicateRemoteDeletion(erased,{deletedForEveryone:true})).toBe(true);
+    expect(isDuplicateRemoteDeletion(erased,{deletedForEveryone:true,isEdited:false})).toBe(true);
+  });
+  it("never treats a post-deletion edit or pin as a valid duplicate", () => {
+    expect(isDuplicateRemoteDeletion(erased,{deletedForEveryone:true,editedText:"secret"})).toBe(false);
+    expect(isDuplicateRemoteDeletion(erased,{pinnedAt:100,pinnedBy:from})).toBe(false);
+    expect(isDuplicateRemoteDeletion({}, {deletedForEveryone:true})).toBe(false);
+  });
+});
