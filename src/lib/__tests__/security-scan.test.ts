@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { inspectAttachmentHeader, canScrubImageType } from "../security-scan";
+import { inspectAttachmentHeader, inspectAttachmentBlob, canScrubImageType } from "../security-scan";
 
 const check = (name: string, mime: string, bytes: number[]) =>
   inspectAttachmentHeader(name, mime, new Uint8Array(bytes));
@@ -39,5 +39,16 @@ describe("metadata privacy policy", () => {
     expect(check("photo.jpg", "", [0xff, 0xd8, 0xff, 0xe0]).safe).toBe(false);
     expect(check("photo.txt", "text/plain", [0xff, 0xd8, 0xff, 0xe0]).safe).toBe(false);
     expect(check("photo.bin", "application/octet-stream", [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).safe).toBe(false);
+  });
+});
+
+describe("received attachment safety", () => {
+  it("rejects a remote executable disguised as a text file before preview", async () => {
+    const blob = new Blob([new Uint8Array([0x4d, 0x5a, 0x90])]);
+    expect((await inspectAttachmentBlob("readme.txt", "text/plain", blob)).safe).toBe(false);
+  });
+  it("accepts a correctly labelled PNG from Tor", async () => {
+    const blob = new Blob([new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])]);
+    expect((await inspectAttachmentBlob("pic.png", "image/png", blob)).safe).toBe(true);
   });
 });

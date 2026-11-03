@@ -131,10 +131,17 @@ export function inspectAttachmentHeader(
   return { safe: true, fileName };
 }
 
+export async function inspectAttachmentBlob(
+  name: string, mimeType: string, blob: Blob,
+): Promise<ScanResult> {
+  // Verify the real bytes on both upload and received-file paths.
+  // Only read a fixed-size signature, not the full file.
+  const header = new Uint8Array(await blob.slice(0, 64).arrayBuffer());
+  return inspectAttachmentHeader(name, mimeType, header);
+}
+
 export async function inspectAttachmentFile(file: File): Promise<ScanResult> {
-  // Read only the signature, never a gigabyte-scale attachment into memory.
-  const header = new Uint8Array(await file.slice(0, 64).arrayBuffer());
-  return inspectAttachmentHeader(file.name, file.type, header);
+  return inspectAttachmentBlob(file.name, file.type, file);
 }
 
 /**

@@ -8,6 +8,7 @@ import { dxdb, getBlob, putBlob } from "./dexie-db";
 import { onionRequestBlob } from "./onion-engine";
 import { compressImageIfNeeded } from "./image-compress";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
+import { inspectAttachmentBlob } from "./security-scan";
 
 export const TRIVO_MAX_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1 GB ceiling
 
@@ -103,6 +104,11 @@ async function assertNotConsumed(fileId: string): Promise<void> {
 const blobUrlCache = new Map<string, string>();
 const inFlight = new Map<string, Promise<string>>();
 
+async function assertSafeToOpen(record: { name: string; mimeType: string; data: Blob }): Promise<void> {
+  const scan = await inspectAttachmentBlob(record.name, record.mimeType, record.data);
+  if (!scan.safe) throw new Error("Attachment type failed local safety checks");
+}
+
 /**
  * Resolve a fileId to a local blob URL. Order of attempts:
  *   1) URL already cached in this page session.
@@ -121,6 +127,7 @@ export function downloadFromTrivo(fileId: string, peer?: string): Promise<string
     if (cached) return cached;
     const local = await getBlob(fileId);
     if (local) {
+      await assertSafeToOpen(local);
       const url = URL.createObjectURL(local.data);
       blobUrlCache.set(fileId, url);
       inFlight.delete(fileId);
@@ -135,6 +142,7 @@ export function downloadFromTrivo(fileId: string, peer?: string): Promise<string
     await assertNotConsumed(fileId);
     const fetched = await getBlob(fileId);
     if (!fetched) throw new Error(`Blob ${fileId} not in Dexie after peer fetch`);
+    await assertSafeToOpen(fetched);
     await assertNotConsumed(fileId);
     const url = URL.createObjectURL(fetched.data);
     blobUrlCache.set(fileId, url);
