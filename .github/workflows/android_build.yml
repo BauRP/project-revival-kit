@@ -85,6 +85,19 @@ jobs:
           echo "path=$APK" >> "$GITHUB_OUTPUT"
           echo "Universal APK: $APK"
 
+      - name: Audit built APK Android SDK compatibility
+        env:
+          APK_PATH: ${{ steps.apk.outputs.path }}
+        run: |
+          set -euo pipefail
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          test -x "$AAPT" || { echo "Android 36 build-tools aapt missing"; exit 1; }
+          "$AAPT" dump badging "$APK_PATH" > /tmp/trivo-apk-badging.txt
+          grep -F "package: name='com.baurp.trivochat'" /tmp/trivo-apk-badging.txt
+          grep -F "sdkVersion:'24'" /tmp/trivo-apk-badging.txt
+          grep -F "targetSdkVersion:'36'" /tmp/trivo-apk-badging.txt
+          echo "Verified min Android 7 and targeted Android 16 in packaged APK."
+
       - name: Audit libtor.so per ABI
         run: |
           APK="${{ steps.apk.outputs.path }}"
