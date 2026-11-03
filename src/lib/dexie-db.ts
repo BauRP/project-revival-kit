@@ -10,6 +10,7 @@
 import Dexie, { type Table } from "dexie";
 import { consumedMediaKey, isConsumedMediaRecord, isProtectedByConsumedTombstone, sanitizeRestoredOneTimeMessage } from "./one-time-policy";
 import { validateBackupStructure } from "./backup-validation";
+import { stripSessionMediaUrl } from "./backup-media-policy";
 
 export interface ContactRecord {
   onion: string;
@@ -339,7 +340,7 @@ export async function exportDexieDump(): Promise<DexieDump> {
     schemaVersion: 3,
     createdAt: Date.now(),
     contacts,
-    messages,
+    messages: messages.map(stripSessionMediaUrl),
     outbox,
     lifecycle,
     blobs: blobsEncoded,
@@ -369,7 +370,7 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       await dxdb.contacts.bulkPut((dump.contacts || []).filter((c) => !currentContacts.has(c.onion)));
       const presentIds = new Set(await dxdb.messages.toCollection().primaryKeys());
       await dxdb.messages.bulkPut((dump.messages || []).filter((m) => !presentIds.has(m.id))
-        .map((m) => sanitizeRestoredOneTimeMessage(m, revoked)));
+        .map((m) => sanitizeRestoredOneTimeMessage(stripSessionMediaUrl(m), revoked)));
       // Do NOT re-activate encrypted frames from an older backup. Those
       // ciphertexts may belong to a deleted identity, and automatically
       // resending them could replay an old message or privacy-sensitive edit.

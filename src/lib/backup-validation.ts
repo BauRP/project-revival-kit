@@ -53,12 +53,22 @@ export function validateBackupStructure(dump: unknown): void {
     if (!record(x) || !id(x.onion, 128))
       throw new Error("Invalid backup contact");
 
-  for (const x of messages)
+  for (const x of messages) {
     if (!record(x) || !id(x.id, 128) || !id(x.from, 128) ||
         !id(x.to, 128) || typeof x.text !== "string" ||
         x.text.length > 200_000 || !Number.isSafeInteger(x.timestamp) ||
         (x.timestamp as number) < 0)
       throw new Error("Invalid backup message");
+    if (x.media !== undefined) {
+      if (!record(x.media) || !id(x.media.fileId, 128) ||
+          !["image", "audio", "file", "video"].includes(String(x.media.type)) ||
+          !id(x.media.name, 255) ||
+          typeof x.media.mimeType !== "string" || x.media.mimeType.length > 128 ||
+          !Number.isSafeInteger(x.media.size) ||
+          (x.media.size as number) < 0 || (x.media.size as number) > MAX_BLOB_SIZE)
+        throw new Error("Invalid backup message attachment");
+    }
+  }
 
   for (const x of lifecycle)
     if (!record(x) || !id(x.key, 1024) || !id(x.chatKey, 256) ||
