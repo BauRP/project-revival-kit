@@ -249,7 +249,15 @@ public class TorOnionService extends Service {
 
     private void startForegroundCompat(String text) {
         Notification notification = buildNotification(text);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            // Android 15 limits dataSync services to 6h per 24h when the app
+            // targets API 35+. The persistent Tor listener transports user
+            // messages, so select the appropriate remoteMessaging type.
+            startForeground(NOTIFICATION_ID, notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING);
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // remoteMessaging was introduced in Android 14. Keep the older
+            // dataSync declaration for Android 10-13 compatibility.
             startForeground(NOTIFICATION_ID, notification,
                     ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
