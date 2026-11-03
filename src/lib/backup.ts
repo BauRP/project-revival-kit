@@ -13,6 +13,7 @@ import { exportDexieDump, importDexieDump, type DexieDump } from "./dexie-db";
 import { isNative } from "./platform";
 import { encryptBackupV2, decryptBackupV2, type BackupEnvelopeV2 } from "./backup-crypto";
 import { getOrCreateIdentity, validateIdentityKeys } from "./crypto";
+import { restoreIdentityOnFreshDevice } from "./identity-transfer";
 import { makePortableBackupPackage, readPortableBackupPayload, assertMatchingBackupIdentity } from "./backup-package";
 import { createDatedBackupFilename, isSafeBackupFilename, newestBackupFilename } from "./backup-files";
 
@@ -111,7 +112,8 @@ export async function exportBackup(
 export async function importBackup(
   password: string,
   filename?: string,
-): Promise<void> {
+  options: { allowEmptyDeviceIdentityTransfer?: boolean } = {},
+): Promise<{ identityChanged: boolean }> {
   let json: string;
 
   if (isNative()) {
@@ -142,9 +144,16 @@ export async function importBackup(
   if (backedUpIdentity) {
     const validated = validateIdentityKeys(backedUpIdentity);
     const current = validateIdentityKeys(await getOrCreateIdentity());
-    assertMatchingBackupIdentity(validated.signing.publicKey, current.signing.publicKey);
+    try {
+      assertMatchingBackupIdentity(validated, current);
+    } catch (error) {
+      if (!options.allowEmptyDeviceIdentityTransfer) throw error;
+      await restoreIdentityOnFreshDevice(validated, dump);
+      return { identityChanged: true };
+    }
   }
   await importDexieDump(dump);
+  return { identityChanged: false };
 }
 
 function pickFileAsText(): Promise<string> {

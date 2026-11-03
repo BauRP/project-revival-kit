@@ -147,6 +147,7 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
   const [showLanguageSheet, setShowLanguageSheet] = useState(false);
   const [backupPassword, setBackupPassword] = useState("");
   const [backupBusy, setBackupBusy] = useState(false);
+  const [allowIdentityTransfer, setAllowIdentityTransfer] = useState(false);
   const [backupFeedback, setBackupFeedback] = useState("");
 
   // Android hardware Back / web Back / Esc must pop THIS screen back to
@@ -233,7 +234,13 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
     setBackupFeedback("");
     try {
       if (restore) {
-        await importBackup(backupPassword);
+        const result = await importBackup(backupPassword, undefined, {
+          allowEmptyDeviceIdentityTransfer: allowIdentityTransfer,
+        });
+        if (result.identityChanged) {
+          window.location.reload(); // reload all cached signing/Tor identity state
+          return;
+        }
         setBackupFeedback("Переписка восстановлена без удаления текущих сообщений");
       } else {
         const result = await exportBackup(backupPassword);
@@ -361,8 +368,8 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
           <div className={settingsGroupClass + " p-4 space-y-3"}>
             <p className="text-xs leading-5 text-gray-500 dark:text-neutral-400">
               Копия шифруется на устройстве и включает переписку и ключи личности.
-              Для переноса на другой телефон нужен отдельный проверенный процесс
-              восстановления личности. Пароль не сохраняется.
+              Для переноса на новый телефон требуется пустая установка и
+              отдельное подтверждение замены личности. Пароль не сохраняется.
             </p>
             <input
               type="password"
@@ -374,6 +381,15 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
               onChange={(event) => setBackupPassword(event.target.value)}
               className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm text-gray-900 dark:border-neutral-700 dark:text-neutral-100"
             />
+            <label className="flex items-start gap-2 text-xs text-gray-600 dark:text-neutral-300">
+              <input type="checkbox" checked={allowIdentityTransfer}
+                disabled={backupBusy}
+                onChange={(event) => setAllowIdentityTransfer(event.target.checked)}
+                className="mt-0.5 shrink-0"
+              />
+              <span>Я переношу аккаунт на пустой телефон и разрешаю заменить временную личность
+                ключами из зашифрованной копии. При наличии переписки замена будет отклонена.</span>
+            </label>
             <div className="grid grid-cols-2 gap-2">
               <button type="button" disabled={backupBusy} onClick={() => void handleBackup(false)}
                 className="flex items-center justify-center gap-2 rounded-lg bg-primary/15 px-2 py-3 text-xs font-semibold text-primary disabled:opacity-50">

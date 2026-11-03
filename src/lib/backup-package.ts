@@ -37,9 +37,10 @@ export function readPortableBackupPayload(
 
 /** Never silently merge another person's chats into this device identity. */
 export function assertMatchingBackupIdentity(
-  backupSigningKey: string, deviceSigningKey: string,
+  backup: IdentityKeys, device: IdentityKeys,
 ): void {
-  if (backupSigningKey !== deviceSigningKey)
+  if (backup.signing.publicKey !== device.signing.publicKey ||
+      backup.exchange.publicKey !== device.exchange.publicKey)
     throw new Error(
       "Backup belongs to a different Trivo identity. Account transfer requires a separate verified recovery flow; no keys were replaced.",
     );

@@ -28,7 +28,14 @@ describe("portable recovery package", () => {
     expect(() => readPortableBackupPayload({ format: "TRIVO-PORTABLE-PACKAGE-V1", identity, database: {} })).toThrow();
   });
   it("does not mix backup conversations into another onion identity", () => {
-    expect(() => assertMatchingBackupIdentity("alice", "bob")).toThrow(/different Trivo identity/);
-    expect(() => assertMatchingBackupIdentity("alice", "alice")).not.toThrow();
+    const another: IdentityKeys = {
+      ...identity, signing: { ...identity.signing, publicKey: "other-signing" },
+    };
+    const changedExchange: IdentityKeys = {
+      ...identity, exchange: { ...identity.exchange, publicKey: "other-exchange" },
+    };
+    expect(() => assertMatchingBackupIdentity(identity, another)).toThrow(/different Trivo identity/);
+    expect(() => assertMatchingBackupIdentity(identity, changedExchange)).toThrow(/different Trivo identity/);
+    expect(() => assertMatchingBackupIdentity(identity, identity)).not.toThrow();
   });
 });

@@ -13,6 +13,21 @@ const vault = registerPlugin<{
   clearIdentity(): Promise<void>;
 }>("SecureVault");
 
+/** Persist a verified recovery identity in the same Android Keystore and
+ * crash-recovery locations as normal first-run identity initialization.
+ * Call only after explicit empty-device confirmation.
+ */
+export async function installRecoveredIdentity(value: IdentityKeys): Promise<void> {
+  const identity = validateIdentityKeys(value);
+  if (isNative()) {
+    const wrapped = await vault.sealIdentity({ plaintext: JSON.stringify(identity) });
+    await vault.saveIdentity({ sealed: wrapped.sealed });
+    await dbPutStrict("identity", "keys", wrapped);
+  } else {
+    await dbPutStrict("identity", "keys", identity);
+  }
+}
+
 export async function eraseIdentityVault(): Promise<void> {
   if (isNative()) await vault.clearIdentity();
   loadingIdentity = null;
