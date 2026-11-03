@@ -49,7 +49,7 @@ import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
 import { validateDispatchBody, boundedAcknowledgements } from "./inbound-frame-policy";
 import { boundedChunkIndexes } from "./blob-request-policy";
-import { shouldApplyRemoteReaction } from "./reactions";
+import { shouldApplyRemoteReaction } from "./reaction-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage } from "./message-deletion-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
