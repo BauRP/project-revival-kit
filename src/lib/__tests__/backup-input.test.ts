@@ -31,6 +31,6 @@ describe("read-only legacy backup input bounds", () => {
     expect(() => validateLegacyBackupEnvelope({ ...valid, nonce: "?" }, 1000)).toThrow();
     expect(() => validateLegacyBackupEnvelope({ ...valid, ciphertext: "%%%" }, 1000)).toThrow();
     expect(() => validateLegacyBackupEnvelope({ ...valid, createdAt: Number.MAX_SAFE_INTEGER }, 1000)).toThrow();
-    expect(() => validateLegacyBackupEnvelope({ ...valid, ciphertext: "A".repeat(240*1024*1024+4) }, 1000)).toThrow();
+    expect(() => validateLegacyBackupEnvelope({ ...valid, ciphertext: "A".repeat(1_001) }, 1000)).toThrow();
   });
 });
