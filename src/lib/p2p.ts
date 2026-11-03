@@ -7,7 +7,7 @@
 import { dbGet, dbGetAll, dbGetStrict, dbGetAllStrict, dbPut, dbPutStrict } from "./storage";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { sanitizeRestoredOneTimeMessage } from "./one-time-policy";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia } from "./message-deletion-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage } from "./message-deletion-policy";
 import { hasExpiredMessage } from "./message-retention";
 import { dxdb, upsertContact, type StoredMessage } from "./dexie-db";
 import {
@@ -182,6 +182,60 @@ async function eraseLocalMessages(
     revokeStoredMediaUrls(orphaned.fileIds);
   }
   return orphaned.count;
+}
+
+/**
+ * "Delete for me" keeps the tiny message shell for a placeholder but erases
+ * text, caption, edit history, queued ciphertext and orphaned attachment data.
+ * Local history protection blocks REMOTE edits, never this local deletion.
+ */
+export async function redactMessageForMe(
+  selfId: string, peerId: string, messageId: string,
+): Promise<void> {
+  if (!selfId || !peerId) throw new Error("Missing local message participants");
+  const { chatKey } = await import("./sync/message-lifecycle");
+  const key = chatKey(selfId, peerId) + "::" + messageId.replace(/\//g, "_");
+  const deletedKey = deletedMessageKey(messageId);
+  const removedFiles = await dxdb.transaction("rw", [
+    dxdb.messages, dxdb.lifecycle, dxdb.outbox, dxdb.blobs, dxdb.partial_chunks,
+  ], async () => {
+    const message = await dxdb.messages.get(messageId);
+    const previous = await dxdb.lifecycle.get(key);
+    const others = message ? await dxdb.messages.filter((m) => m.id !== messageId).toArray() : [];
+    const unused = message ? findUnreferencedMedia(
+      [{ media: message.media }], others.map((m) => ({ media: m.media })),
+    ) : [];
+    const now = Date.now();
+    if (message) await dxdb.messages.put(redactLocalMessage(message));
+    const deletedFor = new Set<string>(
+      Array.isArray(previous?.data.deletedFor) ?
+        (previous!.data.deletedFor as string[]) : [],
+    );
+    deletedFor.add(selfId);
+    // Do not leave editedText in the lifecycle mirror after local deletion.
+    const { editedText: _oldText, ...previousData } = previous?.data || {};
+    void _oldText;
+    await dxdb.lifecycle.put({
+      key, chatKey: chatKey(selfId, peerId), messageId: messageId.replace(/\//g, "_"),
+      data: { ...previousData, messageId, deletedFor: [...deletedFor], editedText: undefined,
+        updatedAt: now },
+      updatedAt: now,
+    });
+    await dxdb.lifecycle.put({
+      key: deletedKey, chatKey: LOCAL_DELETED_CHAT_KEY, messageId,
+      data: { deleted: true, deletedAt: now }, updatedAt: now,
+    });
+    await dxdb.outbox.delete(messageId);
+    if (unused.length) {
+      await dxdb.blobs.bulkDelete(unused);
+      await dxdb.partial_chunks.where("fileId").anyOf(unused).delete();
+    }
+    return unused;
+  });
+  if (removedFiles.length) {
+    const { revokeStoredMediaUrls } = await import("./media-store");
+    revokeStoredMediaUrls(removedFiles);
+  }
 }
 
 export async function deleteLocalMessage(id: string): Promise<void> {

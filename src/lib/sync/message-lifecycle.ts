@@ -12,6 +12,7 @@ import { onionRegisterIncomingListener, onionSendDispatch } from "../onion-engin
 import { isValidOnion } from "../onion-id";
 import { dxdb, getLifecycleMap } from "../dexie-db";
 import { assertRemoteHistoryAllowsChanges } from "../history-protection";
+import { redactMessageForMe } from "../p2p";
 
 export interface MessageLifecycle {
   messageId: string;
@@ -106,13 +107,10 @@ export async function deleteMessageForMe(
   peerId: string,
   messageId: string,
 ): Promise<void> {
-  const safeId = messageId.replace(/\//g, "_");
-  const map = await readLocalMap(selfId, peerId);
-  const prev = map[safeId] || { messageId: safeId };
-  const list = new Set<string>(prev.deletedFor || []);
-  list.add(selfId);
-  await writeLocalEntry(selfId, peerId, messageId, { deletedFor: Array.from(list) });
-  // Local-only — no broadcast.
+  // One crash-safe transaction scrubs plaintext, cancels a pending send,
+  // marks the ID deleted, and retains only the UI placeholder metadata.
+  // Local-only action: never sent to the other participant.
+  await redactMessageForMe(selfId, peerId, messageId);
 }
 
 export async function deleteMessageForEveryone(

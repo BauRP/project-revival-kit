@@ -39,3 +39,12 @@ export function mergedDeletionIds(
       entry.messageId.length <= 128)
     .map((entry) => entry.messageId));
 }
+
+/** Keep only the metadata needed to draw a local deleted-message placeholder.
+ * Never retain the supposedly deleted plaintext or its original attachment.
+ */
+export function redactLocalMessage<T extends { text: string; media?: unknown; caption?: unknown }>(
+  message: T,
+): T {
+  return { ...message, text: "", media: undefined, caption: undefined };
+}

@@ -30,3 +30,18 @@ describe("tombstones across a non-destructive backup merge", () => {
     expect(ids.has("ignored")).toBe(false);
   });
 });
+
+import { redactLocalMessage } from "../message-deletion-policy";
+describe("delete for me removes private plaintext while keeping placeholder identity", () => {
+  it("scrubs text, edit caption and attachment without losing the message ID", () => {
+    const message = {
+      id: "important", text: "private text", caption: "secret caption",
+      media: {fileId:"secret-file"}, from:"self", to:"peer", timestamp:200,
+    };
+    const redacted = redactLocalMessage(message);
+    expect(redacted).toEqual({
+      ...message, text:"", caption:undefined, media:undefined,
+    });
+    expect(message.text).toBe("private text");
+  });
+});
