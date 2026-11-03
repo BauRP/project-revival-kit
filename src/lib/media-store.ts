@@ -6,7 +6,7 @@
 
 import { dxdb, getBlob, putBlob } from "./dexie-db";
 import { onionRequestBlob } from "./onion-engine";
-import { compressImageIfNeeded } from "./image-compress";
+import { stripExifMetadata, inspectAttachmentBlob } from "./security-scan";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { inspectAttachmentBlob } from "./security-scan";
 
@@ -16,6 +16,10 @@ export const TRIVO_MAX_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1 GB ceiling
 
 export interface TrivoUploadResult {
   fileId: string;
+  prepared: File | Blob;
+  name: string;
+  mimeType: string;
+  size: number;
 }
 
 export interface UploadProgress {
@@ -46,20 +50,30 @@ export function uploadFileToTrivo(
   const fileId = makeFileId();
 
   const promise = (async (): Promise<TrivoUploadResult> => {
-    // Step 1 — opportunistic on-the-fly compression for images.
-    // Anything > 500 KB OR > 1080p is re-encoded down to ~300 KB before it
-    // ever touches Dexie or the encryption layer.
+    // Validation and privacy cleanup at the storage boundary itself.
+    // One canvas re-encode only, even if a direct caller skips uploadMedia().
+    if (!Number.isSafeInteger(file.size) || file.size <= 0 ||
+        file.size > TRIVO_MAX_UPLOAD_BYTES)
+      throw new Error("Empty or oversized upload");
+    const name = filename || (typeof File !== "undefined" && file instanceof File
+      ? file.name : "upload-" + Date.now() + ".bin");
+    const mime = file.type || "application/octet-stream";
+    if (name.length > 255 || /[\/\\\u0000-\u001f\u007f]/.test(name))
+      throw new Error("Unsafe attachment filename");
+    const scan = await inspectAttachmentBlob(name, mime, file);
+    if (!scan.safe) throw new Error("Unsupported or unsafe attachment type");
     let working: File | Blob = file;
-    if (typeof File !== "undefined" && file instanceof File) {
-      try {
-        working = await compressImageIfNeeded(file);
-      } catch {
-        working = file;
-      }
+    if (mime.toLowerCase().startsWith("image/")) {
+      const source = new File([file], name, { type: mime });
+      working = await stripExifMetadata(source);
     }
-
-    const name = filename || (working as File).name || `upload-${Date.now()}.bin`;
-    const mime = (working as File).type || "application/octet-stream";
+    if (aborted) throw new Error("Upload aborted");
+    const outputName = typeof File !== "undefined" && working instanceof File
+      ? working.name : name;
+    const outputMime = working.type || mime;
+    const outputScan = await inspectAttachmentBlob(outputName, outputMime, working);
+    if (!outputScan.safe || working.size > TRIVO_MAX_UPLOAD_BYTES)
+      throw new Error("Unsafe prepared attachment");
     const total = working.size || 1;
     onProgress?.({ loaded: 0, total, percent: 0 });
 
@@ -80,10 +94,10 @@ export function uploadFileToTrivo(
     }
     if (aborted) throw new Error("Upload aborted");
 
-    const blob = new Blob(parts, { type: mime });
-    await putBlob(fileId, blob, name, mime);
+    const blob = new Blob(parts, { type: outputMime });
+    await putBlob(fileId, blob, outputName, outputMime);
     onProgress?.({ loaded: total, total, percent: 100 });
-    return { fileId };
+    return { fileId, prepared: working, name: outputName, mimeType: outputMime, size: working.size };
   })();
 
   return {

@@ -1,6 +1,5 @@
 // Media upload service — now backed by the dedicated Trivo Node.js server.
 // All images are scrubbed of EXIF/GPS/metadata before upload (zero-knowledge privacy).
-import { inspectAttachmentFile, stripExifMetadata } from "./security-scan";
 import { TRIVO_MAX_UPLOAD_BYTES, uploadFileToTrivo, type UploadProgress } from "./media-store";
 
 export interface MediaAttachment {
@@ -30,27 +29,20 @@ export async function uploadMedia(file: File, opts: UploadOptions = {}): Promise
     throw new Error(`File exceeds 1 GB limit: ${formatFileSize(file.size)}`);
   }
 
-  // All upload callers use the same fail-closed validation and metadata
-  // scrubbing path, not only the ChatRoom file picker.
-  const scan = await inspectAttachmentFile(file);
-  if (!scan.safe) throw new Error("Unsupported or potentially unsafe file type");
-  const scrubbed = await stripExifMetadata(file);
-
-  const handle = uploadFileToTrivo(scrubbed, scrubbed.name || file.name, opts.onProgress);
+  // All caller paths share validation and EXIF cleanup inside the store.
+  const handle = uploadFileToTrivo(file, file.name, opts.onProgress);
   opts.onHandle?.(handle.abort);
-  const { fileId } = await handle.promise;
-
-  // Sender gets an immediate local preview without re-downloading from the server.
-  const localUrl = URL.createObjectURL(scrubbed);
+  const { fileId, prepared, name, size, mimeType } = await handle.promise;
+  const localUrl = URL.createObjectURL(prepared);
 
   return {
     id: fileId,
     fileId,
-    type: getMediaType(scrubbed.type),
+    type: getMediaType(mimeType),
     url: localUrl,
-    name: scrubbed.name,
-    size: scrubbed.size,
-    mimeType: scrubbed.type,
+    name,
+    size,
+    mimeType,
   };
 }
 
