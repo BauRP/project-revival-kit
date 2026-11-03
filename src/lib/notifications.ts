@@ -6,9 +6,15 @@ import {
   translateWithBundledDictionary,
 } from "@/lib/translation-config";
 import { isNative } from "@/lib/platform";
+import { isStorageAvailable } from "@/lib/safe-storage";
 import { safeNotificationText, shouldNotifyChat, nextLocalNotificationId, notificationPreferenceUnavailable, type NotificationPolicyInput } from "./notification-policy";
 
 function preference(key: string, fallback: boolean): boolean {
+  // The boot guard may replace blocked DOM storage with a fresh in-memory
+  // map that returns null. That must NOT turn a user's disabled notifications
+  // back on or show their private message preview on the lock screen.
+  if (!isStorageAvailable("localStorage"))
+    return notificationPreferenceUnavailable(key, fallback);
   try {
     const value = localStorage.getItem(key);
     return value === null ? fallback : value === "true";
