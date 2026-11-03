@@ -88,3 +88,15 @@ describe("deleted-message shell does not leak unknown private data", () => {
     expect(JSON.stringify(shell)).not.toContain("secret");
   });
 });
+
+import { deletedLifecycleShell } from "../message-deletion-policy";
+describe("local deletion lifecycle cannot retain prior plaintext", () => {
+  it("whitelists tombstone fields while dropping previous edits and unknown private data", () => {
+    const prior={deletedFor:["other"],deletedForEveryone:true,editedText:"SECRET",
+      transcript:"SECRET AUDIO",pinnedBy:"other",remoteUpdatedAt:5};
+    const shell=deletedLifecycleShell(prior,"m","self",12);
+    expect(shell).toEqual({messageId:"m",deletedFor:["other","self"],
+      deletedForEveryone:true,updatedAt:12,remoteUpdatedAt:5});
+    expect(JSON.stringify(shell)).not.toContain("SECRET");
+  });
+});

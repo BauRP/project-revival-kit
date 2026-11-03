@@ -7,7 +7,7 @@
 import { dbGet, dbGetAll, dbGetStrict, dbGetAllStrict, dbPut, dbPutStrict, dbClearStrict } from "./storage";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { sanitizeRestoredOneTimeMessage } from "./one-time-policy";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage } from "./message-deletion-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage, deletedLifecycleShell } from "./message-deletion-policy";
 import { hasExpiredMessage } from "./message-retention";
 import { dxdb, upsertContact, type StoredMessage } from "./dexie-db";
 import {
@@ -207,18 +207,9 @@ export async function redactMessageForMe(
     ) : [];
     const now = Date.now();
     if (message) await dxdb.messages.put(redactLocalMessage(message));
-    const deletedFor = new Set<string>(
-      Array.isArray(previous?.data.deletedFor) ?
-        (previous!.data.deletedFor as string[]) : [],
-    );
-    deletedFor.add(selfId);
-    // Do not leave editedText in the lifecycle mirror after local deletion.
-    const { editedText: _oldText, ...previousData } = previous?.data || {};
-    void _oldText;
     await dxdb.lifecycle.put({
       key, chatKey: chatKey(selfId, peerId), messageId: messageId.replace(/\//g, "_"),
-      data: { ...previousData, messageId, deletedFor: [...deletedFor], editedText: undefined,
-        updatedAt: now },
+      data: deletedLifecycleShell(previous?.data, messageId, selfId, now),
       updatedAt: now,
     });
     await dxdb.lifecycle.put({

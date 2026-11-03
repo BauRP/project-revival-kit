@@ -79,3 +79,28 @@ export function unusedBackupMedia(
   ];
   return findUnreferencedMedia(removed, kept);
 }
+
+/** A deletion lifecycle must not retain hidden previous edit text, transcripts
+ * or arbitrary future plaintext fields from earlier app versions.
+ */
+export function deletedLifecycleShell(
+  previous: Record<string, unknown> | null | undefined,
+  messageId: string,
+  owner: string,
+  updatedAt: number,
+): Record<string, unknown> {
+  const deletedFor = new Set<string>(
+    Array.isArray(previous?.deletedFor)
+      ? previous.deletedFor.filter((item): item is string => typeof item === "string")
+      : [],
+  );
+  deletedFor.add(owner);
+  return {
+    messageId,
+    deletedFor: [...deletedFor],
+    deletedForEveryone: previous?.deletedForEveryone === true,
+    updatedAt,
+    remoteUpdatedAt: typeof previous?.remoteUpdatedAt === "number"
+      ? previous.remoteUpdatedAt : undefined,
+  };
+}
