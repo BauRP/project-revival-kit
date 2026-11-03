@@ -36,6 +36,8 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -96,6 +98,9 @@ public class TorOnionService extends Service {
     private volatile boolean initFailed = false;
 
     private final ExecutorService workers = Executors.newCachedThreadPool();
+    // Never spawn an unbounded number of blocked socket workers on hostile or
+    // unreliable Tor circuits. Connections rejected here are NOT ACKed.
+    private final Semaphore inboundSlots = new Semaphore(24, true);
     private final AtomicBoolean listenerLoopRunning = new AtomicBoolean(false);
 
     private ServerSocket serverSocket;
@@ -292,7 +297,10 @@ public class TorOnionService extends Service {
             if (pm == null) return;
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "trivo:tor-transport");
             wakeLock.setReferenceCounted(false);
-            wakeLock.acquire();
+            // A permanent PARTIAL_WAKE_LOCK consumes CPU/battery even while
+            // the messenger is idle. Keep the device awake only during startup.
+            // Android foreground service governs continued transport lifetime.
+            wakeLock.acquire(5 * 60_000L);
         } catch (Exception e) {
             Log.w(TAG, "wakelock unavailable: " + e.getMessage());
         }
@@ -451,6 +459,7 @@ public class TorOnionService extends Service {
                     : "Online · " + shortOnion(onionAddress));
             lastError = null;
             publishStatus();
+            releaseWakeLock();
 
         } catch (Exception e) {
             lastError = "tor ready failed: " + e.getMessage();
@@ -552,7 +561,25 @@ public class TorOnionService extends Service {
             try {
                 final Socket client = serverSocket.accept();
                 client.setSoTimeout(120_000);
-                workers.execute(() -> handleInbound(client));
+                if (!inboundSlots.tryAcquire()) {
+                    // No durable write, therefore no delivery ACK: the
+                    // sending peer must retry when capacity is available.
+                    Socks5Client.closeQuietly(client);
+                    continue;
+                }
+                try {
+                    workers.execute(() -> {
+                        try {
+                            handleInbound(client);
+                        } finally {
+                            inboundSlots.release();
+                        }
+                    });
+                } catch (RejectedExecutionException rejected) {
+                    inboundSlots.release();
+                    Socks5Client.closeQuietly(client);
+                    Log.w(TAG, "Inbound worker unavailable, sender will retry", rejected);
+                }
             } catch (IOException e) {
                 if (listenerLoopRunning.get()) {
                     Log.w(TAG, "accept failed: " + e.getMessage());
