@@ -7,6 +7,8 @@ import { runAccountWipe } from "@/lib/account-wipe";
 import { nukeAllData } from "@/lib/storage";
 import { safeStorage } from "@/lib/safe-storage";
 import { startAutomaticBackupMonitor, pauseAutomaticBackupsForWipe } from "@/lib/auto-backup";
+import { startNetworkNoise, stopNetworkNoise } from "@/lib/stealth";
+import { isNative } from "@/lib/platform";
 
 interface IdentityContextType {
   identity: IdentityKeys | null;
@@ -75,6 +77,12 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
   }, [identity]);
 
   useEffect(() => {
+    if (!identity || !isNative() || safeStorage.get("trivo-cover-traffic") !== "true") return;
+    startNetworkNoise();
+    return stopNetworkNoise;
+  }, [identity]);
+
+  useEffect(() => {
     safeStorage.set("trivo-stealth", String(stealthMode));
   }, [stealthMode]);
 
@@ -84,6 +92,7 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
     // Never erase the identity keys while the databases still exist.
     // On an interrupted wipe, retaining the keys is safer than orphaning
     // existing encrypted messages and making recovery impossible.
+    stopNetworkNoise();
     await pauseAutomaticBackupsForWipe();
     await runAccountWipe({
       stopTransport: onionStopForAccountDeletion,

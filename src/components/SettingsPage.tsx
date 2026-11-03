@@ -32,6 +32,7 @@ import { nukeAllData } from "@/lib/storage";
 import { isDataSaverEnabled, setDataSaverEnabled } from "@/lib/data-saver";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { isNative } from "@/lib/platform";
+import { startNetworkNoise, stopNetworkNoise } from "@/lib/stealth";
 import { exportBackup, importBackup } from "@/lib/backup";
 import { disableAutomaticBackups, enableAutomaticBackups, isAutomaticBackupEnabled } from "@/lib/auto-backup";
 
@@ -142,6 +143,7 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
     readStoredBoolean("trivo-hide-content", false),
   );
   const [dataSaver, setDataSaver] = useState(() => isDataSaverEnabled());
+  const [coverTraffic, setCoverTraffic] = useState(() => readStoredBoolean("trivo-cover-traffic", false));
   const [showTransparency, setShowTransparency] = useState(false);
   const [showTranslationSettings, setShowTranslationSettings] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -204,6 +206,13 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
   const handleToggleHideContent = useCallback((checked: boolean) => {
     setHideContent(checked);
     writeStoredBoolean("trivo-hide-content", checked);
+  }, []);
+
+  const handleToggleCoverTraffic = useCallback((enabled: boolean) => {
+    setCoverTraffic(enabled);
+    writeStoredBoolean("trivo-cover-traffic", enabled);
+    if (enabled && isNative()) startNetworkNoise();
+    else stopNetworkNoise();
   }, []);
 
   const handleToggleDataSaver = useCallback((checked: boolean) => {
@@ -449,6 +458,13 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
               description={t("invisibleModeDesc")}
               checked={stealthMode}
               onToggle={handleToggleStealth}
+            />
+            <SettingsSwitchRow
+              icon={<Wifi size={18} />}
+              title="Экспериментальные пакеты через Tor"
+              description="Только к подключённым контактам. Дополнительный трафик и расход батареи. Не гарантирует анонимности."
+              checked={coverTraffic && isNative()}
+              onToggle={handleToggleCoverTraffic}
             />
             <SettingsLinkRow
               icon={<FileText size={18} />}

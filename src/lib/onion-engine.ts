@@ -71,7 +71,8 @@ type InnerKind =
   | "blob_request"
   | "blob_chunk"
   | "blob_sync_request"
-  | "blob_missing";
+  | "blob_missing"
+  | "cover";
 
 interface InnerFrame {
   kind: InnerKind;
@@ -286,6 +287,25 @@ async function bindNativeListeners(): Promise<void> {
 }
 
 // ─── Egress ──────────────────────────────────────────────────
+
+/**
+ * Experimental *real* encrypted Tor cover frame, opt-in only.
+ * This can add uncertainty to simple traffic timing observations, but does
+ * NOT provide Vuvuzela/Alpenhorn anonymity, constant-rate mixing, or
+ * protection against a global network observer. No backend is required.
+ */
+export async function onionSendCoverFrame(): Promise<boolean> {
+  if (!isTorNativeAvailable() || !torStatus.running || !torStatus.bootstrapped)
+    return false;
+  const peers = (await getAllContacts()).map((c) => c.onion)
+    .filter((peer) => isValidOnion(peer) && onionIsConnectedTo(peer));
+  if (!peers.length) return false;
+  const chooser = crypto.getRandomValues(new Uint32Array(1))[0] % peers.length;
+  const peer = peers[chooser];
+  const bytes = crypto.getRandomValues(new Uint8Array(96));
+  return sendEphemeral(peer, "cover", { padding: bytesToBase64(bytes) });
+}
+
 
 async function seal(to: string, inner: InnerFrame): Promise<string> {
   const from = await ensureLocalIdentity();
@@ -535,6 +555,11 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
     case "hello":
       await dxdb.inbox_raw.delete(rawId);
       await drainOutboxFor(from);
+      return;
+    case "cover":
+      // A valid, signed dummy frame; it is never a chat message and never
+      // persisted outside the transient sealed inbox.
+      await dxdb.inbox_raw.delete(rawId);
       return;
     case "blob_request": {
       await dxdb.inbox_raw.delete(rawId);
