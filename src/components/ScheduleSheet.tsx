@@ -5,7 +5,7 @@ import { useState } from "react";
 interface ScheduleSheetProps {
   open: boolean;
   onClose: () => void;
-  onConfirm: (epochMs: number) => void;
+  onConfirm: (epochMs: number) => Promise<void> | void;
 }
 
 const presets = [
@@ -24,11 +24,28 @@ const tomorrowAt9 = () => {
 
 const ScheduleSheet = ({ open, onClose, onConfirm }: ScheduleSheetProps) => {
   const [custom, setCustom] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  const fire = (ts: number) => {
-    if (ts <= Date.now() + 1000) return;
-    onConfirm(ts);
-    onClose();
+  const fire = async (ts: number) => {
+    if (saving) return;
+    if (!Number.isSafeInteger(ts) || ts <= Date.now() + 1000) {
+      setSaveError("Выберите время в будущем.");
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      // The text must be encrypted and durably written BEFORE the sheet
+      // closes and implies that a send is scheduled.
+      await onConfirm(ts);
+      setCustom("");
+      onClose();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Не удалось сохранить отложенную отправку");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -40,7 +57,7 @@ const ScheduleSheet = ({ open, onClose, onConfirm }: ScheduleSheetProps) => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-40 bg-background/60 backdrop-blur-sm"
-            onClick={onClose}
+            onClick={() => { if (!saving) onClose(); }}
             aria-hidden="true"
           />
           <motion.div
@@ -59,7 +76,7 @@ const ScheduleSheet = ({ open, onClose, onConfirm }: ScheduleSheetProps) => {
                   <Clock size={18} className="text-primary" />
                   <span className="text-sm font-semibold">Schedule message</span>
                 </div>
-                <button onClick={onClose} className="p-1 text-muted-foreground" aria-label="Close">
+                <button onClick={onClose} disabled={saving} className="p-1 text-muted-foreground disabled:opacity-40" aria-label="Close">
                   <X size={18} />
                 </button>
               </div>
@@ -68,7 +85,8 @@ const ScheduleSheet = ({ open, onClose, onConfirm }: ScheduleSheetProps) => {
                 {presets.map((p) => (
                   <button
                     key={p.label}
-                    onClick={() => fire(p.ms === -1 ? tomorrowAt9() : Date.now() + p.ms)}
+                    onClick={() => { void fire(p.ms === -1 ? tomorrowAt9() : Date.now() + p.ms); }}
+                    disabled={saving}
                     className="px-3 py-2.5 rounded-xl bg-secondary/60 hover:bg-secondary text-sm text-foreground text-left transition-colors"
                   >
                     {p.label}
@@ -91,15 +109,17 @@ const ScheduleSheet = ({ open, onClose, onConfirm }: ScheduleSheetProps) => {
                     onClick={() => {
                       if (!custom) return;
                       const ts = new Date(custom).getTime();
-                      if (Number.isFinite(ts)) fire(ts);
+                      void fire(ts);
                     }}
-                    disabled={!custom}
+                    disabled={!custom || saving}
                     className="px-3 py-2 rounded-xl bg-primary text-primary-foreground text-sm disabled:opacity-40"
                   >
                     Set
                   </button>
                 </div>
               </div>
+              {saveError && <p role="alert" className="text-xs text-destructive break-words">{saveError}</p>}
+              {saving && <p role="status" className="text-xs text-muted-foreground">Сохраняем зашифрованное сообщение…</p>}
             </div>
           </motion.div>
         </>
