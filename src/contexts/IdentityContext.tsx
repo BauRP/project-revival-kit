@@ -3,6 +3,7 @@ import { getOrCreateIdentity, getKeyFingerprint, eraseIdentityVault, type Identi
 import { getOrCreateUserId } from "@/lib/identity";
 import { migrateLegacyMessages } from "@/lib/p2p";
 import { recoverPendingReactionSync } from "@/lib/reactions";
+import { scrubLegacyHiddenMessageBodies } from "@/lib/hidden-message-migration";
 import { recoverInbox, onionStopForAccountDeletion, onionClearNativeInboxForAccountDeletion } from "@/lib/onion-engine";
 import { runAccountWipe } from "@/lib/account-wipe";
 import { nukeAllData } from "@/lib/storage";
@@ -48,6 +49,8 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
         // inbound frames left in inbox_raw by a crash or power loss.
         try {
           await migrateLegacyMessages();
+          const scrubbed = await scrubLegacyHiddenMessageBodies(nextUserId);
+          if (scrubbed) console.info(`[trivo] scrubbed ${scrubbed} legacy hidden messages`);
           const recovered = await recoverInbox();
           if (recovered > 0) console.info(`[trivo] recovered ${recovered} inbound frame(s)`);
           void recoverPendingReactionSync().catch((error) =>
