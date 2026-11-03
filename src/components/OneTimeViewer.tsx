@@ -9,7 +9,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { Eye, X } from "lucide-react";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { registerPlugin } from "@capacitor/core";
 import { isNative } from "@/lib/platform";
 
@@ -25,6 +25,11 @@ interface OneTimeViewerProps {
 }
 
 const OneTimeViewer = ({ open, url, mediaType, onClose, onConsumed }: OneTimeViewerProps) => {
+  const dismissed = useRef(false);
+  useEffect(() => {
+    if (open) dismissed.current = false;
+  }, [open]);
+
   useEffect(() => {
     if (!isNative()) return;
     void secureView.setSecure({ enabled: open }).catch((error) =>
@@ -46,9 +51,12 @@ const OneTimeViewer = ({ open, url, mediaType, onClose, onConsumed }: OneTimeVie
   }, [open]);
 
   const handleDismiss = () => {
+    if (!open || dismissed.current) return;
+    dismissed.current = true;
+    // Capture and start deletion synchronously BEFORE the parent clears
+    // viewerMessage. Delaying onConsumed to a microtask loses the item.
+    onConsumed();
     onClose();
-    // Defer purge to next tick so the close animation can read the URL.
-    queueMicrotask(() => onConsumed());
   };
 
   return (

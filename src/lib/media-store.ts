@@ -8,7 +8,6 @@ import { dxdb, getBlob, putBlob } from "./dexie-db";
 import { onionRequestBlob } from "./onion-engine";
 import { stripExifMetadata, inspectAttachmentBlob } from "./security-scan";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
-import { inspectAttachmentBlob } from "./security-scan";
 
 export const TRIVO_MAX_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1 GB ceiling
 
