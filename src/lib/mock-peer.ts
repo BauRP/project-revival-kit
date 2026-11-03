@@ -1,5 +1,5 @@
 // Mock test peer for first-launch initialization
-import { dbGet, dbPut } from "./storage";
+import { dbGet, dbPut, dbGetStrict, dbPutStrict } from "./storage";
 import { saveLocalMessage, type ChatMeta, type P2PMessage } from "./p2p";
 
 const MOCK_PEER_ID = "TRIVO_MOCK_PEER_999";
@@ -45,7 +45,7 @@ export async function ensureSupportBotName(): Promise<void> {
 }
 
 export async function initMockPeer(language: string): Promise<boolean> {
-  const alreadyInit = await dbGet<boolean>("settings", MOCK_INIT_KEY);
+  const alreadyInit = await dbGetStrict<boolean>("settings", MOCK_INIT_KEY);
   if (alreadyInit) {
     await ensureSupportBotName();
     return false;
@@ -54,7 +54,7 @@ export async function initMockPeer(language: string): Promise<boolean> {
   const name = getMockPeerName(language);
 
   // Add to contacts
-  await dbPut("contacts", MOCK_PEER_ID, {
+  await dbPutStrict("contacts", MOCK_PEER_ID, {
     friendId: MOCK_PEER_ID,
     friendName: name,
     friendAvatar: null,
@@ -71,28 +71,28 @@ export async function initMockPeer(language: string): Promise<boolean> {
 
   // Add a welcome message
   const welcomeMsg = {
-    id: `mock-welcome-${Date.now()}`,
+    id: "mock-welcome-v1",
     from: MOCK_PEER_ID,
     to: "self",
     text:
       language === "ru"
-        ? "Привет! Я бот поддержки Trivo. Это тестовый чат, чтобы вы могли изучить приложение. Все ваши сообщения зашифрованы сквозным шифрованием. 🔐"
+        ? "Привет! Я локальный бот поддержки Trivo. Этот тестовый чат работает на вашем устройстве без отправки через Tor. Для общения с людьми используйте защищённые Tor-чаты."
         : language === "kk"
-          ? "Сәлем! Мен Trivo қолдау ботымын. Бұл сынақ чат, қолданбаны зерттеуге арналған. Барлық хабарламаларыңыз сквозды шифрланған. 🔐"
-          : "Hi! I'm the Trivo support bot. This is a test chat so you can explore the app. All your messages are end-to-end encrypted. 🔐",
+          ? "Сәлем! Мен Trivo қолданбасындағы жергілікті қолдау ботымын. Бұл сынақ чат тек құрылғыда жұмыс істейді, хабарламалар Tor арқылы жіберілмейді."
+          : "Hi! I am the local Trivo support bot. This test chat stays on your device without sending messages through Tor. Use secure Tor chats to communicate with people.",
     timestamp: Date.now(),
     status: "delivered",
   };
   await saveLocalMessage(welcomeMsg as P2PMessage);
 
-  await dbPut("settings", MOCK_INIT_KEY, true);
+  await dbPutStrict("settings", MOCK_INIT_KEY, true);
   return true;
 }
 
 /**
- * Trivo Support is the built-in test contact. NO media restrictions —
+ * Trivo Support is the local-only test contact. NO media restrictions —
  * users may send any file (image, audio, music, document) to verify the
- * full media-delivery pipeline (uploadMedia → local blob store → P2P).
+ * local media pipeline (uploadMedia → local blob store; no Tor delivery).
  * Returns true for any media type. Used as the canonical "is this peer the
  * test bot?" check.
  */
