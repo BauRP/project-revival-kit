@@ -46,7 +46,21 @@ export function mergedDeletionIds(
 export function redactLocalMessage<T extends { text: string; media?: unknown; caption?: unknown }>(
   message: T,
 ): T {
-  return { ...message, text: "", media: undefined, caption: undefined };
+  // Fail closed: do not spread arbitrary legacy fields into a supposedly
+  // redacted record. They may hold plaintext transcripts, translations,
+  // reply previews or newer fields added by a future client.
+  // Only stable routing/status metadata needed to display a tombstone stays.
+  const original = message as Record<string, unknown>;
+  const retainedKeys = [
+    "id", "from", "to", "timestamp", "status", "deleteAt", "silent",
+    "oneTimeView", "oneTimeConsumed", "roundVideo", "scheduledAt",
+  ];
+  const shell: Record<string, unknown> = { text: "" };
+  for (const key of retainedKeys) {
+    if (Object.prototype.hasOwnProperty.call(original, key))
+      shell[key] = original[key];
+  }
+  return shell as T;
 }
 
 /** A backup can contain a deletion tombstone and the obsolete attachment.

@@ -40,7 +40,7 @@ describe("delete for me removes private plaintext while keeping placeholder iden
     };
     const redacted = redactLocalMessage(message);
     expect(redacted).toEqual({
-      ...message, text:"", caption:undefined, media:undefined,
+      id:"important", text:"", from:"self", to:"peer", timestamp:200,
     });
     expect(message.text).toBe("private text");
   });
@@ -70,5 +70,21 @@ describe("backup resurrection of previously deleted attachments", () => {
       {id:"alive",media:{fileId:"shared"}}];
     expect(unusedBackupMedia(messages,new Set(["erased"]))).toEqual([]);
     expect(unusedBackupMedia([messages[0]],new Set(["erased"]),[{media:{fileId:"shared"}}])).toEqual([]);
+  });
+});
+
+describe("deleted-message shell does not leak unknown private data", () => {
+  it("drops translations, audio transcripts, replies and newly introduced fields", () => {
+    const raw = {
+      id:"m",from:"alice",to:"bob",timestamp:1,status:"delivered",text:"secret",
+      translatedText:"секрет", transcription:"voice secret",
+      replyPreview:"quoted secret", futureSecretPayload:"hidden",
+      media:{fileId:"file"},caption:"caption secret",
+    };
+    const shell = redactLocalMessage(raw);
+    expect(shell).toEqual({
+      id:"m",from:"alice",to:"bob",timestamp:1,status:"delivered",text:"",
+    });
+    expect(JSON.stringify(shell)).not.toContain("secret");
   });
 });
