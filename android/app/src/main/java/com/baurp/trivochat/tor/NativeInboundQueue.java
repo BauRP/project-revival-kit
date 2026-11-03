@@ -87,12 +87,43 @@ public final class NativeInboundQueue {
             File dir = folder(context);
             String id = hash(frame);
             File target = new File(dir, id + ".frame");
-            if (target.isFile()) return id; // duplicate; safe to ACK again
+            // A hash-derived filename is not evidence that its on-disk bytes
+            // survived a crash, disk error or truncated atomic replacement.
+            // Only ACK a duplicate if the persisted content still matches.
+            boolean existing = target.isFile();
+            if (existing && target.length() == bytes.length) {
+                boolean identical = true;
+                try (FileInputStream in = new FileInputStream(target)) {
+                    byte[] buffer = new byte[8192];
+                    int offset = 0;
+                    while (offset < bytes.length) {
+                        int size = in.read(buffer, 0, Math.min(buffer.length, bytes.length - offset));
+                        if (size <= 0) { identical = false; break; }
+                        for (int i = 0; i < size; i++) {
+                            if (buffer[i] != bytes[offset + i]) {
+                                identical = false; break;
+                            }
+                        }
+                        if (!identical) break;
+                        offset += size;
+                    }
+                    if (offset != bytes.length) identical = false;
+                } catch (IOException ignored) {
+                    identical = false;
+                }
+                if (identical) return id;
+            }
             File[] pending = entries(dir);
             long total = 0;
             for (File file : pending) total += file.length();
-            if (pending.length >= MAX_ENTRIES || total + bytes.length > MAX_BYTES)
+            // Replacing a corrupted entry should not count twice against the
+            // queue budget. AtomicFile commits the new bytes before TCP ACK.
+            long replacedLength = existing ? target.length() : 0L;
+            int prospectiveEntries = pending.length + (existing ? 0 : 1);
+            if (prospectiveEntries > MAX_ENTRIES ||
+                total - replacedLength + bytes.length > MAX_BYTES)
                 throw new IOException("Inbound queue full; sender must retry later");
+            if (existing) Log.w(TAG, "Replacing damaged inbound frame " + id);
             AtomicFile atomic = new AtomicFile(target);
             FileOutputStream out = null;
             try {
