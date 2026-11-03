@@ -422,7 +422,10 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       const remaining = existingDeleted.length
         ? await dxdb.messages.filter((m) => !deletedIds.has(m.id)).toArray()
         : [];
-      const orphaned = findUnreferencedMedia(existingDeleted, remaining);
+      const orphaned = findUnreferencedMedia(
+        existingDeleted.map((message) => ({ media: message.media })),
+        remaining.map((message) => ({ media: message.media })),
+      );
       if (existingDeleted.length) await dxdb.messages.bulkDelete(existingDeleted.map((m) => m.id));
       if (deletedIds.size) await dxdb.outbox.bulkDelete([...deletedIds]);
       if (orphaned.length) {
