@@ -121,6 +121,24 @@ export async function dbCountStrict(store: string): Promise<number> {
   });
 }
 
+/** Remove legacy plaintext after verifying its Dexie migration committed.
+ * A failed transaction must never be treated as successful erasure. */
+export async function dbClearStrict(store: string): Promise<void> {
+  const db = await openDB();
+  return new Promise<void>((resolve, reject) => {
+    try {
+      const transaction = db.transaction(store, "readwrite");
+      transaction.objectStore(store).clear();
+      transaction.oncomplete = () => { db.close(); resolve(); };
+      transaction.onerror = () => { db.close(); reject(transaction.error || new Error("Legacy erasure failed")); };
+      transaction.onabort = () => { db.close(); reject(transaction.error || new Error("Legacy erasure aborted")); };
+    } catch (error) {
+      db.close();
+      reject(error);
+    }
+  });
+}
+
 /** Use for migrations: storage failures must never turn into an empty result. */
 export async function dbGetAllStrict<T>(store: string): Promise<T[]> {
   const db = await openDB();

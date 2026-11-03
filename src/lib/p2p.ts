@@ -4,7 +4,7 @@
 //  the engine owns the sealed outbox and the DELIVERED_ACK lifecycle.
 // ============================================================================
 
-import { dbGet, dbGetAll, dbGetStrict, dbGetAllStrict, dbPut, dbPutStrict } from "./storage";
+import { dbGet, dbGetAll, dbGetStrict, dbGetAllStrict, dbPut, dbPutStrict, dbClearStrict } from "./storage";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { sanitizeRestoredOneTimeMessage } from "./one-time-policy";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage } from "./message-deletion-policy";
@@ -264,24 +264,30 @@ export async function getMessagesForChat(peer: string): Promise<P2PMessage[]> {
 
 /** One-time move of messages from the legacy key-value DB into Dexie. */
 export async function migrateLegacyMessages(): Promise<void> {
-  if (await dbGetStrict<boolean>("settings", "messages-migrated-to-dexie")) return;
-  // A failed read must NOT be interpreted as an empty legacy database.
-  const legacy = await dbGetAllStrict<P2PMessage>("messages");
-  // Migration may be retried after a crash. Never replace a newer Dexie
-  // message or its read/consumed state with an obsolete legacy copy.
-  if (legacy.length) await dxdb.transaction("rw", [dxdb.messages, dxdb.lifecycle], async () => {
-    const tombstones = await dxdb.lifecycle.where("chatKey").equals("consumed-media").toArray();
-    const revoked = new Set(tombstones.filter((r) => r.data.consumed === true).map((r) => r.key));
-    for (const msg of legacy) {
-      if (typeof msg?.id !== "string" || !msg.id || msg.id.length > 128) continue;
-      if (!(await dxdb.messages.get(msg.id)) &&
-          !isDeletedMessageRecord((await dxdb.lifecycle.get(deletedMessageKey(msg.id)))?.data)) {
-        await dxdb.messages.add(sanitizeRestoredOneTimeMessage(msg, revoked) as unknown as StoredMessage);
+  const migrated = await dbGetStrict<boolean>("settings", "messages-migrated-to-dexie");
+  if (!migrated) {
+    // A failed read must NOT be interpreted as an empty legacy database.
+    const legacy = await dbGetAllStrict<P2PMessage>("messages");
+    // Migration may be retried after a crash. Never replace a newer Dexie
+    // message or its read/consumed state with an obsolete legacy copy.
+    if (legacy.length) await dxdb.transaction("rw", [dxdb.messages, dxdb.lifecycle], async () => {
+      const tombstones = await dxdb.lifecycle.where("chatKey").equals("consumed-media").toArray();
+      const revoked = new Set(tombstones.filter((r) => r.data.consumed === true).map((r) => r.key));
+      for (const msg of legacy) {
+        if (typeof msg?.id !== "string" || !msg.id || msg.id.length > 128) continue;
+        if (!(await dxdb.messages.get(msg.id)) &&
+            !isDeletedMessageRecord((await dxdb.lifecycle.get(deletedMessageKey(msg.id)))?.data)) {
+          await dxdb.messages.add(sanitizeRestoredOneTimeMessage(msg, revoked) as unknown as StoredMessage);
+        }
       }
-    }
-  });
-  // Mark complete only if the write to settings actually committed.
-  await dbPutStrict("settings", "messages-migrated-to-dexie", true);
+    });
+    // Commit the migration marker BEFORE destroying the old records.
+    await dbPutStrict("settings", "messages-migrated-to-dexie", true);
+  }
+  // Older releases set the marker but never wiped the original plaintext,
+  // leaving recoverable copies even after "delete for me". Always retry the
+  // cleanup after a crash; no current chat reads from this legacy table.
+  await dbClearStrict("messages");
 }
 
 // ─── Chat metadata (display name → Dexie contacts) ───────────
