@@ -41,16 +41,19 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
         const nextUserId = await getOrCreateUserId();
         if (cancelled) return;
 
+        // Privacy-critical migration must commit BEFORE showing any chat UI.
+        // Otherwise legacy "deleted" plaintext would briefly be rendered
+        // while the background recovery still runs.
+        await migrateLegacyMessages();
+        const scrubbed = await scrubLegacyHiddenMessageBodies(nextUserId);
+        if (scrubbed) console.info(`[trivo] scrubbed ${scrubbed} legacy hidden messages`);
+        if (cancelled) return;
         setIdentity(keys);
         setUserId(nextUserId);
         setIsLoading(false);
 
-        // Boot recovery: move legacy messages into Dexie, then commit any
-        // inbound frames left in inbox_raw by a crash or power loss.
+        // Incoming authenticated frames can be recovered after first paint.
         try {
-          await migrateLegacyMessages();
-          const scrubbed = await scrubLegacyHiddenMessageBodies(nextUserId);
-          if (scrubbed) console.info(`[trivo] scrubbed ${scrubbed} legacy hidden messages`);
           const recovered = await recoverInbox();
           if (recovered > 0) console.info(`[trivo] recovered ${recovered} inbound frame(s)`);
           void recoverPendingReactionSync().catch((error) =>
