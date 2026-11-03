@@ -287,16 +287,18 @@ export async function migrateLegacyMessages(): Promise<void> {
 // ─── Chat metadata (display name → Dexie contacts) ───────────
 
 export async function saveChatMeta(meta: ChatMeta): Promise<void> {
-  await dbPut("contacts", meta.friendId, meta);
+  // Chat metadata is user-visible state, not an optional debug cache.
+  // A failed IndexedDB transaction must not be reported as a saved contact.
+  await dbPutStrict("contacts", meta.friendId, meta);
   if (isValidOnion(meta.friendId)) await upsertContact(meta.friendId, meta.friendName);
 }
 
 export async function getChatMeta(friendId: string): Promise<ChatMeta | undefined> {
-  return dbGet<ChatMeta>("contacts", friendId);
+  return dbGetStrict<ChatMeta>("contacts", friendId);
 }
 
 export async function getAllChatMetas(): Promise<ChatMeta[]> {
-  return dbGetAll<ChatMeta>("contacts");
+  return dbGetAllStrict<ChatMeta>("contacts");
 }
 
 // ─── Listener API ────────────────────────────────────────────
