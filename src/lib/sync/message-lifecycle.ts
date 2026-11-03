@@ -13,6 +13,7 @@ import { isValidOnion } from "../onion-id";
 import { dxdb, getLifecycleMap } from "../dexie-db";
 import { assertRemoteHistoryAllowsChanges } from "../history-protection";
 import { redactMessageForMe } from "../p2p";
+import { canAuthorModifyOwnMessage } from "../lifecycle-auth";
 
 export interface MessageLifecycle {
   messageId: string;
@@ -95,6 +96,11 @@ export async function editMessage(
   newText: string,
 ): Promise<void> {
   await assertRemoteHistoryAllowsChanges(peerId);
+  const original = await dxdb.messages.get(messageId);
+  if (!canAuthorModifyOwnMessage(original, selfId, peerId))
+    throw new Error("Only the original author can edit this message");
+  if (!newText || newText.length > 200_000)
+    throw new Error("Edited message text is missing or too long");
   const patch: Partial<MessageLifecycle> = { isEdited: true, editedText: newText };
   // Durable encrypted outbox first. If sealing/storage fails, the UI must
   // not claim the remote mutation succeeded in the local mirror.
@@ -119,6 +125,9 @@ export async function deleteMessageForEveryone(
   messageId: string,
 ): Promise<void> {
   await assertRemoteHistoryAllowsChanges(peerId);
+  const original = await dxdb.messages.get(messageId);
+  if (!canAuthorModifyOwnMessage(original, selfId, peerId))
+    throw new Error("Only the original author can delete this message for everyone");
   const patch: Partial<MessageLifecycle> = {
     deletedForEveryone: true,
     isEdited: false,

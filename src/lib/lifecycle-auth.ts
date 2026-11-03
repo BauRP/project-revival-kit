@@ -87,3 +87,15 @@ export function isDuplicateRemoteDeletion(
     !("editedText" in patch) && patch.isEdited !== true &&
     !("pinnedAt" in patch) && !("pinnedBy" in patch) && !("clearPin" in patch);
 }
+
+/** The sender may edit/delete globally only messages they themselves wrote.
+ * This check is also performed by the recipient when a Tor command arrives.
+ */
+export function canAuthorModifyOwnMessage(
+  message: { from?: string; to?: string } | undefined,
+  self: string,
+  peer: string,
+): boolean {
+  return !!message && !!self && !!peer && self !== peer &&
+    message.from === self && message.to === peer;
+}

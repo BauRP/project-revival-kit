@@ -57,3 +57,14 @@ describe("durable terminal deletion ACK policy", () => {
     expect(isDuplicateRemoteDeletion({}, {deletedForEveryone:true})).toBe(false);
   });
 });
+
+import { canAuthorModifyOwnMessage } from "../lifecycle-auth";
+describe("local sender must own global mutation before queueing it", () => {
+  it("allows editing and global deletion only for exact original participants", () => {
+    expect(canAuthorModifyOwnMessage({from,to},from,to)).toBe(true);
+    expect(canAuthorModifyOwnMessage({from,to},to,from)).toBe(false);
+    expect(canAuthorModifyOwnMessage({from,to},from,"third")).toBe(false);
+    expect(canAuthorModifyOwnMessage(undefined,from,to)).toBe(false);
+    expect(canAuthorModifyOwnMessage({from,to},from,from)).toBe(false);
+  });
+});
