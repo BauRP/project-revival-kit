@@ -8,6 +8,7 @@ import { recoverInbox, onionStopForAccountDeletion, onionClearNativeInboxForAcco
 import { runAccountWipe } from "@/lib/account-wipe";
 import { nukeAllData } from "@/lib/storage";
 import { safeStorage } from "@/lib/safe-storage";
+import { reportFatalError } from "@/lib/boot-guard";
 import { startAutomaticBackupMonitor, pauseAutomaticBackupsForWipe } from "@/lib/auto-backup";
 import { startNetworkNoise, stopNetworkNoise } from "@/lib/stealth";
 import { isNative } from "@/lib/platform";
@@ -63,7 +64,12 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
         }
       } catch (error) {
         console.error("Критическая ошибка инициализации личности:", error);
-        if (!cancelled) setIsLoading(false);
+        if (!cancelled) {
+          // Show the existing diagnostic screen, never a fake empty account.
+          // The recovery error does not delete keys or user data.
+          reportFatalError(error, "manual");
+          setIsLoading(false);
+        }
       }
     };
 

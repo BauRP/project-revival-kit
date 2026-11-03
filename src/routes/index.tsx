@@ -18,13 +18,13 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Private peer-to-peer messaging over Tor onion services with local end-to-end encrypted storage.",
+          "Private peer-to-peer messaging via Tor onion services. Local message storage is not yet fully encrypted.",
       },
       { property: "og:title", content: "Trivo Chat Elite | Private Tor Messenger" },
       {
         property: "og:description",
         content:
-          "Private peer-to-peer messaging over Tor onion services with local end-to-end encrypted storage.",
+          "Private peer-to-peer messaging via Tor onion services. Local message storage is not yet fully encrypted.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
