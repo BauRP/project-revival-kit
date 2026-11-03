@@ -109,15 +109,14 @@ async function loadOrCreateIdentity(): Promise<IdentityKeys> {
   const existing = await dbGetStrict<IdentityKeys | { sealed: string }>("identity", "keys");
   if (isNative()) {
     if (existing && "sealed" in existing) {
+      let identity: IdentityKeys;
       try {
         const unlocked = await vault.openIdentity({ sealed: existing.sealed });
-        const identity = validateIdentityKeys(JSON.parse(unlocked.plaintext) as IdentityKeys);
-        await vault.saveIdentity({ sealed: existing.sealed });
-        return identity;
+        identity = validateIdentityKeys(JSON.parse(unlocked.plaintext) as IdentityKeys);
       } catch (primaryError) {
-        // The IndexedDB wrapper may be truncated while SecureVault's
-        // independent Keystore-protected crash-recovery copy remains intact.
-        // Recover the ORIGINAL keypair; never mint a new onion address.
+        // Only an invalid/corrupted primary key wrapper permits recovery.
+        // A failed backup WRITE must not silently replace a valid identity
+        // with another (possibly older) protected copy.
         const recovery = await vault.loadIdentity();
         if (!recovery.sealed || recovery.sealed === existing.sealed)
           throw primaryError;
@@ -127,6 +126,8 @@ async function loadOrCreateIdentity(): Promise<IdentityKeys> {
         console.warn("[identity] recovered original identity from protected native copy");
         return recovered;
       }
+      await vault.saveIdentity({ sealed: existing.sealed });
+      return identity;
     }
     if (existing && "signing" in existing) {
       validateIdentityKeys(existing);
