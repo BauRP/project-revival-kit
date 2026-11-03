@@ -13,6 +13,8 @@ export interface IdentityBootstrapCounts {
   chunks: number;
   legacyContacts: number;
   legacyMessages: number;
+  scheduledMessages: number;
+  nativeFrames: number;
 }
 export function assertCanGenerateNewIdentity(counts: IdentityBootstrapCounts): void {
   if (Object.values(counts).some((n) => !Number.isSafeInteger(n) || n < 0))

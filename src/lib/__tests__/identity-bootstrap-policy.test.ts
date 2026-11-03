@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { assertCanGenerateNewIdentity, type IdentityBootstrapCounts } from "../identity-bootstrap-policy";
 const fresh = (): IdentityBootstrapCounts => ({
   contacts:0,messages:0,outbox:0,inbound:0,lifecycle:0,blobs:0,
-  chunks:0,legacyContacts:0,legacyMessages:0,
+  chunks:0,legacyContacts:0,legacyMessages:0,scheduledMessages:0,nativeFrames:0,
 });
 describe("identity bootstrap fail-closed policy", () => {
   it("permits true first install after checking every durable store", () => {

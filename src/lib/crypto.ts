@@ -140,10 +140,23 @@ async function loadOrCreateIdentity(): Promise<IdentityKeys> {
     dxdb.inbox_raw.count(), dxdb.lifecycle.count(), dxdb.blobs.count(),
     dxdb.partial_chunks.count(), dbCountStrict("contacts"), dbCountStrict("messages"),
   ]);
+  // An orphaned scheduled message or a sealed Tor frame is proof that
+  // this device already had an identity. Do not discard either by replacing
+  // the keypair. Both checks propagate errors rather than treating them as 0.
+  const { listOutbox } = await import("./outbox");
+  const scheduledMessages = (await listOutbox()).length;
+  let nativeFrames = 0;
+  if (isNative()) {
+    const { isTorNativeAvailable, TorTransport } = await import("./tor-native");
+    if (!isTorNativeAvailable())
+      throw new Error("Native Tor bridge unavailable; cannot verify prior identity state");
+    nativeFrames = (await TorTransport.inboundCount()).count;
+  }
   assertCanGenerateNewIdentity({
     contacts: counts[0], messages: counts[1], outbox: counts[2],
     inbound: counts[3], lifecycle: counts[4], blobs: counts[5],
     chunks: counts[6], legacyContacts: counts[7], legacyMessages: counts[8],
+    scheduledMessages, nativeFrames,
   });
   const { generateIdentityKeysAsync } = await import("./crypto-async");
   const identity = await generateIdentityKeysAsync();
