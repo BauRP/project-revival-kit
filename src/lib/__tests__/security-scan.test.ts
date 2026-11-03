@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { inspectAttachmentHeader } from "../security-scan";
+import { inspectAttachmentHeader, canScrubImageType } from "../security-scan";
 
 const check = (name: string, mime: string, bytes: number[]) =>
   inspectAttachmentHeader(name, mime, new Uint8Array(bytes));
@@ -22,5 +22,20 @@ describe("offline attachment header policy", () => {
   });
   it("does not incorrectly claim a plain text document contains no malware", () => {
     expect(check("letter.txt", "text/plain", [...new TextEncoder().encode("hello")]).safe).toBe(true);
+  });
+});
+
+describe("metadata privacy policy", () => {
+  it("allows only image formats that the local encoder can safely scrub", () => {
+    expect(canScrubImageType("image/jpeg")).toBe(true);
+    expect(canScrubImageType("image/png")).toBe(true);
+    expect(canScrubImageType("image/webp")).toBe(true);
+    expect(canScrubImageType("image/bmp")).toBe(true);
+    expect(canScrubImageType("image/gif")).toBe(false);
+    expect(canScrubImageType("image/heic")).toBe(false);
+  });
+
+  it("rejects images with no declared MIME, preventing unsanitized upload", () => {
+    expect(check("photo.jpg", "", [0xff, 0xd8, 0xff, 0xe0]).safe).toBe(false);
   });
 });

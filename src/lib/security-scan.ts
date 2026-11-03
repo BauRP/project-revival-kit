@@ -9,45 +9,53 @@ export interface ScanResult {
 }
 
 /**
- * Strip EXIF metadata from image files by re-encoding via canvas.
- * Returns a clean Blob.
+ * Remove metadata from outgoing images. Fail closed: silently returning the
+ * original image on a decoder/canvas failure leaks EXIF/GPS data.
+ * Animated/HEIC/AVIF formats require a dedicated privacy-preserving encoder.
  */
+export function canScrubImageType(mime: string): boolean {
+  return ["image/jpeg", "image/png", "image/webp", "image/bmp"].includes(mime.toLowerCase());
+}
+
 export async function stripExifMetadata(file: File): Promise<File> {
   if (!file.type.startsWith("image/")) return file;
+  if (!canScrubImageType(file.type))
+    throw new Error("This image format cannot be safely stripped of private metadata");
 
-  return new Promise((resolve) => {
+  const url = URL.createObjectURL(file);
+  try {
     const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        URL.revokeObjectURL(url);
-        resolve(file);
-        return;
-      }
-      ctx.drawImage(img, 0, 0);
-      canvas.toBlob(
-        (blob) => {
-          URL.revokeObjectURL(url);
-          if (blob) {
-            resolve(new File([blob], file.name, { type: file.type, lastModified: Date.now() }));
-          } else {
-            resolve(file);
-          }
-        },
-        file.type,
-        0.92,
-      );
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve(file);
-    };
-    img.src = url;
-  });
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("Unable to decode image for metadata removal"));
+      img.src = url;
+    });
+    if (img.naturalWidth <= 0 || img.naturalHeight <= 0 ||
+        img.naturalWidth * img.naturalHeight > 80_000_000)
+      throw new Error("Image dimensions exceed safe metadata processing limits");
+
+    const canvas = document.createElement("canvas");
+    canvas.width = img.naturalWidth;
+    canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Secure image re-encoding is unavailable");
+    ctx.drawImage(img, 0, 0);
+
+    // Canvas normally does not encode BMP; use JPEG and update the filename.
+    const outputType = file.type === "image/bmp" ? "image/jpeg" : file.type;
+    const encoded = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (!blob || blob.size === 0 || blob.type !== outputType)
+          reject(new Error("Unable to verify metadata-free image output"));
+        else resolve(blob);
+      }, outputType, 0.92);
+    });
+    const filename = file.type === "image/bmp"
+      ? file.name.replace(/\.bmp$/i, "") + ".jpg" : file.name;
+    return new File([encoded], filename, { type: outputType, lastModified: Date.now() });
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 /**
@@ -110,6 +118,8 @@ export function inspectAttachmentHeader(
     (ascii(4, 4) === "ftyp" && /^(avif|avis)$/.test(ascii(8, 4))) ? "image/avif" :
     null;
 
+  // Missing or forged MIME on an image must not bypass EXIF stripping.
+  if (!mime && detectedImage) return blocked();
   if (mime.startsWith("image/")) {
     const normalMime = mime === "image/jpg" ? "image/jpeg" :
       mime === "image/heif" ? "image/heic" : mime;
