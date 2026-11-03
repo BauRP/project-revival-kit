@@ -40,7 +40,9 @@ import DefaultAvatar from "./DefaultAvatar";
 import CallScreen from "./CallScreen";
 import ReportMenu from "./ReportMenu";
 import { uploadMedia, formatFileSize, type MediaAttachment } from "@/lib/media";
-import { ensureMediaUrl, purgeConsumedMedia, TRIVO_MAX_UPLOAD_BYTES } from "@/lib/media-store";
+import { ensureMediaUrl, consumeOneTimeMediaForViewing, TRIVO_MAX_UPLOAD_BYTES } from "@/lib/media-store";
+import { registerPlugin } from "@capacitor/core";
+import { isNative } from "@/lib/platform";
 import { subscribeToPresence, getPresenceStatus } from "@/lib/presence";
 import { onionOnConnectionChange, onionIsConnectedTo, ensureLocalIdentity } from "@/lib/onion-engine";
 import { dxdb, getContactLastSeen, setContactLastSeen } from "@/lib/dexie-db";
@@ -216,6 +218,8 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
   const [oneTimeView, setOneTimeView] = useState(false);
   const [showRoundVideo, setShowRoundVideo] = useState(false);
   const [viewerMessage, setViewerMessage] = useState<Message | null>(null);
+  const viewerUrlRef = useRef<string | null>(null);
+  const openingOneTimeRef = useRef(false);
   const [showSchedule, setShowSchedule] = useState(false);
   const [callType, setCallType] = useState<"audio" | "video" | null>(null);
   const [sessionStarted, setSessionStarted] = useState(false);
@@ -1208,24 +1212,48 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     }
   };
 
-  // Purge one-time media: remove from local DB + memory, mark message as consumed.
-  const purgeOneTimeMedia = async (msg: Message) => {
+  // Burn one-time media in a durable transaction BEFORE first display.
+  // Unmount/crash during viewing can never grant a second view.
+  const openOneTimeMessage = async (msg: Message) => {
+    if (openingOneTimeRef.current || !msg.media?.fileId || msg.oneTimeConsumed) return;
+    openingOneTimeRef.current = true;
+    const fileId = msg.media.fileId;
+    let secureEnabled = false;
     try {
-      // Persist the consumed marker; deleting the entire message would make
-      // the UI forget it was opened after a restart.
-      // Durably revoke the attachment BEFORE removing the message preview.
-      if (msg.media?.fileId) await purgeConsumedMedia(msg.media.fileId);
-      await dxdb.messages.update(msg.id, { media: undefined, oneTimeConsumed: true });
+      // The screenshot-blocking native flag is applied before rendering,
+      // not after React's first post-paint effect.
+      if (isNative()) {
+        await registerPlugin<{ setSecure(o: { enabled: boolean }): Promise<void> }>("SecureView")
+          .setSecure({ enabled: true });
+        secureEnabled = true;
+      }
+      const isolatedUrl = await consumeOneTimeMediaForViewing(msg.id, fileId, chatId);
+      viewerUrlRef.current = isolatedUrl;
+      setMessages((previous) => previous.map((item) =>
+        item.id === msg.id ? { ...item, media: undefined, oneTimeConsumed: true } : item));
+      setViewerMessage({ ...msg, media: { ...msg.media, url: isolatedUrl } });
     } catch (error) {
-      // Do not fake a consumed state if the durable tombstone failed.
-      console.error("[one-time] could not persist consumed marker", error);
-      toast({ title: "Не удалось безопасно удалить одноразовое вложение", variant: "destructive" });
-      return;
+      console.error("[one-time] cannot securely open attachment", error);
+      if (secureEnabled) void registerPlugin<{ setSecure(o: { enabled: boolean }): Promise<void> }>("SecureView")
+        .setSecure({ enabled: false }).catch(() => undefined);
+      toast({ title: "Не удалось безопасно открыть одноразовое вложение", variant: "destructive" });
+    } finally {
+      openingOneTimeRef.current = false;
     }
-    setMessages((prev) =>
-      prev.map((m) => (m.id === msg.id ? { ...m, media: undefined, oneTimeConsumed: true } : m)),
-    );
   };
+
+  const closeOneTimeMessage = () => {
+    setViewerMessage(null);
+    const url = viewerUrlRef.current;
+    viewerUrlRef.current = null;
+    if (url) URL.revokeObjectURL(url);
+  };
+
+  useEffect(() => () => {
+    const url = viewerUrlRef.current;
+    if (url) URL.revokeObjectURL(url);
+    viewerUrlRef.current = null;
+  }, []);
 
   // Pre-train the offline NLP model in the background as soon as the built-in
   // assistant chat opens, so the first answer is instant.
@@ -1446,7 +1474,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
         <OneTimeMediaBubble
           consumed={msg.oneTimeConsumed}
           sent={msg.sent}
-          onOpen={() => setViewerMessage(msg)}
+          onOpen={() => { void openOneTimeMessage(msg); }}
         />
       );
     }
@@ -2516,10 +2544,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
               ? "video"
               : viewerMessage?.media?.type || "file") as "image" | "video" | "audio" | "file"
         }
-        onClose={() => setViewerMessage(null)}
-        onConsumed={() => {
-          if (viewerMessage) void purgeOneTimeMedia(viewerMessage);
-        }}
+        onClose={closeOneTimeMessage}
       />
       <SelectiveCopySheet
         open={!!copyTarget}

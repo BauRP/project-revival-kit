@@ -232,3 +232,47 @@ export async function purgeConsumedMedia(fileId: string): Promise<void> {
     URL.revokeObjectURL(url);
   }
 }
+
+/**
+ * Single-use attachment: revoke durable access BEFORE revealing it. The
+ * temporary viewing URL owns a separate Blob reference, so deleting the
+ * persistent copy does not terminate the current viewing session.
+ *
+ * The message update, consumed tombstone and blob removal are one transaction.
+ * A crash or a second Tor delivery can never grant an additional view.
+ */
+export async function consumeOneTimeMediaForViewing(
+  messageId: string, fileId: string, peer?: string,
+): Promise<string> {
+  if (!messageId || !fileId) throw new Error("Missing one-time media identity");
+  await downloadFromTrivo(fileId, peer);
+  const record = await getBlob(fileId);
+  if (!record) throw new Error("One-time attachment is no longer available");
+  await assertSafeToOpen(record);
+  const isolatedUrl = URL.createObjectURL(record.data);
+  try {
+    await dxdb.transaction("rw", [
+      dxdb.messages, dxdb.lifecycle, dxdb.blobs, dxdb.partial_chunks,
+    ], async () => {
+      const message = await dxdb.messages.get(messageId);
+      const media = message?.media as { fileId?: string } | undefined;
+      if (!message?.oneTimeView || message.oneTimeConsumed || media?.fileId !== fileId)
+        throw new Error("One-time attachment was already opened or changed");
+      if (isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data))
+        throw new Error("One-time attachment already viewed");
+      const now = Date.now();
+      await dxdb.lifecycle.put({
+        key: consumedMediaKey(fileId), chatKey: "consumed-media", messageId: fileId,
+        data: { consumed: true, consumedAt: now }, updatedAt: now,
+      });
+      await dxdb.messages.update(messageId, { media: undefined, oneTimeConsumed: true });
+      await dxdb.blobs.delete(fileId);
+      await dxdb.partial_chunks.where("fileId").equals(fileId).delete();
+    });
+    revokeStoredMediaUrls([fileId]);
+    return isolatedUrl;
+  } catch (error) {
+    URL.revokeObjectURL(isolatedUrl);
+    throw error;
+  }
+}

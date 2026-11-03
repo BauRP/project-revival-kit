@@ -20,11 +20,10 @@ interface OneTimeViewerProps {
   url: string;
   mediaType: "image" | "video" | "audio" | "file";
   onClose: () => void;
-  /** Fires once when the viewer is dismissed — caller MUST purge the file. */
-  onConsumed: () => void;
+
 }
 
-const OneTimeViewer = ({ open, url, mediaType, onClose, onConsumed }: OneTimeViewerProps) => {
+const OneTimeViewer = ({ open, url, mediaType, onClose }: OneTimeViewerProps) => {
   const dismissed = useRef(false);
   useEffect(() => {
     if (open) dismissed.current = false;
@@ -53,9 +52,7 @@ const OneTimeViewer = ({ open, url, mediaType, onClose, onConsumed }: OneTimeVie
   const handleDismiss = () => {
     if (!open || dismissed.current) return;
     dismissed.current = true;
-    // Capture and start deletion synchronously BEFORE the parent clears
-    // viewerMessage. Delaying onConsumed to a microtask loses the item.
-    onConsumed();
+    // The parent already burned the attachment atomically before opening.
     onClose();
   };
 
