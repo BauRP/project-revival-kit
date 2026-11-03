@@ -17,6 +17,8 @@ import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.security.SecureRandom;
+import java.security.MessageDigest;
+import org.json.JSONObject;
 import java.util.Arrays;
 
 import javax.crypto.Cipher;
@@ -140,6 +142,62 @@ public class SecureVaultPlugin extends Plugin {
             call.resolve(result);
         } catch (Exception error) {
             call.reject("Cannot decrypt scheduled text", error.getMessage(), error);
+        }
+    }
+
+    /**
+     * Recover this device's EXISTING v3 Onion Service identity after Android
+     * recreates the foreground service with a null START_STICKY intent.
+     *
+     * This read-only operation MUST NOT generate a new Keystore key, or fall
+     * back to a random Tor identity. No plaintext is written to the disk.
+     */
+    public static String recoverTorServiceKey(android.content.Context context) throws Exception {
+        AtomicFile backup = new AtomicFile(new File(context.getFilesDir(), BACKUP));
+        if (!backup.getBaseFile().exists())
+            throw new IllegalStateException("No identity recovery copy on this device");
+
+        KeyStore store = KeyStore.getInstance("AndroidKeyStore");
+        store.load(null);
+        KeyStore.Entry entry = store.getEntry(ALIAS, null);
+        if (!(entry instanceof KeyStore.SecretKeyEntry))
+            throw new IllegalStateException("Device identity Keystore key is unavailable");
+
+        String sealedText = new String(backup.readFully(), StandardCharsets.UTF_8);
+        String[] parts = sealedText.split("\\.", -1);
+        if (parts.length != 2) throw new IllegalArgumentException("Invalid sealed identity format");
+        byte[] iv = Base64.decode(parts[0], Base64.NO_WRAP);
+        byte[] encrypted = Base64.decode(parts[1], Base64.NO_WRAP);
+        if (iv.length != IV_BYTES || encrypted.length > MAX_IDENTITY_BYTES * 2)
+            throw new IllegalArgumentException("Invalid sealed identity length");
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.DECRYPT_MODE,
+                ((KeyStore.SecretKeyEntry) entry).getSecretKey(),
+                new GCMParameterSpec(TAG_BITS, iv));
+        byte[] plaintext = cipher.doFinal(encrypted);
+        try {
+            JSONObject identity = new JSONObject(new String(plaintext, StandardCharsets.UTF_8));
+            byte[] signingSecret = Base64.decode(
+                    identity.getJSONObject("signing").getString("secretKey"), Base64.NO_WRAP);
+            if (signingSecret.length != 64)
+                throw new IllegalArgumentException("Invalid stored Ed25519 identity");
+            byte[] seed = Arrays.copyOf(signingSecret, 32);
+            Arrays.fill(signingSecret, (byte) 0);
+            try {
+                byte[] expanded = MessageDigest.getInstance("SHA-512").digest(seed);
+                expanded[0] &= (byte) 248;
+                expanded[31] &= (byte) 127;
+                expanded[31] |= (byte) 64;
+                // Identical expansion to torServiceKeyFromSigningSecret()
+                // in the JS onion-id module.
+                String result = "ED25519-V3:" + Base64.encodeToString(expanded, Base64.NO_WRAP);
+                Arrays.fill(expanded, (byte) 0);
+                return result;
+            } finally {
+                Arrays.fill(seed, (byte) 0);
+            }
+        } finally {
+            Arrays.fill(plaintext, (byte) 0);
         }
     }
 

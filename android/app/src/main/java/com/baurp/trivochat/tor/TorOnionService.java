@@ -155,6 +155,22 @@ public class TorOnionService extends Service {
                 updateNotification("Tor transport unavailable");
                 return START_NOT_STICKY;
             }
+            if (requestedSecretKey == null || requestedSecretKey.isEmpty()) {
+                // Android may restart a sticky service with a null Intent.
+                // Restore the *original* onion key from the device Keystore.
+                // Never publish NEW:ED25519-V3 in this recovery path.
+                try {
+                    requestedSecretKey = com.baurp.trivochat.SecureVaultPlugin
+                            .recoverTorServiceKey(this);
+                } catch (Exception recoveryFailure) {
+                    lastError = "Persistent Tor identity could not be recovered: "
+                            + recoveryFailure.getClass().getSimpleName();
+                    Log.e(TAG, lastError, recoveryFailure);
+                    updateNotification("Unlock Trivo Chat to restart Tor");
+                    stopSelf(startId);
+                    return START_NOT_STICKY;
+                }
+            }
             bindTor();
             return START_STICKY;
         } catch (Throwable startupFailure) {
@@ -465,9 +481,11 @@ public class TorOnionService extends Service {
         Map<Integer, String> portLines = new HashMap<>();
         portLines.put(VIRTUAL_PORT, "127.0.0.1:" + localServicePort);
 
-        String keyArg = (requestedSecretKey == null || requestedSecretKey.isEmpty())
-                ? "NEW:ED25519-V3"
-                : requestedSecretKey;
+        // A random identity is never an acceptable substitute for the user's
+        // existing onion address, including after process death.
+        if (requestedSecretKey == null || !requestedSecretKey.startsWith("ED25519-V3:"))
+            throw new IOException("Verified Tor identity is required");
+        String keyArg = requestedSecretKey;
 
         Map<String, String> reply = control.addOnion(keyArg, portLines);
         if (reply == null) throw new IOException("ADD_ONION returned no reply");
