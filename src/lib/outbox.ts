@@ -1,4 +1,4 @@
-import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem, sameScheduledIdentity } from "./scheduled-policy";
+import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem, sameScheduledIdentity, canScheduleRecipient } from "./scheduled-policy";
 import { protectScheduledText, revealScheduledText, isSealedScheduledText } from "./scheduled-encryption";
 import { isNative } from "./platform";
 // Local outbox for Scheduled Send (Turn 2).
@@ -109,6 +109,8 @@ export async function enqueue(
     attempts: 0,
   };
   validateScheduledItem(full);
+  if (!canScheduleRecipient(full.chatId))
+    throw new Error("Cannot schedule: recipient must be a valid Tor onion address");
   if (closed) throw new Error("Scheduled outbox is closed");
   // Never persist unencrypted text on Android. A Keystore failure aborts
   // enqueue rather than quietly saving a plaintext fallback.
@@ -165,11 +167,11 @@ async function fireDue() {
         } else {
         // The scheduled message must not depend on the chat screen being open.
         // The onion outbox becomes the durable owner after sendP2PMessage.
-        const [{ ensureLocalIdentity }, { sendP2PMessage }, { isValidOnion }] = await Promise.all([
-          import("./onion-engine"), import("./p2p"), import("./onion-id"),
+        const [{ ensureLocalIdentity }, { sendP2PMessage }] = await Promise.all([
+          import("./onion-engine"), import("./p2p"),
         ]);
-        if (!isValidOnion(item.chatId))
-          throw new Error("Scheduled destination cannot be sent without its chat screen");
+        if (!canScheduleRecipient(item.chatId))
+          throw new Error("Scheduled recipient is not a valid Tor address");
         const self = await ensureLocalIdentity();
         await sendP2PMessage(dispatch.chatId, {
           id: dispatch.id,

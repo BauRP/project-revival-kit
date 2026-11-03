@@ -1,3 +1,5 @@
+import { isValidOnion } from "./onion-id";
+import { isLocalSupportPeer } from "./local-only-peer-policy";
 /**
  * Scheduled messages keep their ORIGINAL timestamp/identity through retries.
  * The retry wake time must never replace scheduledAt; otherwise a retry
@@ -40,4 +42,11 @@ export function sameScheduledIdentity(
     current.chatId === expected.chatId && current.text === expected.text &&
     current.scheduledAt === expected.scheduledAt &&
     current.createdAt === expected.createdAt;
+}
+
+/** Reject permanently undeliverable recipients while preserving the local
+ * test-bot fixture, which is never routed over Tor.
+ */
+export function canScheduleRecipient(peer: string): boolean {
+  return isValidOnion(peer) || isLocalSupportPeer(peer);
 }

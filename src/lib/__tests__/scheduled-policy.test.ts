@@ -28,3 +28,12 @@ describe("scheduled cancellation and retry identity", () => {
     expect(sameScheduledIdentity(item,item)).toBe(true);
   });
 });
+
+import { canScheduleRecipient } from "../scheduled-policy";
+describe("scheduled Tor recipient validation", () => {
+  it("refuses invalid addresses before saving a durable message", () => {
+    for (const peer of ["", "friend", "alice.onion", "https://host", "evil/path"])
+      expect(canScheduleRecipient(peer)).toBe(false);
+    expect(canScheduleRecipient("TRIVO_MOCK_PEER_999")).toBe(true);
+  });
+});
