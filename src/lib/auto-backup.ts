@@ -10,6 +10,8 @@ import { dbGetStrict, dbPutStrict } from "./storage";
 import { isNative } from "./platform";
 import { getTotalBlobBytes } from "./dexie-db";
 import { exportBackup } from "./backup";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { automaticBackupsToPrune, createDatedBackupFilename } from "./backup-files";
 
 const KEY = "trivo-auto-backup-v1";
 export const AUTO_BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
@@ -81,7 +83,18 @@ export function runAutomaticBackupIfDue(): Promise<void> {
       if (await getTotalBlobBytes() > AUTO_MEDIA_LIMIT)
         throw new Error("Automatic backup skipped: media exceeds safe memory limit");
       if (wiping) return;
-      await exportBackup(plaintext);
+      await exportBackup(plaintext, createDatedBackupFilename(new Date(), "auto"));
+      // A failed retention cleanup must never invalidate a successful export.
+      try {
+        const names = (await Filesystem.readdir({
+          path: "", directory: Directory.Documents,
+        })).files.map((entry) => entry.name);
+        for (const filename of automaticBackupsToPrune(names, 7)) {
+          await Filesystem.deleteFile({ path: filename, directory: Directory.Documents });
+        }
+      } catch (error) {
+        console.warn("[backup] unable to prune older automatic snapshots", error);
+      }
       // Update only after the encrypted file has been written successfully.
       await dbPutStrict("settings", KEY, { ...state, lastSavedAt: Date.now() });
       lastFailedAt = 0;
