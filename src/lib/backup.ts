@@ -1,6 +1,7 @@
-// One-click local backup & restore.
-// Serializes the full Dexie DB, encrypts with NaCl secretbox (XSalsa20-Poly1305)
-// keyed by SHA-512 of the supplied master password, and writes a .tvc file
+// Encrypted portable backup & restore.
+// New files carry the database and the identity keys inside an authenticated
+// PBKDF2-SHA256/AES-256-GCM envelope. Legacy NaCl V1 remains read-only.
+// No identity keys are stored in plaintext backup files. Writes a .tvc file
 // to the device's Documents directory via @capacitor/filesystem.
 // On the web (no Capacitor runtime) we transparently fall back to a browser
 // download / file input.
@@ -11,6 +12,8 @@ import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { exportDexieDump, importDexieDump, type DexieDump } from "./dexie-db";
 import { isNative } from "./platform";
 import { encryptBackupV2, decryptBackupV2, type BackupEnvelopeV2 } from "./backup-crypto";
+import { getOrCreateIdentity, validateIdentityKeys } from "./crypto";
+import { makePortableBackupPackage, readPortableBackupPayload, assertMatchingBackupIdentity } from "./backup-package";
 
 const FILE_NAME_DEFAULT = "TrivoBackup.tvc";
 const MAGIC = "TRIVO-BACKUP-V1";
@@ -67,8 +70,12 @@ export async function exportBackup(
   password: string,
   filename: string = FILE_NAME_DEFAULT,
 ): Promise<BackupExportResult> {
+  // Include both the message database and the validated signing/exchange keys
+  // in the password-encrypted payload. Plaintext keys are never written to disk.
+  const identity = validateIdentityKeys(await getOrCreateIdentity());
   const dump = await exportDexieDump();
-  const envelope = await encryptBackupV2(JSON.stringify(dump), password);
+  const portable = makePortableBackupPackage(identity, dump);
+  const envelope = await encryptBackupV2(JSON.stringify(portable), password);
   const json = JSON.stringify(envelope);
 
   if (isNative()) {
@@ -116,10 +123,20 @@ export async function importBackup(
     json = await pickFileAsText();
   }
 
+  // Reject abnormally large plaintext JSON BEFORE parsing; the V2 decryptor
+  // has independent encrypted-field limits.
+  if (json.length > 360 * 1024 * 1024)
+    throw new Error("Backup file exceeds supported size");
   const envelope = JSON.parse(json) as EncryptedEnvelope | BackupEnvelopeV2;
-  const dump = envelope.magic === "TRIVO-BACKUP-V2"
-    ? JSON.parse(await decryptBackupV2(envelope as BackupEnvelopeV2, password)) as DexieDump
+  const parsed = envelope.magic === "TRIVO-BACKUP-V2"
+    ? JSON.parse(await decryptBackupV2(envelope as BackupEnvelopeV2, password)) as unknown
     : decryptDump(envelope as EncryptedEnvelope, password);
+  const { dump, identity: backedUpIdentity } = readPortableBackupPayload(parsed);
+  if (backedUpIdentity) {
+    const validated = validateIdentityKeys(backedUpIdentity);
+    const current = validateIdentityKeys(await getOrCreateIdentity());
+    assertMatchingBackupIdentity(validated.signing.publicKey, current.signing.publicKey);
+  }
   await importDexieDump(dump);
 }
 

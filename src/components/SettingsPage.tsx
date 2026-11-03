@@ -15,6 +15,8 @@ import {
   Sun,
   Trash2,
   Wifi,
+  Download,
+  Upload,
 } from "lucide-react";
 import { type ReactNode, useCallback, useState } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -30,6 +32,7 @@ import { nukeAllData } from "@/lib/storage";
 import { isDataSaverEnabled, setDataSaverEnabled } from "@/lib/data-saver";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { isNative } from "@/lib/platform";
+import { exportBackup, importBackup } from "@/lib/backup";
 
 interface SettingsPageProps {
   onBack: () => void;
@@ -142,6 +145,9 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
   const [showTranslationSettings, setShowTranslationSettings] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showLanguageSheet, setShowLanguageSheet] = useState(false);
+  const [backupPassword, setBackupPassword] = useState("");
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupFeedback, setBackupFeedback] = useState("");
 
   // Android hardware Back / web Back / Esc must pop THIS screen back to
   // Profile instead of exiting the app. Layered LIFO: any open sub-sheet or
@@ -216,6 +222,30 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
   const handleToggleStealth = useCallback(() => {
     toggleStealth();
   }, [toggleStealth]);
+
+  const handleBackup = async (restore: boolean) => {
+    if (backupBusy) return;
+    if (backupPassword.trim().length < 12) {
+      setBackupFeedback("Введите пароль резервной копии длиной от 12 символов");
+      return;
+    }
+    setBackupBusy(true);
+    setBackupFeedback("");
+    try {
+      if (restore) {
+        await importBackup(backupPassword);
+        setBackupFeedback("Переписка восстановлена без удаления текущих сообщений");
+      } else {
+        const result = await exportBackup(backupPassword);
+        setBackupFeedback("Зашифрованная копия создана: " + result.filename);
+      }
+    } catch (error) {
+      setBackupFeedback(error instanceof Error ? error.message : "Не удалось обработать резервную копию");
+    } finally {
+      setBackupPassword(""); // Never retain a recovery password in UI after use
+      setBackupBusy(false);
+    }
+  };
 
   const handleDeleteAccount = async () => {
     try {
@@ -321,6 +351,40 @@ const SettingsPage = ({ onBack }: SettingsPageProps) => {
               checked={dataSaver}
               onToggle={handleToggleDataSaver}
             />
+          </div>
+        </section>
+
+        <section className="space-y-2">
+          <p className="px-1 text-xs font-medium text-gray-500 dark:text-neutral-400">
+            Резервная копия
+          </p>
+          <div className={settingsGroupClass + " p-4 space-y-3"}>
+            <p className="text-xs leading-5 text-gray-500 dark:text-neutral-400">
+              Копия шифруется на устройстве и включает переписку и ключи личности.
+              Для переноса на другой телефон нужен отдельный проверенный процесс
+              восстановления личности. Пароль не сохраняется.
+            </p>
+            <input
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="Пароль копии, минимум 12 символов"
+              aria-label="Пароль резервной копии"
+              value={backupPassword}
+              onChange={(event) => setBackupPassword(event.target.value)}
+              className="w-full rounded-lg border border-gray-300 bg-transparent px-3 py-2 text-sm text-gray-900 dark:border-neutral-700 dark:text-neutral-100"
+            />
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" disabled={backupBusy} onClick={() => void handleBackup(false)}
+                className="flex items-center justify-center gap-2 rounded-lg bg-primary/15 px-2 py-3 text-xs font-semibold text-primary disabled:opacity-50">
+                <Download size={16} /> Создать копию
+              </button>
+              <button type="button" disabled={backupBusy} onClick={() => void handleBackup(true)}
+                className="flex items-center justify-center gap-2 rounded-lg bg-primary/15 px-2 py-3 text-xs font-semibold text-primary disabled:opacity-50">
+                <Upload size={16} /> Восстановить
+              </button>
+            </div>
+            {backupFeedback && <p role="status" className="break-words text-xs text-gray-600 dark:text-neutral-300">{backupFeedback}</p>}
           </div>
         </section>
 
