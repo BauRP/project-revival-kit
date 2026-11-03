@@ -34,6 +34,8 @@ const senders = new Map<string, Sender>(); // chatId → sender
 let timer: ReturnType<typeof setTimeout> | null = null;
 let wakeGeneration = 0;
 let closed = false;
+let scheduledMigrationReady = !isNative();
+let migrationRetryTimer: ReturnType<typeof setTimeout> | null = null;
 // All fire/cancel operations in the same WebView serialize through this mutex.
 let mutationTail: Promise<void> = Promise.resolve();
 function serialized<T>(work: () => Promise<T>): Promise<T> {
@@ -135,7 +137,9 @@ export function registerSender(chatId: string, send: Sender): () => void {
 
 let firingDue = false;
 async function fireDue() {
-  if (firingDue || closed) return;
+  // Do not dispatch legacy plaintext until Android Keystore has secured all
+  // queued messages. An unavailable Keystore means retry, not lost messages.
+  if (firingDue || closed || !scheduledMigrationReady) return;
   firingDue = true;
   timer = null;
   try {
@@ -202,7 +206,7 @@ async function fireDue() {
 }
 
 function scheduleNextWake() {
-  if (typeof window === "undefined" || closed) return;
+  if (typeof window === "undefined" || closed || !scheduledMigrationReady) return;
   const generation = ++wakeGeneration;
   if (timer) {
     clearTimeout(timer);
@@ -229,6 +233,7 @@ export async function closeScheduledOutbox(): Promise<void> {
   closed = true;
   ++wakeGeneration; // invalidate asynchronous wake planners during account wipe
   if (timer) { clearTimeout(timer); timer = null; }
+  if (migrationRetryTimer) { clearTimeout(migrationRetryTimer); migrationRetryTimer = null; }
   senders.clear();
   // All in-flight sends and retries finish before the connection is closed.
   await mutationTail;
@@ -261,9 +266,19 @@ export async function migrateLegacyScheduledTexts(): Promise<number> {
   });
 }
 
-// Migration precedes timer activation; new enqueues remain serialized with it.
-if (typeof window !== "undefined") {
-  void migrateLegacyScheduledTexts()
-    .catch((error) => console.error("[outbox] scheduled text migration failed", error))
-    .finally(scheduleNextWake);
+// Never allow an existing plaintext queued message to fire while the
+// Keystore migration is pending. A failed migration retries without deleting.
+function initializeScheduledOutbox(): void {
+  if (closed) return;
+  void migrateLegacyScheduledTexts().then(() => {
+    if (closed) return;
+    scheduledMigrationReady = true;
+    migrationRetryTimer = null;
+    scheduleNextWake();
+  }).catch((error) => {
+    console.error("[outbox] scheduled text migration unavailable; pending messages retained", error);
+    if (!closed && typeof window !== "undefined")
+      migrationRetryTimer = setTimeout(initializeScheduledOutbox, 30_000);
+  });
 }
+if (typeof window !== "undefined") initializeScheduledOutbox();
