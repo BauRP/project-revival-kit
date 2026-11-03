@@ -68,3 +68,19 @@ describe("bounded metadata-stripping canvas for high-resolution phones", () => {
     expect(() => safeScrubCanvasSize(NaN,1)).toThrow();
   });
 });
+
+describe("untrusted attachment path and script suffixes", () => {
+  const jpeg = new Uint8Array([0xff,0xd8,0xff,0xe0]);
+  it("rejects executable double extensions even with valid JPEG signatures", () => {
+    expect(inspectAttachmentHeader("invoice.apk.jpg","image/jpeg",jpeg).safe).toBe(false);
+    expect(inspectAttachmentHeader("script.ps1.txt","text/plain",new Uint8Array([0x61])).safe).toBe(false);
+  });
+  it("rejects a path separator in any peer-supplied filename", () => {
+    expect(inspectAttachmentHeader("../photo.jpg","image/jpeg",jpeg).safe).toBe(false);
+    expect(inspectAttachmentHeader("dir\\photo.jpg","image/jpeg",jpeg).safe).toBe(false);
+  });
+  it("rejects direct scripts even when their content looks benign", () => {
+    expect(inspectAttachmentHeader("run.ps1","text/plain",new Uint8Array([0x61])).safe).toBe(false);
+    expect(inspectAttachmentHeader("run.sh","text/plain",new Uint8Array([0x61])).safe).toBe(false);
+  });
+});

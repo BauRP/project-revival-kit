@@ -88,7 +88,7 @@ export function simulateSecurityScan(
   }
 
   // Extension-only policy. This does not establish whether a file is malware.
-  const suspicious = fileName.toLowerCase().match(/\.(exe|bat|cmd|scr|pif|vbs|js|wsf|com)$/);
+  const suspicious = fileName.toLowerCase().match(/\.(exe|bat|cmd|scr|pif|vbs|js|mjs|cjs|wsf|com|ps1|psm1|sh|bash|command|reg|lnk|desktop)$/);
   if (suspicious) {
     return { safe: false, threatType: "malware", fileName };
   }
@@ -108,6 +108,12 @@ export function inspectAttachmentHeader(
   const blocked = (): ScanResult => ({ safe: false, threatType: "malware", fileName });
   const mime = declaredMime.toLowerCase().split(";")[0].trim();
   const name = fileName.toLowerCase();
+  // Treat scripts, path spoofing and double executable extensions as unsafe
+  // even when the declared final suffix looks like a supported image.
+  if (!name || name.length > 255 ||
+      /[\u0000-\u001f\u007f\\/]/.test(name) ||
+      /\.(exe|bat|cmd|scr|pif|vbs|js|mjs|cjs|wsf|com|ps1|hta|apk|jar|dex|so|dll|msi|lnk|desktop)\./i.test(name))
+    return blocked();
   const starts = (...bytes: number[]) => bytes.every((b, i) => header[i] === b);
   const ascii = (start: number, count: number) =>
     String.fromCharCode(...header.subarray(start, start + count));
