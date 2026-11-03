@@ -12,7 +12,7 @@ import { consumedMediaKey, isConsumedMediaRecord, isProtectedByConsumedTombstone
 import { validateBackupStructure } from "./backup-validation";
 import { stripSessionMediaUrl } from "./backup-media-policy";
 import { assertPortableBackupFits } from "./backup-budget";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia } from "./message-deletion-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, unusedBackupMedia } from "./message-deletion-policy";
 
 export interface ContactRecord {
   onion: string;
@@ -433,19 +433,30 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
         await dxdb.partial_chunks.where("fileId").anyOf(orphaned).delete();
       }
 
-      const blobRows: BlobRecord[] = (dump.blobs || []).map((b) => ({
-        fileId: b.fileId,
-        mimeType: b.mimeType,
-        name: b.name,
-        size: b.size,
-        storedAt: b.storedAt,
-        data: base64ToBlob(b.dataB64, b.mimeType),
-      }));
+      const surviving = await dxdb.messages.toArray();
+      const deniedBackupMedia = new Set([
+        ...orphaned,
+        ...unusedBackupMedia(
+          dump.messages || [], deletedIds,
+          surviving.map((message) => ({ media: message.media })),
+        ),
+      ]);
+      // Filter BEFORE Base64 decoding. A removed 100 MB attachment should
+      // never be recreated in memory merely to discard it after import.
       const existingBlobIds = new Set(await dxdb.blobs.toCollection().primaryKeys());
-      await dxdb.blobs.bulkPut(blobRows.filter((b) =>
-        !existingBlobIds.has(b.fileId) &&
-        !orphaned.includes(b.fileId) &&
-        !isProtectedByConsumedTombstone(b.fileId, revoked)));
+      const blobRows: BlobRecord[] = (dump.blobs || [])
+        .filter((b) => !existingBlobIds.has(b.fileId) &&
+          !deniedBackupMedia.has(b.fileId) &&
+          !isProtectedByConsumedTombstone(b.fileId, revoked))
+        .map((b) => ({
+          fileId: b.fileId,
+          mimeType: b.mimeType,
+          name: b.name,
+          size: b.size,
+          storedAt: b.storedAt,
+          data: base64ToBlob(b.dataB64, b.mimeType),
+        }));
+      await dxdb.blobs.bulkPut(blobRows);
       // Reconcile already-present messages too: the restored tombstone is
       // authoritative even when an older local message still references media.
       for (const key of revoked) {

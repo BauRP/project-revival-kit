@@ -57,3 +57,18 @@ describe("remote deletion body erasure", () => {
     expect(erased.caption).toBeUndefined();
   });
 });
+
+import { unusedBackupMedia } from "../message-deletion-policy";
+describe("backup resurrection of previously deleted attachments", () => {
+  it("rejects media solely referenced by a tombstoned backup message", () => {
+    const messages = [{ id:"erased",media:{fileId:"old-secret"} },
+      {id:"alive",media:{fileId:"kept"}}];
+    expect(unusedBackupMedia(messages,new Set(["erased"]))).toEqual(["old-secret"]);
+  });
+  it("preserves legitimately shared attachments referenced by surviving messages", () => {
+    const messages = [{id:"erased",media:{fileId:"shared"}},
+      {id:"alive",media:{fileId:"shared"}}];
+    expect(unusedBackupMedia(messages,new Set(["erased"]))).toEqual([]);
+    expect(unusedBackupMedia([messages[0]],new Set(["erased"]),[{media:{fileId:"shared"}}])).toEqual([]);
+  });
+});

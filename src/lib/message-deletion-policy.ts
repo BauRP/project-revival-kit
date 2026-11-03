@@ -48,3 +48,20 @@ export function redactLocalMessage<T extends { text: string; media?: unknown; ca
 ): T {
   return { ...message, text: "", media: undefined, caption: undefined };
 }
+
+/** A backup can contain a deletion tombstone and the obsolete attachment.
+ * Skip that attachment unless another surviving message still references it.
+ * Do this before allocating decoded Blob buffers.
+ */
+export function unusedBackupMedia(
+  backupMessages: ReadonlyArray<{ id: string; media?: unknown }>,
+  deletedIds: ReadonlySet<string>,
+  livingMessages: ReadonlyArray<{ media?: unknown }> = [],
+): string[] {
+  const removed = backupMessages.filter((m) => deletedIds.has(m.id));
+  const kept = [
+    ...backupMessages.filter((m) => !deletedIds.has(m.id)),
+    ...livingMessages,
+  ];
+  return findUnreferencedMedia(removed, kept);
+}
