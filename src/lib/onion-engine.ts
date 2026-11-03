@@ -48,6 +48,7 @@ import { orderedCompleteChunkSet } from "./media-chunks";
 import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
 import { validateDispatchBody, boundedAcknowledgements } from "./inbound-frame-policy";
+import { boundedChunkIndexes } from "./blob-request-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
 import { deletedMessageKey, isDeletedMessageRecord } from "./message-deletion-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
@@ -584,9 +585,8 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
     case "blob_request": {
       await dxdb.inbox_raw.delete(rawId);
       const fileId = String(inner.body.fileId || "");
-      const have = new Set(Array.isArray(inner.body.have)
-        ? inner.body.have.filter((v): v is number => Number.isSafeInteger(v) && v >= 0)
-        : []);
+      const have = boundedChunkIndexes(inner.body.have);
+      if (!have) return;
       if (await hasBlob(fileId) && await canPeerRequestBlob(from, fileId)) {
         await sendBlob(from, fileId, (i) => !have.has(i));
       } else {
@@ -596,9 +596,8 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
     }
     case "blob_sync_request": {
       await dxdb.inbox_raw.delete(rawId);
-      const missing = new Set(Array.isArray(inner.body.missing)
-        ? inner.body.missing.filter((v): v is number => Number.isSafeInteger(v) && v >= 0)
-        : []);
+      const missing = boundedChunkIndexes(inner.body.missing);
+      if (!missing) return;
       const requestedFile = String(inner.body.fileId || "");
       if (await canPeerRequestBlob(from, requestedFile)) {
         await sendBlob(from, requestedFile, (i) => missing.has(i));
