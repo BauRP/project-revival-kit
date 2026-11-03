@@ -149,11 +149,28 @@ function notifyStatus(status: TorStatus): void {
   safeEach(statusListeners, status);
 }
 function markReachable(peer: string, ok: boolean): void {
+  if (!isValidOnion(peer)) return;
+  const wasOnline = onionIsConnectedTo(peer);
   if (ok) {
-    reachability.set(peer, Date.now());
-    void setContactLastSeen(peer, Date.now());
+    const now = Date.now();
+    // Keep memory bounded even if a malicious sender cycles thousands of
+    // signed .onion identities. Expire old reachability before eviction.
+    for (const [id, last] of reachability)
+      if (now - last >= ONLINE_TTL_MS) reachability.delete(id);
+    if (!reachability.has(peer) && reachability.size >= 1024) {
+      const oldest = reachability.keys().next().value;
+      if (oldest) reachability.delete(oldest);
+    }
+    reachability.delete(peer); // refresh recency for bounded oldest-first eviction
+    reachability.set(peer, now);
+    void setContactLastSeen(peer, now).catch((error) =>
+      console.warn("[onion] unable to update optional last-seen metadata", error));
+  } else {
+    reachability.delete(peer);
   }
-  safeEach(connectionListeners, peer, ok);
+  // A repeated successful probe is not a new connection. Avoid triggering
+  // reconnect sync storms for profiles, history protection, etc.
+  if (wasOnline !== ok) safeEach(connectionListeners, peer, ok);
 }
 
 // ─── Identity ────────────────────────────────────────────────
