@@ -127,6 +127,10 @@ export async function deleteMessageForEveryone(
   // Durable encrypted outbox first. If sealing/storage fails, the UI must
   // not claim the remote mutation succeeded in the local mirror.
   await broadcastLifecycle(selfId, peerId, messageId, patch);
+  // Erase the sender's own plaintext and unsent old message frame as well.
+  // The deletion event has an independent lc-* ID, so it stays in the sealed
+  // Tor outbox until the other participant acknowledges it.
+  await redactMessageForMe(selfId, peerId, messageId);
   await writeLocalEntry(selfId, peerId, messageId, patch);
 }
 
