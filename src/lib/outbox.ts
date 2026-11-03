@@ -144,12 +144,12 @@ async function fireDue() {
         const current = await tx<ScheduledItem | undefined>(
           "readonly", (store) => store.get(item.id) as IDBRequest<ScheduledItem | undefined>,
         );
-        if (!sameScheduledIdentity(item, current)) return;
+        if (!current || !sameScheduledIdentity(item, current)) return;
         validateScheduledItem(current);
         const sender = senders.get(current.chatId);
         if (sender) {
-        await sender(item);
-      } else {
+          await sender(current);
+        } else {
         // The scheduled message must not depend on the chat screen being open.
         // The onion outbox becomes the durable owner after sendP2PMessage.
         const [{ ensureLocalIdentity }, { sendP2PMessage }, { isValidOnion }] = await Promise.all([
