@@ -1374,6 +1374,12 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     const results = await Promise.allSettled(ids.map((id) => fsDeleteForMe(userId, chatId, id)));
     const committed = ids.filter((_, index) => results[index].status === "fulfilled");
     if (committed.length) {
+      // Remove private content retained in React state once disk erasure commits.
+      const erased = new Set(committed);
+      setMessages((previous) => previous.map((message) => erased.has(message.id)
+        ? { ...message, text: "", caption: undefined, media: undefined,
+            translatedText: null, blockedMessage: undefined }
+        : message));
       setLifecycle((prev) => {
         const next = { ...prev };
         for (const id of committed) {
@@ -1409,6 +1415,12 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       const results = await Promise.allSettled(ids.map((id) => fsDeleteForEveryone(userId, chatId, id)));
       const committed = ids.filter((_, index) => results[index].status === "fulfilled");
       if (committed.length) {
+        // Remove private content retained in React state once disk erasure commits.
+        const erased = new Set(committed);
+        setMessages((previous) => previous.map((message) => erased.has(message.id)
+          ? { ...message, text: "", caption: undefined, media: undefined,
+              translatedText: null, blockedMessage: undefined }
+          : message));
         setLifecycle((prev) => {
           const next = { ...prev };
           for (const id of committed) {
