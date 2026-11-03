@@ -19,6 +19,7 @@ import {
   onionSendDispatch,
 } from "./onion-engine";
 import { isValidOnion } from "./onion-id";
+import { isLocalSupportPeer } from "./local-only-peer-policy";
 
 export interface P2PMessage {
   id: string;
@@ -87,6 +88,8 @@ export async function sendP2PMessage(toOnion: string, message: P2PMessage): Prom
   const stored: P2PMessage = { ...message, to: toOnion, status: "pending" };
   // Local-only chats (built-in support bot) never touch the network.
   if (!isValidOnion(toOnion)) {
+    if (!isLocalSupportPeer(toOnion))
+      throw new Error("Message not sent: recipient must have a valid Tor .onion address");
     await saveLocalMessage({ ...stored, status: "delivered" });
     return false;
   }

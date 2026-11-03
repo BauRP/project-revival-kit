@@ -2,7 +2,8 @@
 import { dbGet, dbPut, dbGetStrict, dbPutStrict } from "./storage";
 import { saveLocalMessage, type ChatMeta, type P2PMessage } from "./p2p";
 
-const MOCK_PEER_ID = "TRIVO_MOCK_PEER_999";
+import { LOCAL_SUPPORT_PEER_ID } from "./local-only-peer-policy";
+const MOCK_PEER_ID = LOCAL_SUPPORT_PEER_ID;
 const MOCK_INIT_KEY = "mock-peer-initialized";
 
 interface MockPeerConfig {
