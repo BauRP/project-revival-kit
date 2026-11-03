@@ -27,3 +27,15 @@ export function findUnreferencedMedia(
   return [...new Set(removed.map(messageMediaFileId)
     .filter((x): x is string => x !== null && !preserved.has(x)))];
 }
+
+/** Pure merge policy shared by backup replay checks and regression tests. */
+export function mergedDeletionIds(
+  current: ReadonlyArray<{messageId:string;data:unknown}>,
+  restored: ReadonlyArray<{messageId:string;data:unknown}>,
+): Set<string> {
+  return new Set([...current, ...restored]
+    .filter((entry) => isDeletedMessageRecord(entry.data) &&
+      typeof entry.messageId === "string" && entry.messageId.length > 0 &&
+      entry.messageId.length <= 128)
+    .map((entry) => entry.messageId));
+}

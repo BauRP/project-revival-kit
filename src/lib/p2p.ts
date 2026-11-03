@@ -120,7 +120,14 @@ export function connectToPeer(onion: string): void {
 // ─── Local persistence (Dexie) ───────────────────────────────
 
 export async function saveLocalMessage(msg: P2PMessage): Promise<void> {
-  await dxdb.messages.put(msg as unknown as StoredMessage);
+  // Legacy/local-only callers must obey the same deletion tombstones as the
+  // authenticated Tor ingress. A delayed save cannot resurrect erased data.
+  await dxdb.transaction("rw", [dxdb.messages, dxdb.lifecycle], async () => {
+    const erased = await dxdb.lifecycle.get(deletedMessageKey(msg.id));
+    if (isDeletedMessageRecord(erased?.data))
+      throw new Error("Cannot save a locally deleted message");
+    await dxdb.messages.put(msg as unknown as StoredMessage);
+  });
 }
 
 /**
@@ -131,14 +138,17 @@ export async function saveLocalMessage(msg: P2PMessage): Promise<void> {
  */
 async function eraseLocalMessages(
   shouldRemove: (message: StoredMessage) => boolean,
+  forceTombstoneIds: readonly string[] = [],
 ): Promise<number> {
+  // Validate outside the write transaction, before mutating the database.
+  for (const id of forceTombstoneIds) deletedMessageKey(id);
   const orphaned = await dxdb.transaction("rw", [
     dxdb.messages, dxdb.outbox, dxdb.lifecycle, dxdb.blobs, dxdb.partial_chunks,
   ], async () => {
     const all = await dxdb.messages.toArray();
     const removed = all.filter(shouldRemove);
-    if (!removed.length) return { count: 0, fileIds: [] as string[] };
-    const ids = removed.map((m) => m.id);
+    const ids = [...new Set([...removed.map((m) => m.id), ...forceTombstoneIds])];
+    if (!ids.length) return { count: 0, fileIds: [] as string[] };
     const idSet = new Set(ids);
     const retained = all.filter((m) => !idSet.has(m.id));
     const orphanedFiles = findUnreferencedMedia(
@@ -175,7 +185,10 @@ async function eraseLocalMessages(
 }
 
 export async function deleteLocalMessage(id: string): Promise<void> {
-  await eraseLocalMessages((m) => m.id === id);
+  // A user can delete a message before its delayed Tor delivery is persisted.
+  // Always write the deletion tombstone and cancel its encrypted outbox entry
+  // atomically, even when no message record exists yet.
+  await eraseLocalMessages((m) => m.id === id, [id]);
 }
 
 export async function purgeExpiredLocalMessages(): Promise<number> {

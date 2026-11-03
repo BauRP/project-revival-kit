@@ -20,3 +20,13 @@ describe("local deletion and Tor replay defense", () => {
     expect(messageMediaFileId({ media: { fileId: 42 } })).toBeNull();
   });
 });
+
+import { mergedDeletionIds } from "../message-deletion-policy";
+describe("tombstones across a non-destructive backup merge", () => {
+  it("preserves current and restored deletes for existing messages", () => {
+    const ids=mergedDeletionIds([{messageId:"local",data:{deleted:true}}],
+      [{messageId:"restored",data:{deleted:true}},{messageId:"ignored",data:{deleted:false}}]);
+    expect([...ids].sort()).toEqual(["local","restored"]);
+    expect(ids.has("ignored")).toBe(false);
+  });
+});

@@ -12,7 +12,7 @@ import { consumedMediaKey, isConsumedMediaRecord, isProtectedByConsumedTombstone
 import { validateBackupStructure } from "./backup-validation";
 import { stripSessionMediaUrl } from "./backup-media-policy";
 import { assertPortableBackupFits } from "./backup-budget";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY } from "./message-deletion-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia } from "./message-deletion-policy";
 
 export interface ContactRecord {
   onion: string;
@@ -411,6 +411,25 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       // Historic unsent frames remain in the encrypted backup for audit only.
       const lifecycleIds = new Set(await dxdb.lifecycle.toCollection().primaryKeys());
       await dxdb.lifecycle.bulkPut((dump.lifecycle || []).filter((m) => !lifecycleIds.has(m.key)));
+
+      // A deleted-message tombstone restored from an older backup is still
+      // authoritative against a message already present on this device.
+      // The previous importer only filtered NEW backup rows; it could leave
+      // an existing plaintext message visible despite a restored deletion.
+      const existingDeleted = deletedIds.size
+        ? await dxdb.messages.where("id").anyOf([...deletedIds]).toArray()
+        : [];
+      const remaining = existingDeleted.length
+        ? await dxdb.messages.filter((m) => !deletedIds.has(m.id)).toArray()
+        : [];
+      const orphaned = findUnreferencedMedia(existingDeleted, remaining);
+      if (existingDeleted.length) await dxdb.messages.bulkDelete(existingDeleted.map((m) => m.id));
+      if (deletedIds.size) await dxdb.outbox.bulkDelete([...deletedIds]);
+      if (orphaned.length) {
+        await dxdb.blobs.bulkDelete(orphaned);
+        await dxdb.partial_chunks.where("fileId").anyOf(orphaned).delete();
+      }
+
       const blobRows: BlobRecord[] = (dump.blobs || []).map((b) => ({
         fileId: b.fileId,
         mimeType: b.mimeType,
@@ -421,7 +440,9 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       }));
       const existingBlobIds = new Set(await dxdb.blobs.toCollection().primaryKeys());
       await dxdb.blobs.bulkPut(blobRows.filter((b) =>
-        !existingBlobIds.has(b.fileId) && !isProtectedByConsumedTombstone(b.fileId, revoked)));
+        !existingBlobIds.has(b.fileId) &&
+        !orphaned.includes(b.fileId) &&
+        !isProtectedByConsumedTombstone(b.fileId, revoked)));
       // Reconcile already-present messages too: the restored tombstone is
       // authoritative even when an older local message still references media.
       for (const key of revoked) {
