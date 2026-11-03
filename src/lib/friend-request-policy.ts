@@ -13,7 +13,8 @@ export function validateIncomingFriendRequest(
   payload: Record<string, unknown>,
   now = Date.now(),
 ): ValidatedFriendRequest | null {
-  if (!isValidOnion(payload.from) || !isValidOnion(payload.to) ||
+  if (typeof payload.from !== "string" || typeof payload.to !== "string" ||
+      !isValidOnion(payload.from) || !isValidOnion(payload.to) ||
       typeof payload.fromName !== "string" || payload.fromName.length > 80 ||
       /[\u0000-\u001f\u007f\u202a-\u202e]/.test(payload.fromName) ||
       !Number.isSafeInteger(payload.timestamp) ||

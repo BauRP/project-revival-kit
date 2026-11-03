@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { onionFromPublicKey } from "../onion-id";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest,
   validateOutgoingFriendRequest } from "../friend-request-policy";
 
-const onion = "a".repeat(56) + ".onion";
-const other = "b".repeat(56) + ".onion";
+const onion = onionFromPublicKey(new Uint8Array(32).fill(1));
+const other = onionFromPublicKey(new Uint8Array(32).fill(2));
 const payload = { from: onion, to: other, fromName: "New friend", timestamp: 1000 };
 describe("Tor friend request durability and safety", () => {
   it("normalizes an authenticated friend request without propagating extra fields", () => {
