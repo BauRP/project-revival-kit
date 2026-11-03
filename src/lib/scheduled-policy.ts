@@ -27,3 +27,17 @@ export function validateScheduledItem(item: { id: string; chatId: string; text: 
   if (!Number.isSafeInteger(item.scheduledAt) || item.scheduledAt <= 0) throw new Error("Invalid scheduled time");
   if (typeof item.silent !== "boolean") throw new Error("Invalid scheduled notification mode");
 }
+
+/** Only the exact same queued item may be retried after an attempted send.
+ * In particular a cancellation/recreation must never be overwritten by an
+ * older callback rescheduling its obsolete data.
+ */
+export function sameScheduledIdentity(
+  expected: { id: string; chatId: string; text: string; scheduledAt: number; createdAt: number },
+  current: { id: string; chatId: string; text: string; scheduledAt: number; createdAt: number } | undefined,
+): boolean {
+  return !!current && current.id === expected.id &&
+    current.chatId === expected.chatId && current.text === expected.text &&
+    current.scheduledAt === expected.scheduledAt &&
+    current.createdAt === expected.createdAt;
+}

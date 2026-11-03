@@ -1,4 +1,4 @@
-import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem } from "./scheduled-policy";
+import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem, sameScheduledIdentity } from "./scheduled-policy";
 // Local outbox for Scheduled Send (Turn 2).
 //
 // Persists pending messages in IndexedDB so a page reload doesn't lose them.
@@ -31,6 +31,14 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 const senders = new Map<string, Sender>(); // chatId → sender
 let timer: ReturnType<typeof setTimeout> | null = null;
 let wakeGeneration = 0;
+let closed = false;
+// All fire/cancel operations in the same WebView serialize through this mutex.
+let mutationTail: Promise<void> = Promise.resolve();
+function serialized<T>(work: () => Promise<T>): Promise<T> {
+  const result = mutationTail.then(work, work);
+  mutationTail = result.then(() => undefined, () => undefined);
+  return result;
+}
 
 function openDB(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
@@ -97,13 +105,15 @@ export async function enqueue(
     attempts: 0,
   };
   validateScheduledItem(full);
-  await tx("readwrite", (s) => s.add(full));
+  if (closed) throw new Error("Scheduled outbox is closed");
+  await serialized(() => tx("readwrite", (s) => s.add(full)));
   scheduleNextWake();
   return full;
 }
 
 export async function remove(id: string): Promise<void> {
-  await tx("readwrite", (s) => s.delete(id));
+  if (closed) throw new Error("Scheduled outbox is closed");
+  await serialized(() => tx("readwrite", (s) => s.delete(id)));
   scheduleNextWake();
 }
 
@@ -118,18 +128,26 @@ export function registerSender(chatId: string, send: Sender): () => void {
 
 let firingDue = false;
 async function fireDue() {
-  if (firingDue) return;
+  if (firingDue || closed) return;
   firingDue = true;
   timer = null;
   try {
   const now = Date.now();
   const items = await listOutbox();
   for (const item of items) {
+    if (closed) break;
     if (scheduledWakeAt(item) > now) break;
-    const sender = senders.get(item.chatId);
     try {
-      validateScheduledItem(item);
-      if (sender) {
+      await serialized(async () => {
+        if (closed) return;
+        // A user may have cancelled this schedule after listOutbox().
+        const current = await tx<ScheduledItem | undefined>(
+          "readonly", (store) => store.get(item.id) as IDBRequest<ScheduledItem | undefined>,
+        );
+        if (!sameScheduledIdentity(item, current)) return;
+        validateScheduledItem(current);
+        const sender = senders.get(current.chatId);
+        if (sender) {
         await sender(item);
       } else {
         // The scheduled message must not depend on the chat screen being open.
@@ -150,14 +168,22 @@ async function fireDue() {
           silent: item.silent,
         });
       }
-      await remove(item.id);
+        await tx("readwrite", (store) => store.delete(item.id));
+      });
     } catch (e) {
       console.error("[outbox] send failed", item.id, e);
-      // Update the SAME persisted item without deleting it. A failed send
-      // must never erase an offline message from the queue.
-      await tx("readwrite", (store) =>
-        store.put(nextScheduledRetry(item, Date.now())),
-      );
+      // Retain the same immutable identity; never resurrect an item cancelled
+      // during an async send or replace a newly scheduled item with old data.
+      await serialized(async () => {
+        if (closed) return;
+        const current = await tx<ScheduledItem | undefined>(
+          "readonly", (store) => store.get(item.id) as IDBRequest<ScheduledItem | undefined>,
+        );
+        if (sameScheduledIdentity(item, current))
+          await tx("readwrite", (store) =>
+            store.put(nextScheduledRetry(current!, Date.now())),
+          );
+      });
     }
   }
   } finally {
@@ -167,7 +193,7 @@ async function fireDue() {
 }
 
 function scheduleNextWake() {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || closed) return;
   const generation = ++wakeGeneration;
   if (timer) {
     clearTimeout(timer);
@@ -191,9 +217,12 @@ function scheduleNextWake() {
 
 /** Release the scheduled IndexedDB connection before a full account wipe. */
 export async function closeScheduledOutbox(): Promise<void> {
+  closed = true;
   ++wakeGeneration; // invalidate asynchronous wake planners during account wipe
   if (timer) { clearTimeout(timer); timer = null; }
   senders.clear();
+  // All in-flight sends and retries finish before the connection is closed.
+  await mutationTail;
   const pending = dbPromise;
   dbPromise = null;
   if (pending) {
