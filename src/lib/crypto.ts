@@ -68,8 +68,10 @@ export function generateIdentityKeysSync(): IdentityKeys {
 /** Validate stored keypairs before they can be used or restored. */
 export function validateIdentityKeys(value: IdentityKeys): IdentityKeys {
   if (!value || !value.signing || !value.exchange ||
-      !Number.isSafeInteger(value.createdAt) || value.createdAt <= 0 ||
-      value.createdAt > Date.now() + 600_000)
+      // The wall clock may change after key creation, especially on an
+      // offline device with an incorrect clock. Never lock a verified keypair
+      // merely because its creation timestamp appears to be in the future.
+      !Number.isSafeInteger(value.createdAt) || value.createdAt < 0)
     throw new Error("Invalid stored identity structure");
   const signingSecret = decodeBase64(value.signing.secretKey);
   const exchangeSecret = decodeBase64(value.exchange.secretKey);

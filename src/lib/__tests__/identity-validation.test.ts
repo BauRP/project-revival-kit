@@ -39,9 +39,10 @@ describe("identity recovery validation", () => {
 });
 
 describe("identity creation timestamp integrity", () => {
-  it("refuses invalid and implausibly future-dated identity keys", () => {
-    const now = Date.now();
-    for (const createdAt of [0, -1, NaN, Infinity, now + 700_000])
+  it("rejects malformed timestamps without locking users after clock changes", () => {
+    for (const createdAt of [-1, NaN, Infinity, 1.5])
       expect(() => validateIdentityKeys({ ...makeIdentity(), createdAt })).toThrow();
+    for (const createdAt of [0, Date.now() + 700_000])
+      expect(() => validateIdentityKeys({ ...makeIdentity(), createdAt })).not.toThrow();
   });
 });
