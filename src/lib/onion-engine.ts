@@ -50,6 +50,7 @@ import { deniedByHistoryProtection } from "./history-protection-policy";
 import { validateDispatchBody, boundedAcknowledgements } from "./inbound-frame-policy";
 import { boundedChunkIndexes, validBlobFileId } from "./blob-request-policy";
 import { nextMissingChunkPage } from "./media-retry-policy";
+import { MediaSendGate } from "./media-send-gate";
 import { mayQueueOriginalText } from "./outbox-delivery-policy";
 import { shouldApplyRemoteReaction } from "./reaction-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
@@ -613,7 +614,9 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
       const have = boundedChunkIndexes(inner.body.have);
       if (!validBlobFileId(fileId) || !have) return;
       if (await hasBlob(fileId) && await canPeerRequestBlob(from, fileId)) {
-        await sendBlob(from, fileId, (i) => !have.has(i));
+        // A 1 GB attachment may take hours. Never block the signed inbound
+        // inbox and other chats while sending its individual Tor chunks.
+        mediaSendGate.start(from, fileId, () => sendBlob(from, fileId, (i) => !have.has(i)));
       } else {
         await sendEphemeral(from, "blob_missing", { fileId });
       }
@@ -625,8 +628,9 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
       if (!missing) return;
       const requestedFile = inner.body.fileId;
       if (!validBlobFileId(requestedFile)) return;
-      if (await canPeerRequestBlob(from, requestedFile)) {
-        await sendBlob(from, requestedFile, (i) => missing.has(i));
+      if (await hasBlob(requestedFile) && await canPeerRequestBlob(from, requestedFile)) {
+        mediaSendGate.start(from, requestedFile, () =>
+          sendBlob(from, requestedFile, (i) => missing.has(i)));
       }
       return;
     }
@@ -911,6 +915,12 @@ async function canPeerRequestBlob(peer: string, fileId: string): Promise<boolean
 
 // ─── Blob transfer (sealed, chunked, resumable) ──────────────
 
+// Keep bulk media sending away from the inbound transaction/replay path.
+// Concurrent requests for one transfer are coalesced; receivers can retry
+// missing pieces. A hard global limit prevents peer-controlled send storms.
+const mediaSendGate = new MediaSendGate(4, (error) =>
+  console.warn("[onion] background media transfer failed", error));
+
 function bytesToBase64(bytes: Uint8Array): string {
   let s = "";
   for (let i = 0; i < bytes.length; i += 0x8000) {
@@ -932,6 +942,9 @@ async function sendBlob(peer: string, fileId: string, include: (index: number) =
   const totalChunks = Math.max(1, Math.ceil(rec.data.size / BLOB_CHUNK_BYTES));
   for (let index = 0; index < totalChunks; index++) {
     if (!include(index)) continue;
+    // A chat deletion or one-time revocation must stop an already-running
+    // bulk send; do not hold the old Blob as perpetual access permission.
+    if (!(await hasBlob(fileId)) || !(await canPeerRequestBlob(peer, fileId))) return;
     const slice = new Uint8Array(await rec.data.slice(
       index * BLOB_CHUNK_BYTES, (index + 1) * BLOB_CHUNK_BYTES,
     ).arrayBuffer());
