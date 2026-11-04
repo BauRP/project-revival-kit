@@ -51,6 +51,7 @@ import { validateDispatchBody, boundedAcknowledgements } from "./inbound-frame-p
 import { boundedChunkIndexes, validBlobFileId } from "./blob-request-policy";
 import { nextMissingChunkPage } from "./media-retry-policy";
 import { MediaSendGate } from "./media-send-gate";
+import { matchesPublishedOnion } from "./onion-publication-policy";
 import { mayQueueOriginalText } from "./outbox-delivery-policy";
 import { shouldApplyRemoteReaction } from "./reaction-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
@@ -216,6 +217,17 @@ export async function onionInit(): Promise<string> {
       secretKey: torServiceKeyFromSigningSecret(signingSecret as string),
     });
     const published = res.onion ? normalizeOnion(res.onion) : null;
+    // A running Tor daemon is not evidence that our own service has the
+    // identity shown to contacts. Refuse to operate under a different onion.
+    if (!matchesPublishedOnion(onion, published)) {
+      await TorTransport.stop().catch((error) =>
+        console.error("[onion] unable to stop mismatched onion service", error));
+      notifyStatus({
+        ...TOR_UNAVAILABLE_STATUS,
+        lastError: "Published onion does not match the local identity key",
+      });
+      throw new Error("TOR_IDENTITY_MISMATCH: published hidden service key differs from local identity");
+    }
     notifyStatus({
       running: res.running,
       bootstrapped: res.bootstrapped,
@@ -223,10 +235,7 @@ export async function onionInit(): Promise<string> {
       onion: published,
       socksPort: res.socksPort,
       servicePort: res.servicePort,
-      lastError:
-        published && published !== onion
-          ? "Published onion does not match the local identity key"
-          : (res.lastError ?? null),
+      lastError: res.lastError ?? null,
     });
     // Replay after the hidden service starts, so deferred application ACKs
     // have a usable route. Do not delay opening the app on a large backlog.
