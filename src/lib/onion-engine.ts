@@ -49,6 +49,7 @@ import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
 import { validateDispatchBody, boundedAcknowledgements } from "./inbound-frame-policy";
 import { boundedChunkIndexes, validBlobFileId } from "./blob-request-policy";
+import { nextMissingChunkPage } from "./media-retry-policy";
 import { mayQueueOriginalText } from "./outbox-delivery-policy";
 import { shouldApplyRemoteReaction } from "./reaction-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
@@ -112,6 +113,7 @@ interface PartialReceive {
   totalChunks: number;
   received: Set<number>;
   updatedAt: number;
+  retryCursor?: number;
 }
 const partialReceives = new Map<string, PartialReceive>();
 
@@ -1119,10 +1121,19 @@ async function pollTick(): Promise<void> {
     if (isTorNativeAvailable()) await replayNativeInbound();
     for (const entry of partialReceives.values()) {
       if (Date.now() - entry.updatedAt <= POLL_INTERVAL_MS * 2) continue;
-      const missing: number[] = [];
-      for (let i = 0; i < entry.totalChunks; i++) if (!entry.received.has(i)) missing.push(i);
-      if (missing.length)
-        await sendEphemeral(entry.from, "blob_sync_request", { fileId: entry.fileId, missing });
+      // Request at most 128 pieces at a time. Rotate the cursor to avoid
+      // repeatedly asking for the first pieces of a multi-gigabyte transfer.
+      const page = nextMissingChunkPage(
+        entry.totalChunks, entry.received, entry.retryCursor ?? 0,
+      );
+      if (page.missing.length) {
+        entry.retryCursor = page.nextCursor;
+        // Throttle retries even when offline or a peer is unreachable.
+        entry.updatedAt = Date.now();
+        await sendEphemeral(entry.from, "blob_sync_request", {
+          fileId: entry.fileId, missing: page.missing,
+        });
+      }
     }
     for (const [peer, ts] of reachability) {
       if (Date.now() - ts >= ONLINE_TTL_MS) {

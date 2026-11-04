@@ -15,6 +15,13 @@ describe("offline attachment header policy", () => {
     expect(check("notes.txt", "text/plain", [0x7f, 0x45, 0x4c, 0x46]).safe).toBe(false);
     expect(check("song.mp3", "audio/mpeg", [0x23, 0x21, 0x2f]).safe).toBe(false);
   });
+  it("rejects a renamed image when the extension, MIME and actual bytes disagree", () => {
+    expect(check("photo.png", "image/jpeg", [0xff, 0xd8, 0xff, 0xe0]).safe).toBe(false);
+    expect(check("photo.txt", "image/png", png).safe).toBe(false);
+    expect(check("photo.jpg", "image/png", png).safe).toBe(false);
+    expect(check("photo.jpeg", "image/jpeg", [0xff, 0xd8, 0xff, 0xe0]).safe).toBe(true);
+    expect(check("untitled", "image/png", png).safe).toBe(true);
+  });
   it("rejects forged image MIME and active documents", () => {
     expect(check("photo.jpg", "image/jpeg", png).safe).toBe(false);
     expect(check("vector.svg", "image/svg+xml", [...new TextEncoder().encode("<svg>")]).safe).toBe(false);

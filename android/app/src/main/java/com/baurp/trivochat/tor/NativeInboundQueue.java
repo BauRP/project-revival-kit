@@ -159,9 +159,14 @@ public final class NativeInboundQueue {
                     int pos = 0;
                     while (pos < bytes.length) {
                         int n = in.read(bytes, pos, bytes.length - pos);
-                        if (n < 0) throw new IOException("Unexpected end of inbound frame");
+                        if (n <= 0) throw new IOException("Unexpected end of inbound frame");
                         pos += n;
                     }
+                } catch (IOException readError) {
+                    // Never let one truncated/corrupted file stall every
+                    // later inbound message after a crash or storage error.
+                    Log.e(TAG, "Skipping unreadable Tor queue entry: " + file.getName(), readError);
+                    continue;
                 }
                 String frame = new String(bytes, StandardCharsets.UTF_8);
                 // Reject corrupted on-disk entries without stopping the replay

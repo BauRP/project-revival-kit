@@ -107,6 +107,23 @@ export function isActiveContentHeader(header: Uint8Array): boolean {
   return /^(?:#!|<\s*(?:!doctype\s+html|html|script|svg|iframe|object|embed)\b|<\?php\b)/i.test(head);
 }
 
+/** Image filename, declared MIME and binary header must agree. */
+export function imageFilenameMatchesMime(fileName: string, detectedMime: string): boolean {
+  const extensions: Record<string, readonly string[]> = {
+    "image/jpeg": ["jpg", "jpeg", "jpe"],
+    "image/png": ["png"],
+    "image/gif": ["gif"],
+    "image/webp": ["webp"],
+    "image/bmp": ["bmp", "dib"],
+    "image/heic": ["heic", "heif"],
+    "image/avif": ["avif"],
+  };
+  const extension = fileName.toLowerCase().match(/\.([a-z0-9]+)$/)?.[1];
+  // Some camera providers supply extensionless files. Those are accepted
+  // only when the MIME and actual bytes have already matched.
+  return !extension || (extensions[detectedMime]?.includes(extension) ?? false);
+}
+
 export function inspectAttachmentHeader(
   fileName: string, declaredMime: string, header: Uint8Array,
 ): ScanResult {
@@ -149,6 +166,7 @@ export function inspectAttachmentHeader(
   // A renamed/incorrectly labelled image must never bypass metadata
   // stripping by claiming to be text/plain or application/octet-stream.
   if (detectedImage && !mime.startsWith("image/")) return blocked();
+  if (detectedImage && !imageFilenameMatchesMime(name, detectedImage)) return blocked();
   if (mime.startsWith("image/")) {
     const normalMime = mime === "image/jpg" ? "image/jpeg" :
       mime === "image/heif" ? "image/heic" : mime;
