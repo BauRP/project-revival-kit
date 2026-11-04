@@ -1030,7 +1030,7 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
   // A large Tor transfer can legitimately take longer than two minutes.
   // Only an actual newly verified chunk extends the inactivity deadline;
   // duplicate retransmissions cannot keep a stalled download alive forever.
-  if (!diskChunk) pending.lastProgressAt = entry.updatedAt;
+  if (!diskChunk) pending.lastProgressAt = performance.now();
   partialReceives.set(fileId, entry);
   if (entry.received.size < entry.totalChunks) return;
   if (!(await assemblePersistedBlob(fileId, from))) return;
@@ -1076,7 +1076,7 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
   const existing = blobRequests.get(fileId);
   if (existing) return Promise.resolve(false); // One active owner per file.
   return new Promise<boolean>((resolve) => {
-    const request: BlobRequest = { peer: source, resolve, lastProgressAt: Date.now() };
+    const request: BlobRequest = { peer: source, resolve, lastProgressAt: performance.now() };
     blobRequests.set(fileId, request);
     void (async () => {
       // Rehydrate verified chunks after app restart; only ask for missing data.
@@ -1130,14 +1130,14 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
     // later resumable retries when the peer actually stops transferring.
     const checkIdle = () => {
       if (blobRequests.get(fileId) !== request) return;
-      if (hasTransferTimedOut(request.lastProgressAt, Date.now(), BLOB_REQUEST_TIMEOUT_MS)) {
+      if (hasTransferTimedOut(request.lastProgressAt, performance.now(), BLOB_REQUEST_TIMEOUT_MS)) {
         blobRequests.delete(fileId);
         partialReceives.delete(fileId);
         resolve(false);
         return;
       }
       setTimeout(checkIdle, Math.min(30_000,
-        Math.max(1, request.lastProgressAt + BLOB_REQUEST_TIMEOUT_MS - Date.now())));
+        Math.max(1, request.lastProgressAt + BLOB_REQUEST_TIMEOUT_MS - performance.now())));
     };
     setTimeout(checkIdle, Math.min(30_000, BLOB_REQUEST_TIMEOUT_MS));
   });
