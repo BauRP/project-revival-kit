@@ -50,6 +50,7 @@ import { deniedByHistoryProtection } from "./history-protection-policy";
 import { validateDispatchBody, boundedAcknowledgements } from "./inbound-frame-policy";
 import { boundedChunkIndexes, validBlobFileId } from "./blob-request-policy";
 import { nextMissingChunkPage } from "./media-retry-policy";
+import { hasTransferTimedOut } from "./media-timeout-policy";
 import { MediaSendGate } from "./media-send-gate";
 import { matchesPublishedOnion } from "./onion-publication-policy";
 import { mayQueueOriginalText } from "./outbox-delivery-policy";
@@ -105,7 +106,11 @@ const statusListeners = new Set<(status: TorStatus) => void>();
 const deliveryListeners = new Set<(messageId: string, state: DeliveryState) => void>();
 
 const reachability = new Map<string, number>();
-interface BlobRequest { peer: string; resolve: (ok: boolean) => void }
+interface BlobRequest {
+  peer: string;
+  resolve: (ok: boolean) => void;
+  lastProgressAt: number;
+}
 const blobRequests = new Map<string, BlobRequest>();
 interface PartialReceive {
   fileId: string;
@@ -1022,6 +1027,10 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
   });
   entry.received.add(index);
   entry.updatedAt = Date.now();
+  // A large Tor transfer can legitimately take longer than two minutes.
+  // Only an actual newly verified chunk extends the inactivity deadline;
+  // duplicate retransmissions cannot keep a stalled download alive forever.
+  if (!diskChunk) pending.lastProgressAt = entry.updatedAt;
   partialReceives.set(fileId, entry);
   if (entry.received.size < entry.totalChunks) return;
   if (!(await assemblePersistedBlob(fileId, from))) return;
@@ -1067,7 +1076,7 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
   const existing = blobRequests.get(fileId);
   if (existing) return Promise.resolve(false); // One active owner per file.
   return new Promise<boolean>((resolve) => {
-    const request: BlobRequest = { peer: source, resolve };
+    const request: BlobRequest = { peer: source, resolve, lastProgressAt: Date.now() };
     blobRequests.set(fileId, request);
     void (async () => {
       // Rehydrate verified chunks after app restart; only ask for missing data.
@@ -1116,14 +1125,21 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
         resolve(false);
       }
     });
-    setTimeout(() => {
-      if (blobRequests.get(fileId) === request) {
+    // A fixed two-minute deadline terminated healthy multi-minute file
+    // downloads. Check inactivity instead, retaining verified chunks for
+    // later resumable retries when the peer actually stops transferring.
+    const checkIdle = () => {
+      if (blobRequests.get(fileId) !== request) return;
+      if (hasTransferTimedOut(request.lastProgressAt, Date.now(), BLOB_REQUEST_TIMEOUT_MS)) {
         blobRequests.delete(fileId);
-        // Keep verified partial chunks on disk for a future retry.
         partialReceives.delete(fileId);
         resolve(false);
+        return;
       }
-    }, BLOB_REQUEST_TIMEOUT_MS);
+      setTimeout(checkIdle, Math.min(30_000,
+        Math.max(1, request.lastProgressAt + BLOB_REQUEST_TIMEOUT_MS - Date.now())));
+    };
+    setTimeout(checkIdle, Math.min(30_000, BLOB_REQUEST_TIMEOUT_MS));
   });
 }
 
