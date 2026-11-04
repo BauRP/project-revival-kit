@@ -16,7 +16,7 @@ import { getOrCreateIdentity, validateIdentityKeys } from "./crypto";
 import { restoreIdentityOnFreshDevice } from "./identity-transfer";
 import { purgeExpiredLocalMessages } from "./p2p";
 import { makePortableBackupPackage, readPortableBackupPayload, assertMatchingBackupIdentity } from "./backup-package";
-import { createDatedBackupFilename, isSafeBackupFilename, newestBackupFilename } from "./backup-files";
+import { createDatedBackupFilename, isSafeBackupFilename, newestBackupFilename, pendingBackupFilename } from "./backup-files";
 import { validateLegacyBackupEnvelope } from "./legacy-backup-policy";
 
 
@@ -86,14 +86,32 @@ export async function exportBackup(
   const json = JSON.stringify(envelope);
 
   if (isNative()) {
-    const res = await Filesystem.writeFile({
-      path: filename,
-      data: json,
-      directory: Directory.Documents,
-      encoding: Encoding.UTF8,
-      recursive: true,
-    });
-    return { written: "native", path: res.uri, filename };
+    // Never expose a partially written archive as the newest valid backup.
+    // Same-directory rename publishes the file only after the encrypted
+    // payload was fully written. A failed write leaves prior copies intact.
+    const pending = pendingBackupFilename(filename);
+    try {
+      await Filesystem.writeFile({
+        path: pending,
+        data: json,
+        directory: Directory.Documents,
+        encoding: Encoding.UTF8,
+        recursive: true,
+      });
+      await Filesystem.rename({
+        from: pending,
+        to: filename,
+        directory: Directory.Documents,
+        toDirectory: Directory.Documents,
+      });
+    } catch (error) {
+      try {
+        await Filesystem.deleteFile({ path: pending, directory: Directory.Documents });
+      } catch { /* preserve the original write error */ }
+      throw error;
+    }
+    const saved = await Filesystem.getUri({ path: filename, directory: Directory.Documents });
+    return { written: "native", path: saved.uri, filename };
   }
 
   // Browser fallback: trigger a download.

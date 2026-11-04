@@ -13,6 +13,11 @@ export function createDatedBackupFilename(
   const suffix = Array.from(nonce, (x) => x.toString(16).padStart(2, "0")).join("");
   return (kind === "auto" ? PREFIX_AUTO : PREFIX_MANUAL) + stamp + "-" + suffix + ".tvc";
 }
+/** An unfinished write is never a selectable recovery archive. */
+export function pendingBackupFilename(name: string): string {
+  if (!isSafeBackupFilename(name)) throw new Error("Invalid backup filename");
+  return name + ".pending";
+}
 export function isSafeBackupFilename(name: string): boolean {
   return name === LEGACY || NAME.test(name);
 }
