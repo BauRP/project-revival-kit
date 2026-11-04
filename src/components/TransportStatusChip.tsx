@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, Shield, ShieldAlert, ShieldCheck } from "lucide-react";
 import { onionCurrentStatus, onionInit, onionOnStatus } from "@/lib/onion-engine";
 import type { TorStatus } from "@/lib/tor-native";
+import { isTorServiceReady } from "@/lib/tor-status-policy";
 
 /**
  * Stage B of startup: shows the real Tor transport state and lets the user
@@ -32,16 +33,21 @@ export function TransportStatusChip({ userId }: { userId: string }) {
     if (!userId) return;
     let cancelled = false;
     const kick = () => {
-      if (!cancelled && document.visibilityState === "visible") void start();
+      // Android may stop the service while the app is backgrounded.
+      // Reconnect on foreground, never restart a healthy Tor service.
+      if (!cancelled && document.visibilityState === "visible" &&
+          !isTorServiceReady(onionCurrentStatus())) void start();
     };
     const timer = window.setTimeout(kick, 1500);
+    document.addEventListener("visibilitychange", kick);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", kick);
     };
   }, [userId, start]);
 
-  const ready = status.bootstrapped && !!status.onion;
+  const ready = isTorServiceReady(status);
   const label = ready
     ? "Tor connected"
     : busy || status.running

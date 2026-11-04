@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { onionCurrentStatus, onionOnStatus, onionInit } from "@/lib/onion-engine";
+import { isTorServiceReady } from "@/lib/tor-status-policy";
 import { motion } from "framer-motion";
 import { useIdentity } from "@/contexts/IdentityContext";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -29,7 +30,7 @@ const SecurityDashboard = () => {
   const [reconnecting, setReconnecting] = useState(false);
   const [torRetryError, setTorRetryError] = useState<string | null>(null);
   useEffect(() => onionOnStatus(setTorState), []);
-  const torConnected = torState.running && torState.bootstrapped && !!torState.onion && !torState.lastError;
+  const torConnected = isTorServiceReady(torState);
   const torStatusText = torConnected
     ? "Tor подключён — скрытый сервис активен"
     : torState.running
