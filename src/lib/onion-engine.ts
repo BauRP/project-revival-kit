@@ -60,7 +60,7 @@ import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from 
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage, matchesIncomingChunkManifest } from "./message-deletion-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
-import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, type DispatchCommitResult } from "./dispatch-commit";
+import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, sameOutgoingDispatchRoute, type DispatchCommitResult } from "./dispatch-commit";
 import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp, canMutateDeletedMessage, isDuplicateRemoteDeletion } from "./lifecycle-auth";
 
 export const ONION_SERVICE_PORT = 8443;
@@ -386,18 +386,26 @@ async function sendEphemeral(
  */
 // A repeated scheduled item must reuse the exact sealed frame. Guard the
 // check-and-insert phase from concurrent callers in the same WebView.
-const dispatchInFlight = new Map<string, Promise<boolean>>();
+const dispatchInFlight = new Map<string, {
+  peer: string; kind: string; promise: Promise<boolean>;
+}>();
 export async function onionSendDispatch(
   peer: string,
   payload: Record<string, unknown>,
 ): Promise<boolean> {
   const to = normalizeOnion(peer);
   if (!isValidOnion(to)) throw new Error(`Not a valid .onion address: ${peer}`);
-  const id = String(payload.id || crypto.randomUUID());
-  if (!id || id.length > 128) throw new Error("Invalid dispatch ID");
-  const kind = String(payload.type || "text_message") as OutboxKind;
+  const id = payload.id === undefined ? crypto.randomUUID() : payload.id;
+  if (!isValidDispatchId(id)) throw new Error("Invalid dispatch ID");
+  const kind = payload.type === undefined ? "text_message" : payload.type;
+  if (typeof kind !== "string" || !kind || kind.length > 64)
+    throw new Error("Invalid outgoing dispatch type");
   const inFlight = dispatchInFlight.get(id);
-  if (inFlight) return inFlight;
+  if (inFlight) {
+    if (!sameOutgoingDispatchRoute(inFlight, { peer: to, kind }))
+      throw new Error("Dispatch ID already belongs to a different destination or event");
+    return inFlight.promise;
+  }
   const work = (async () => {
     const previous = await dxdb.outbox.get(id);
     if (previous) {
@@ -421,17 +429,17 @@ export async function onionSendDispatch(
         return;
       }
       await dxdb.outbox.add({
-        id, peer: to, kind, frame: sealed, status: "pending",
+        id, peer: to, kind: kind as OutboxKind, frame: sealed, status: "pending",
         attempts: 0, nextAttemptAt: now, createdAt: now, updatedAt: now,
       });
     });
     return attemptOutbox(id);
   })();
-  dispatchInFlight.set(id, work);
+  dispatchInFlight.set(id, { peer: to, kind, promise: work });
   try {
     return await work;
   } finally {
-    if (dispatchInFlight.get(id) === work) dispatchInFlight.delete(id);
+    if (dispatchInFlight.get(id)?.promise === work) dispatchInFlight.delete(id);
   }
 }
 

@@ -16,3 +16,13 @@ export function isValidDispatchId(id: unknown): id is string {
   return typeof id === "string" && id.length >= 1 && id.length <= 128 &&
     !/[\u0000-\u001f\u007f]/.test(id);
 }
+
+/** A reused dispatch ID must never silently redirect an in-flight encrypted
+ * frame to another peer or a different event category.
+ */
+export function sameOutgoingDispatchRoute(
+  expected: { peer: string; kind: string },
+  actual: { peer: string; kind: string },
+): boolean {
+  return expected.peer === actual.peer && expected.kind === actual.kind;
+}

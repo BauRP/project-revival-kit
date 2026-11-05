@@ -1,3 +1,5 @@
+import { validBlobFileId } from "./blob-request-policy";
+
 /**
  * Strict boundary between authenticated remote JSON and our local Dexie schema.
  * The signature authenticates the peer, but never makes arbitrary JSON safe.
@@ -35,6 +37,7 @@ export function validateIncomingTextMessage(
   const text = payload.text;
   const timestamp = payload.timestamp;
   if (typeof id !== "string" || !id || id.length > 128 ||
+      /[\u0000-\u001f\u007f]/.test(id) ||
       typeof from !== "string" || !from.endsWith(".onion") || from.length !== 62 ||
       typeof to !== "string" || !to.endsWith(".onion") || to.length !== 62 ||
       from === to || typeof text !== "string" || text.length > 200_000 ||
@@ -49,11 +52,14 @@ export function validateIncomingTextMessage(
     const raw = payload.media;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
     const m = raw as Record<string, unknown>;
-    if (typeof m.fileId !== "string" || !m.fileId || m.fileId.length > 128 ||
+    if (!validBlobFileId(m.fileId) ||
         typeof m.id !== "string" || m.id.length > 128 ||
-        !["image", "audio", "file", "video"].includes(String(m.type)) ||
+        typeof m.type !== "string" ||
+        !["image", "audio", "file", "video"].includes(m.type) ||
         typeof m.name !== "string" || m.name.length > 255 ||
-        typeof m.mimeType !== "string" || m.mimeType.length > 128 ||
+        /[\u0000-\u001f\u007f\\/]/.test(m.name) ||
+        typeof m.mimeType !== "string" || !m.mimeType || m.mimeType.length > 128 ||
+        /[\u0000-\u001f\u007f]/.test(m.mimeType) ||
         typeof m.size !== "number" || !Number.isSafeInteger(m.size) ||
         m.size < 0 || m.size > 1024 * 1024 * 1024) return null;
     result.media = {
