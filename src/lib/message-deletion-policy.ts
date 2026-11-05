@@ -117,3 +117,26 @@ export function isExpectedIncomingAttachment(
   return !!fileId && message.from === sender && message.to === recipient &&
     messageMediaFileId(message) === fileId;
 }
+
+/**
+ * The signed original message is the authority for the file advertised to
+ * the recipient. A malicious sender must not be able to store a larger blob
+ * or switch its filename/MIME during a separate chunk transfer.
+ */
+export function matchesReceivedAttachmentMetadata(
+  message: { from: string; to: string; media?: unknown },
+  sender: string,
+  recipient: string,
+  fileId: string,
+  name: string,
+  mimeType: string,
+  size: number,
+): boolean {
+  if (!isExpectedIncomingAttachment(message, sender, recipient, fileId) ||
+      !Number.isSafeInteger(size) || size < 0 ||
+      !message.media || typeof message.media !== "object" ||
+      Array.isArray(message.media)) return false;
+  const media = message.media as Record<string, unknown>;
+  return media.name === name && media.mimeType === mimeType &&
+    media.size === size;
+}

@@ -44,6 +44,7 @@ import { dbGetStrict, dbPutStrict } from "./storage";
 import { isLegacyFriendEvent } from "./inbound-durability";
 import { validateIncomingTextMessage } from "./inbound-message";
 import { chunkDigest, matchesChunkDigest } from "./chunk-integrity";
+import { inspectAttachmentBlob } from "./security-scan";
 import { orderedCompleteChunkSet } from "./media-chunks";
 import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
@@ -1033,40 +1034,47 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
   if (!diskChunk) pending.lastProgressAt = performance.now();
   partialReceives.set(fileId, entry);
   if (entry.received.size < entry.totalChunks) return;
-  if (!(await assemblePersistedBlob(fileId, from))) return;
+  const assembled = await assemblePersistedBlob(fileId, from);
+  if (assembled === "incomplete") return;
   partialReceives.delete(fileId);
   const request = blobRequests.get(fileId);
   if (request && request.peer === from) {
     blobRequests.delete(fileId);
-    request.resolve(true);
+    request.resolve(assembled === "saved");
   }
 }
 
 /** Assemble only validated persisted parts, without keeping another whole-file
  * copy in JavaScript memory. Safe to run again after a crash.
  */
-async function assemblePersistedBlob(fileId: string, from: string): Promise<boolean> {
+type AssemblyOutcome = "saved" | "incomplete" | "rejected";
+async function assemblePersistedBlob(fileId: string, from: string): Promise<AssemblyOutcome> {
   const records = await dxdb.partial_chunks.where("fileId").equals(fileId).toArray();
   const ordered = orderedCompleteChunkSet(
     records.map((row) => ({ ...row, size: row.data.size })), fileId, from,
   );
-  if (!ordered) return false;
+  if (!ordered) return "incomplete";
   const parts: BlobPart[] = [];
   for (const row of ordered) {
     const bytes = new Uint8Array(await row.data.arrayBuffer());
-    if (!matchesChunkDigest(bytes, row.digest)) return false;
+    if (!matchesChunkDigest(bytes, row.digest)) return "incomplete";
     parts.push(row.data);
   }
   const first = ordered[0];
   // Recheck after digest verification: revocation can race a large assembly.
-  if (isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data)) return false;
-  const saved = await putReceivedBlob(
-    fileId, new Blob(parts, { type: first.mimeType }),
-    first.name, first.mimeType, from, await ensureLocalIdentity(),
+  if (isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data))
+    return "rejected";
+  const assembled = new Blob(parts, { type: first.mimeType });
+  // Hashes verify transport integrity, NOT whether the file is safe.
+  // Apply the same offline signature policy to completed incoming files as
+  // to outgoing uploads before storing them as downloadable media.
+  const inspected = await inspectAttachmentBlob(first.name, first.mimeType, assembled);
+  const saved = inspected.safe && await putReceivedBlob(
+    fileId, assembled, first.name, first.mimeType, from, await ensureLocalIdentity(),
   );
-  // A deleted message must not leave completed but unreferenced chunks behind.
+  // A completed but rejected transfer must not occupy storage forever.
   await dxdb.partial_chunks.where("fileId").equals(fileId).delete();
-  return saved;
+  return saved ? "saved" : "rejected";
 }
 
 /** Only request encrypted media from its authenticated message sender. */
@@ -1104,12 +1112,14 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
           partialReceives.set(fileId, partial);
         }
       }
-      if (partial && partial.received.size === partial.totalChunks &&
-          await assemblePersistedBlob(fileId, source)) {
-        partialReceives.delete(fileId);
-        blobRequests.delete(fileId);
-        resolve(true);
-        return;
+      if (partial && partial.received.size === partial.totalChunks) {
+        const assembled = await assemblePersistedBlob(fileId, source);
+        if (assembled !== "incomplete") {
+          partialReceives.delete(fileId);
+          blobRequests.delete(fileId);
+          resolve(assembled === "saved");
+          return;
+        }
       }
       const sent = await sendEphemeral(source, "blob_request", {
         fileId,

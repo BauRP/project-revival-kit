@@ -12,7 +12,7 @@ import { consumedMediaKey, isConsumedMediaRecord, isProtectedByConsumedTombstone
 import { validateBackupStructure } from "./backup-validation";
 import { stripSessionMediaUrl } from "./backup-media-policy";
 import { assertPortableBackupFits } from "./backup-budget";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, unusedBackupMedia, isExpectedIncomingAttachment } from "./message-deletion-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, unusedBackupMedia, matchesReceivedAttachmentMetadata } from "./message-deletion-policy";
 
 export interface ContactRecord {
   onion: string;
@@ -199,7 +199,9 @@ export async function putReceivedBlob(
         return false;
       const candidates = await dxdb.messages.where("from").equals(sender).toArray();
       for (const msg of candidates) {
-        if (!isExpectedIncomingAttachment(msg, sender, recipient, fileId)) continue;
+        if (!matchesReceivedAttachmentMetadata(
+          msg, sender, recipient, fileId, name, mimeType, data.size,
+        )) continue;
         if (isDeletedMessageRecord((await dxdb.lifecycle.get(deletedMessageKey(msg.id)))?.data))
           continue;
         await dxdb.blobs.put({

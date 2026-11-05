@@ -42,6 +42,15 @@ export function shouldRunAutomaticBackup(lastSavedAt: number, now = Date.now()):
   if (lastSavedAt > now + 10 * 60_000) return true;
   return now >= lastSavedAt + AUTO_BACKUP_INTERVAL_MS;
 }
+/** Backwards system-clock corrections must not suppress backups forever. */
+export function shouldDelayAutomaticBackupRetry(
+  lastFailedAt: number,
+  now: number,
+): boolean {
+  return Number.isSafeInteger(lastFailedAt) &&
+    lastFailedAt > 0 && Number.isSafeInteger(now) &&
+    now >= lastFailedAt && now - lastFailedAt < RETRY_WAIT_MS;
+}
 export async function isAutomaticBackupEnabled(): Promise<boolean> {
   if (!isNative()) return false;
   return isAutoBackupState(await dbGetStrict<unknown>("settings", KEY));
@@ -77,7 +86,7 @@ export function runAutomaticBackupIfDue(): Promise<void> {
   const work = (async () => {
     if (wiping || !isNative() || typeof document === "undefined" || document.hidden) return;
     const now = Date.now();
-    if (lastFailedAt && now - lastFailedAt < RETRY_WAIT_MS) return;
+    if (shouldDelayAutomaticBackupRetry(lastFailedAt, now)) return;
     const state = await dbGetStrict<unknown>("settings", KEY);
     if (!isAutoBackupState(state) || !shouldRunAutomaticBackup(state.lastSavedAt, now)) return;
     try {

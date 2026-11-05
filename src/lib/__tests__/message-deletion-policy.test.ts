@@ -112,3 +112,20 @@ describe("late Tor media after local message deletion", () => {
     expect(isExpectedIncomingAttachment(message,"sender","recipient","other")).toBe(false);
   });
 });
+
+// A signed message's metadata must match the chunk-assembled attachment.
+import { matchesReceivedAttachmentMetadata } from "../message-deletion-policy";
+describe("received Tor media cannot override signed message metadata", () => {
+  const message = { from:"sender", to:"recipient", media:{
+    fileId:"file", name:"image.png", mimeType:"image/png", size:1024,
+  } };
+  it("accepts only an exact match of file identity, MIME, name and byte size", () => {
+    expect(matchesReceivedAttachmentMetadata(message,"sender","recipient","file","image.png","image/png",1024)).toBe(true);
+    expect(matchesReceivedAttachmentMetadata(message,"sender","recipient","file","image.png","image/png",2048)).toBe(false);
+    expect(matchesReceivedAttachmentMetadata(message,"sender","recipient","file","image.svg","image/png",1024)).toBe(false);
+    expect(matchesReceivedAttachmentMetadata(message,"sender","recipient","file","image.png","text/html",1024)).toBe(false);
+    expect(matchesReceivedAttachmentMetadata(message,"forged","recipient","file","image.png","image/png",1024)).toBe(false);
+    expect(matchesReceivedAttachmentMetadata(message,"sender","recipient","wrong","image.png","image/png",1024)).toBe(false);
+    expect(matchesReceivedAttachmentMetadata(message,"sender","recipient","file","image.png","image/png",NaN)).toBe(false);
+  });
+});
