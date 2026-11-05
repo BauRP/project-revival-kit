@@ -10,8 +10,17 @@ export interface ScheduledRetryState {
   nextAttemptAt?: number;
   attempts?: number;
 }
-export function scheduledWakeAt(item: ScheduledRetryState): number {
-  return Math.max(item.scheduledAt, item.nextAttemptAt ?? item.scheduledAt);
+export function scheduledWakeAt(
+  item: ScheduledRetryState, now = Date.now(),
+): number {
+  const retry = item.nextAttemptAt ?? item.scheduledAt;
+  // If Android's clock was corrected backwards after a previous Tor retry,
+  // an obsolete future retry timestamp must not stall a due message for
+  // days. The actual requested scheduledAt is NEVER moved earlier.
+  const maxRetryDelay = 61 * 60_000;
+  if ((item.attempts ?? 0) > 0 && retry > now + maxRetryDelay)
+    return Math.max(item.scheduledAt, now);
+  return Math.max(item.scheduledAt, retry);
 }
 export function nextScheduledRetry<T extends ScheduledRetryState>(
   item: T, now: number,

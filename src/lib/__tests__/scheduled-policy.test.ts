@@ -37,3 +37,24 @@ describe("scheduled Tor recipient validation", () => {
     expect(canScheduleRecipient("TRIVO_MOCK_PEER_999")).toBe(true);
   });
 });
+
+describe("scheduled Tor retry after system clock correction", () => {
+  it("does not wait days after an old retry was created under a wrong clock", () => {
+    const now = 1_800_000_000_000;
+    const pending = {scheduledAt:now-10_000,
+      nextAttemptAt:now+24*60*60_000,attempts:2};
+    expect(scheduledWakeAt(pending,now)).toBe(now);
+  });
+  it("never sends a not-yet-due scheduled message early", () => {
+    const now = 1_800_000_000_000;
+    const pending = {scheduledAt:now+2*24*60*60_000,
+      nextAttemptAt:now+3*24*60*60_000,attempts:1};
+    expect(scheduledWakeAt(pending,now)).toBe(pending.scheduledAt);
+  });
+  it("keeps ordinary bounded backoff and immutable scheduledAt", () => {
+    const now = 1_800_000_000_000;
+    const pending={scheduledAt:now-1000,nextAttemptAt:now+30_000,attempts:1};
+    expect(scheduledWakeAt(pending,now)).toBe(now+30_000);
+    expect(pending.scheduledAt).toBe(now-1000);
+  });
+});

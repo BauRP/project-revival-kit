@@ -36,6 +36,7 @@ let wakeGeneration = 0;
 let closed = false;
 let scheduledMigrationReady = !isNative();
 let migrationRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let foregroundHandler: (() => void) | null = null;
 // All fire/cancel operations in the same WebView serialize through this mutex.
 let mutationTail: Promise<void> = Promise.resolve();
 function serialized<T>(work: () => Promise<T>): Promise<T> {
@@ -236,6 +237,10 @@ export async function closeScheduledOutbox(): Promise<void> {
   ++wakeGeneration; // invalidate asynchronous wake planners during account wipe
   if (timer) { clearTimeout(timer); timer = null; }
   if (migrationRetryTimer) { clearTimeout(migrationRetryTimer); migrationRetryTimer = null; }
+  if (foregroundHandler && typeof document !== "undefined") {
+    document.removeEventListener("visibilitychange", foregroundHandler);
+    foregroundHandler = null;
+  }
   senders.clear();
   // All in-flight sends and retries finish before the connection is closed.
   await mutationTail;
@@ -283,4 +288,15 @@ function initializeScheduledOutbox(): void {
       migrationRetryTimer = setTimeout(initializeScheduledOutbox, 30_000);
   });
 }
-if (typeof window !== "undefined") initializeScheduledOutbox();
+if (typeof window !== "undefined") {
+  initializeScheduledOutbox();
+  // Android may suspend timers when the WebView is backgrounded. Recover
+  // overdue scheduled messages immediately upon returning to the foreground.
+  foregroundHandler = () => {
+    if (closed || document.hidden) return;
+    scheduleNextWake();
+    void fireDue().catch((error) =>
+      console.error("[outbox] unable to resume due messages", error));
+  };
+  document.addEventListener("visibilitychange", foregroundHandler);
+}
