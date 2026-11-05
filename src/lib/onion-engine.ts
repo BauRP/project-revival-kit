@@ -50,7 +50,7 @@ import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
 import { validateDispatchBody, boundedAcknowledgements } from "./inbound-frame-policy";
 import { boundedChunkIndexes, boundedMediaTransferWindow, validBlobFileId } from "./blob-request-policy";
-import { nextMissingChunkPage } from "./media-retry-policy";
+import { nextMissingChunkPage, initialTransferWindow } from "./media-retry-policy";
 import { hasTransferTimedOut } from "./media-timeout-policy";
 import { MediaSendGate } from "./media-send-gate";
 import { matchesPublishedOnion } from "./onion-publication-policy";
@@ -1027,10 +1027,16 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
   // avoiding gigabytes of base64 strings for large attachments.
   const key = JSON.stringify([fileId, from, index]);
   const diskChunk = await dxdb.partial_chunks.get(key);
-  if (diskChunk && (diskChunk.digest !== body.digest ||
-      diskChunk.from !== from || diskChunk.name !== entry.name ||
-      diskChunk.mimeType !== entry.mimeType || diskChunk.totalChunks !== chunks)) return;
-  if (!diskChunk) await dxdb.partial_chunks.put({
+  if (diskChunk && (diskChunk.from !== from ||
+      diskChunk.name !== entry.name || diskChunk.mimeType !== entry.mimeType ||
+      diskChunk.totalChunks !== chunks)) return;
+  // Repair an interrupted or corrupted disk write with a freshly verified
+  // chunk while refusing attempts to overwrite a valid chunk with new data.
+  const storedValid = diskChunk
+    ? matchesChunkDigest(new Uint8Array(await diskChunk.data.arrayBuffer()), diskChunk.digest)
+    : false;
+  if (diskChunk && storedValid && diskChunk.digest !== body.digest) return;
+  if (!storedValid) await dxdb.partial_chunks.put({
     key, fileId, from, index, totalChunks: chunks,
     name: entry.name, mimeType: entry.mimeType, digest: String(body.digest),
     data: new Blob([chunkBytes as BlobPart]), updatedAt: Date.now(),
@@ -1040,7 +1046,7 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
   // A large Tor transfer can legitimately take longer than two minutes.
   // Only an actual newly verified chunk extends the inactivity deadline;
   // duplicate retransmissions cannot keep a stalled download alive forever.
-  if (!diskChunk) pending.lastProgressAt = performance.now();
+  if (!storedValid) pending.lastProgressAt = performance.now();
   partialReceives.set(fileId, entry);
   if (entry.received.size < entry.totalChunks) return;
   const assembled = await assemblePersistedBlob(fileId, from);
@@ -1130,14 +1136,15 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
           return;
         }
       }
+      const firstWindow = initialTransferWindow(
+        partial?.from === source ? partial.totalChunks : null,
+        partial?.from === source ? partial.received : new Set<number>(),
+      );
       const sent = await sendEphemeral(source, "blob_request", {
         fileId,
-        // New peers honor this bounded first page. Older Tor clients
-        // ignore the window and still work through the legacy "have" list.
-        // Avoid constructing a 22k-element array for a completed 1 GB file.
-        have: [],
-        windowStart: 0,
-        windowCount: 128,
+        // Resume at the first missing piece. Both the advertised window and
+        // the legacy "have" array stay small even for a gigabyte file.
+        ...firstWindow,
       });
       if (!sent && blobRequests.get(fileId) === request) {
         blobRequests.delete(fileId);

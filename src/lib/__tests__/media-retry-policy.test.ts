@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MAX_MEDIA_CHUNKS } from "../blob-request-policy";
 import {
-  nextMissingChunkPage, MAX_MISSING_CHUNKS_PER_RETRY,
+  nextMissingChunkPage, initialTransferWindow, MAX_MISSING_CHUNKS_PER_RETRY,
 } from "../media-retry-policy";
 
 describe("bounded and fair Tor media retry pages", () => {
@@ -34,5 +34,23 @@ describe("bounded and fair Tor media retry pages", () => {
     }
     expect(() => nextMissingChunkPage(4, received, 4)).toThrow();
     expect(() => nextMissingChunkPage(4, received, 0, 129)).toThrow();
+  });
+});
+
+describe("first Tor media request resumes near saved chunks", () => {
+  it("starts at the first missing index after a recovered prefix", () => {
+    const received = new Set(Array.from({length: 800}, (_, i) => i));
+    expect(initialTransferWindow(1000, received))
+      .toEqual({ windowStart:800, windowCount:128, have:[] });
+  });
+  it("sends only known indexes inside the small initial window", () => {
+    expect(initialTransferWindow(5, new Set([0,2,4])))
+      .toEqual({ windowStart:1, windowCount:4, have:[2,4] });
+  });
+  it("keeps new and tiny transfers bounded", () => {
+    expect(initialTransferWindow(null, new Set()))
+      .toEqual({windowStart:0,windowCount:128,have:[]});
+    expect(initialTransferWindow(2, new Set()))
+      .toEqual({windowStart:0,windowCount:2,have:[]});
   });
 });
