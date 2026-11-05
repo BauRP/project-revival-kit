@@ -2,6 +2,10 @@
  * A decrypted portable backup is still untrusted input. Validate it completely
  * before opening the Dexie write transaction. Legacy backups use this check too.
  */
+import { isIrreversiblePrivacyMarker } from "./backup-merge-policy";
+import { isConsumedMediaRecord } from "./one-time-policy";
+import { isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY } from "./message-deletion-policy";
+
 const MAX_RECORDS_PER_TABLE = 250_000;
 const MAX_TOTAL_RECORDS = 300_000;
 // V2 ciphertext is limited to 256 MiB; reject pathological arrays before
@@ -87,10 +91,22 @@ export function validateBackupStructure(dump: unknown): void {
       throw new Error("Invalid backup outbox record");
   }
 
-  for (const x of lifecycle)
+  const lifecycleKeys = new Set<string>();
+  for (const x of lifecycle) {
     if (!record(x) || !id(x.key, 1024) || !id(x.chatKey, 256) ||
         !id(x.messageId, 256) || !record(x.data))
       throw new Error("Invalid backup lifecycle");
+    if (lifecycleKeys.has(x.key)) throw new Error("Duplicate backup lifecycle key");
+    lifecycleKeys.add(x.key);
+    // Never accept privacy deletion flags under a forged/mismatched key.
+    // A valid exported record always uses the canonical key for its ID.
+    const irreversible = (x.chatKey === "consumed-media" &&
+      isConsumedMediaRecord(x.data)) ||
+      (x.chatKey === LOCAL_DELETED_CHAT_KEY && isDeletedMessageRecord(x.data));
+    if (irreversible && !isIrreversiblePrivacyMarker({
+      key: x.key, chatKey: x.chatKey, messageId: x.messageId, data: x.data,
+    })) throw new Error("Invalid backup privacy marker");
+  }
 
   let encodedMediaBytes = 0;
   for (const x of blobs) {

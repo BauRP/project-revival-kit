@@ -66,3 +66,24 @@ describe("encrypted outgoing records in portable backups", () => {
     expect(() => validateBackupStructure({ ...dump(), outbox: [{ ...old, status: "delivered" }] })).toThrow();
   });
 });
+
+// Validating archive primary keys prevents ambiguous restore ordering.
+describe("durable backup privacy marker integrity", () => {
+  it("accepts canonical permanent deletion and consumed media markers", () => {
+    const removed = { key: '["deleted-message","m1"]',
+      chatKey: "deleted-message-local", messageId:"m1", data:{deleted:true} };
+    const viewed = { key:"consumed-media::f1",
+      chatKey:"consumed-media",messageId:"f1",data:{consumed:true} };
+    expect(() => validateBackupStructure({...dump(),lifecycle:[removed,viewed]})).not.toThrow();
+  });
+  it("refuses forged and duplicate privacy markers", () => {
+    const record = { key:"consumed-media::f1",chatKey:"consumed-media",
+      messageId:"f2",data:{consumed:true} };
+    expect(() => validateBackupStructure({...dump(),lifecycle:[record]})).toThrow();
+    const removed = { key:'["deleted-message","m1"]',
+      chatKey:"deleted-message-local",messageId:"m2",data:{deleted:true} };
+    expect(() => validateBackupStructure({...dump(),lifecycle:[removed]})).toThrow();
+    const valid = {...record,messageId:"f1"};
+    expect(() => validateBackupStructure({...dump(),lifecycle:[valid,valid]})).toThrow();
+  });
+});

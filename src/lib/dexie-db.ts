@@ -11,6 +11,7 @@ import Dexie, { type Table } from "dexie";
 import { consumedMediaKey, isConsumedMediaRecord, isProtectedByConsumedTombstone, sanitizeRestoredOneTimeMessage } from "./one-time-policy";
 import { validateBackupStructure } from "./backup-validation";
 import { stripSessionMediaUrl } from "./backup-media-policy";
+import { lifecycleRowsForRestore } from "./backup-merge-policy";
 import { assertPortableBackupFits } from "./backup-budget";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, unusedBackupMedia, matchesReceivedAttachmentMetadata } from "./message-deletion-policy";
 
@@ -448,7 +449,10 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       // The current live outbox is preserved by this merge operation.
       // Historic unsent frames remain in the encrypted backup for audit only.
       const lifecycleIds = new Set(await dxdb.lifecycle.toCollection().primaryKeys());
-      await dxdb.lifecycle.bulkPut((dump.lifecycle || []).filter((m) => !lifecycleIds.has(m.key)));
+      // Restored irreversible tombstones take precedence over older local
+      // lifecycle rows with the same key. Otherwise a consumed file could
+      // reappear after restart despite being purged during this restore.
+      await dxdb.lifecycle.bulkPut(lifecycleRowsForRestore(dump.lifecycle || [], lifecycleIds));
 
       // A deleted-message tombstone restored from an older backup is still
       // authoritative against a message already present on this device.
