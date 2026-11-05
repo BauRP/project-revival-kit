@@ -48,7 +48,7 @@ import { inspectAttachmentBlob } from "./security-scan";
 import { orderedCompleteChunkSet } from "./media-chunks";
 import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
-import { validateDispatchBody, boundedAcknowledgements } from "./inbound-frame-policy";
+import { validateDispatchBody, boundedAcknowledgements, boundedDispatchString } from "./inbound-frame-policy";
 import { boundedChunkIndexes, boundedMediaTransferWindow, validBlobFileId } from "./blob-request-policy";
 import { nextMissingChunkPage, initialTransferWindow } from "./media-retry-policy";
 import { hasTransferTimedOut } from "./media-timeout-policy";
@@ -717,7 +717,7 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         }
       }
     } else if (type === "message_status") {
-      const mid = String(payload.messageId || "");
+      const mid = boundedDispatchString(payload.messageId) ?? "";
       const msg = await dxdb.messages.get(mid);
       if (msg && msg.from === payload.to && msg.to === payload.from && payload.status === "read") {
         if (msg.status !== "read") {
@@ -728,7 +728,7 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         rejected = true;
       }
     } else if (type === "message_reaction") {
-      const mid = String(payload.messageId || "");
+      const mid = boundedDispatchString(payload.messageId) ?? "";
       const original = await dxdb.messages.get(mid);
       const emoji = payload.emoji;
       if (!original ||
@@ -741,7 +741,7 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         return;
       }
       const key = JSON.stringify(["reaction", String(payload.from), mid, String(payload.from)]);
-      const incomingAt = Number(payload.updatedAt);
+      const incomingAt = typeof payload.updatedAt === "number" ? payload.updatedAt : NaN;
       if (!Number.isSafeInteger(incomingAt) || incomingAt <= 0 || incomingAt > Date.now() + 60_000) {
         rejected = true;
         await dxdb.inbox_raw.delete(rawId);
@@ -797,8 +797,8 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         }
       }
     } else if (type === "message_lifecycle") {
-      const ck = String(payload.chatKey || "");
-      const mid = String(payload.messageId || "");
+      const ck = boundedDispatchString(payload.chatKey, 256) ?? "";
+      const mid = boundedDispatchString(payload.messageId) ?? "";
       if (ck && mid) {
         const original = await dxdb.messages.get(mid);
         const sender = String(payload.from || "");

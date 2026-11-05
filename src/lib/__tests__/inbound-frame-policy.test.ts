@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateDispatchBody, boundedAcknowledgements } from "../inbound-frame-policy";
+import { validateDispatchBody, boundedAcknowledgements, boundedDispatchString } from "../inbound-frame-policy";
 describe("authenticated but untrusted Tor frame bodies", () => {
   it("only admits bounded dispatch objects", () => {
     expect(validateDispatchBody({ id:"msg",type:"text_message" })).not.toBeNull();
@@ -13,5 +13,18 @@ describe("authenticated but untrusted Tor frame bodies", () => {
     expect(boundedAcknowledgements(["good",null,"x".repeat(129)])).toEqual(["good"]);
     expect(boundedAcknowledgements(Array(33).fill("id"))).toEqual([]);
     expect(boundedAcknowledgements({ ids: ["x"] })).toEqual([]);
+  });
+});
+
+describe("untrusted signed Tor lifecycle identifiers", () => {
+  it("accepts bounded literal identifiers without coercion", () => {
+    expect(boundedDispatchString("message-1")).toBe("message-1");
+    expect(boundedDispatchString("a".repeat(256), 256)).toBe("a".repeat(256));
+  });
+  it("rejects pathological or forged JSON values before IndexedDB access", () => {
+    for (const value of [null, undefined, false, 0, [], {},
+      {toString:"malicious"}, "x".repeat(129), "", "bad\nkey"]) {
+      expect(boundedDispatchString(value)).toBeNull();
+    }
   });
 });

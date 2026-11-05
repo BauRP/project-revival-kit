@@ -14,3 +14,13 @@ export function boundedAcknowledgements(value: unknown): string[] {
   return value.filter((item): item is string =>
     typeof item === "string" && item.length > 0 && item.length <= 128);
 }
+
+/** Reject unsafe identifiers rather than calling String() on hostile JSON.
+ * A signed frame still may contain object values with a forged toString.
+ */
+export function boundedDispatchString(value: unknown, max = 128): string | null {
+  if (typeof value !== "string" || value.length === 0 ||
+      value.length > max || /[\u0000-\u001f\u007f]/.test(value))
+    return null;
+  return value;
+}
