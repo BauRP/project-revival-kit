@@ -49,7 +49,7 @@ import { orderedCompleteChunkSet } from "./media-chunks";
 import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
 import { validateDispatchBody, boundedAcknowledgements } from "./inbound-frame-policy";
-import { boundedChunkIndexes, validBlobFileId } from "./blob-request-policy";
+import { boundedChunkIndexes, boundedMediaTransferWindow, validBlobFileId } from "./blob-request-policy";
 import { nextMissingChunkPage } from "./media-retry-policy";
 import { hasTransferTimedOut } from "./media-timeout-policy";
 import { MediaSendGate } from "./media-send-gate";
@@ -628,10 +628,19 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
       const fileId = inner.body.fileId;
       const have = boundedChunkIndexes(inner.body.have);
       if (!validBlobFileId(fileId) || !have) return;
+      const hasWindow = inner.body.windowStart !== undefined ||
+        inner.body.windowCount !== undefined;
+      const window = hasWindow
+        ? boundedMediaTransferWindow(inner.body.windowStart, inner.body.windowCount,
+          Math.max(1, Math.ceil(((await getBlob(fileId))?.data.size ?? 0) / BLOB_CHUNK_BYTES)))
+        : null;
+      if (hasWindow && !window) return;
       if (await hasBlob(fileId) && await canPeerRequestBlob(from, fileId)) {
         // A 1 GB attachment may take hours. Never block the signed inbound
         // inbox and other chats while sending its individual Tor chunks.
-        mediaSendGate.start(from, fileId, () => sendBlob(from, fileId, (i) => !have.has(i)));
+        mediaSendGate.start(from, fileId, () =>
+          sendBlob(from, fileId, (i) => !have.has(i) &&
+            (!window || (i >= window.start && i < window.start + window.count))));
       } else {
         await sendEphemeral(from, "blob_missing", { fileId });
       }
@@ -1123,7 +1132,12 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
       }
       const sent = await sendEphemeral(source, "blob_request", {
         fileId,
-        have: partial?.from === source ? Array.from(partial.received.keys()) : [],
+        // New peers honor this bounded first page. Older Tor clients
+        // ignore the window and still work through the legacy "have" list.
+        // Avoid constructing a 22k-element array for a completed 1 GB file.
+        have: [],
+        windowStart: 0,
+        windowCount: 128,
       });
       if (!sent && blobRequests.get(fileId) === request) {
         blobRequests.delete(fileId);
