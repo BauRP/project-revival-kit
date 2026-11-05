@@ -140,3 +140,27 @@ export function matchesReceivedAttachmentMetadata(
   return media.name === name && media.mimeType === mimeType &&
     media.size === size;
 }
+
+// A file's multipart manifest is not authoritative merely because the
+// sender signed its chunks. It must match the original signed chat message.
+export function matchesIncomingChunkManifest(
+  message: { from: string; to: string; media?: unknown },
+  sender: string,
+  recipient: string,
+  fileId: string,
+  name: string,
+  mimeType: string,
+  totalChunks: number,
+  chunkBytes: number,
+): boolean {
+  if (!isExpectedIncomingAttachment(message, sender, recipient, fileId) ||
+      !message.media || typeof message.media !== "object" ||
+      Array.isArray(message.media) ||
+      !Number.isSafeInteger(totalChunks) || totalChunks < 1 ||
+      !Number.isSafeInteger(chunkBytes) || chunkBytes < 1) return false;
+  const media = message.media as Record<string, unknown>;
+  return media.name === name && media.mimeType === mimeType &&
+    typeof media.size === "number" && Number.isSafeInteger(media.size) &&
+    media.size >= 0 &&
+    Math.max(1, Math.ceil(media.size / chunkBytes)) === totalChunks;
+}

@@ -129,3 +129,27 @@ describe("received Tor media cannot override signed message metadata", () => {
     expect(matchesReceivedAttachmentMetadata(message,"sender","recipient","file","image.png","image/png",NaN)).toBe(false);
   });
 });
+
+import { matchesIncomingChunkManifest } from "../message-deletion-policy";
+describe("signed Tor chunk manifest must match its parent message", () => {
+  const msg = { from:"peer", to:"self", media:{
+    fileId:"f", name:"sample.bin", mimeType:"application/octet-stream",
+    size: 49155,
+  } };
+  it("accepts the expected two-part file manifest", () => {
+    expect(matchesIncomingChunkManifest(msg,"peer","self","f","sample.bin",
+      "application/octet-stream",2,48*1024)).toBe(true);
+  });
+  it("rejects spoofed name, MIME, number of chunks and participants", () => {
+    expect(matchesIncomingChunkManifest(msg,"peer","self","f","sample.bin",
+      "application/octet-stream",3,48*1024)).toBe(false);
+    expect(matchesIncomingChunkManifest(msg,"peer","self","f","evil.html",
+      "application/octet-stream",2,48*1024)).toBe(false);
+    expect(matchesIncomingChunkManifest(msg,"peer","self","f","sample.bin",
+      "text/html",2,48*1024)).toBe(false);
+    expect(matchesIncomingChunkManifest(msg,"peer","other","f","sample.bin",
+      "application/octet-stream",2,48*1024)).toBe(false);
+    expect(matchesIncomingChunkManifest(msg,"peer","self","f","sample.bin",
+      "application/octet-stream",2,0)).toBe(false);
+  });
+});

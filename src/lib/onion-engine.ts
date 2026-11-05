@@ -57,7 +57,7 @@ import { matchesPublishedOnion } from "./onion-publication-policy";
 import { mayQueueOriginalText } from "./outbox-delivery-policy";
 import { shouldApplyRemoteReaction } from "./reaction-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage } from "./message-deletion-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage, matchesIncomingChunkManifest } from "./message-deletion-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, type DispatchCommitResult } from "./dispatch-commit";
@@ -1007,6 +1007,18 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
   const prior = partialReceives.get(fileId);
   if (prior && (prior.from !== from || prior.totalChunks !== chunks ||
       prior.name !== body.name || prior.mimeType !== body.mimeType)) return;
+  if (!prior) {
+    // A signed chunk is still untrusted. Don't allocate durable storage for
+    // a spoofed manifest, or a media ID whose parent message is missing.
+    // Query with an IndexedDB cursor to avoid loading the full conversation.
+    const recipient = await ensureLocalIdentity();
+    const expected = await dxdb.messages.where("from").equals(from)
+      .filter((msg) => matchesIncomingChunkManifest(
+        msg, from, recipient, fileId, body.name as string,
+        body.mimeType as string, chunks, BLOB_CHUNK_BYTES,
+      )).first();
+    if (!expected) return;
+  }
   const entry: PartialReceive = prior || {
     fileId,
     from,
