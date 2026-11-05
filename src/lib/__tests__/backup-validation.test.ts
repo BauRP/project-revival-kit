@@ -87,3 +87,19 @@ describe("durable backup privacy marker integrity", () => {
     expect(() => validateBackupStructure({...dump(),lifecycle:[valid,valid]})).toThrow();
   });
 });
+
+describe("untrusted duplicate identifiers in backup archives", () => {
+  it("rejects ambiguous contact, message, outbox and media IDs before restoring", () => {
+    const contact = {onion:"peer.onion",addedAt:1};
+    const msg = {id:"m",from:"peer",to:"self",text:"hello",timestamp:1};
+    const outbox = {id:"o",peer:"peer.onion",kind:"text_message",
+      frame:"ciphertext",status:"pending",attempts:0,
+      createdAt:1,updatedAt:1,nextAttemptAt:1};
+    for (const overrides of [
+      {contacts:[contact,contact]}, {messages:[msg,msg]},
+      {outbox:[outbox,outbox]}, {blobs:[blob(1,"AQ=="),blob(1,"AQ==")]},
+    ]) {
+      expect(() => validateBackupStructure({...dump(),...overrides})).toThrow(/Duplicate/);
+    }
+  });
+});

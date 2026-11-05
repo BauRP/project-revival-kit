@@ -53,16 +53,23 @@ export function validateBackupStructure(dump: unknown): void {
   if (contacts.length + messages.length + outbox.length + lifecycle.length + blobs.length > MAX_TOTAL_RECORDS)
     throw new Error("Backup contains too many records");
 
-  for (const x of contacts)
+  const contactIds = new Set<string>();
+  for (const x of contacts) {
     if (!record(x) || !id(x.onion, 128))
       throw new Error("Invalid backup contact");
+    if (contactIds.has(x.onion)) throw new Error("Duplicate backup contact");
+    contactIds.add(x.onion);
+  }
 
+  const messageIds = new Set<string>();
   for (const x of messages) {
     if (!record(x) || !id(x.id, 128) || !id(x.from, 128) ||
         !id(x.to, 128) || typeof x.text !== "string" ||
         x.text.length > 200_000 || !Number.isSafeInteger(x.timestamp) ||
         (x.timestamp as number) < 0)
       throw new Error("Invalid backup message");
+    if (messageIds.has(x.id)) throw new Error("Duplicate backup message");
+    messageIds.add(x.id);
     if (x.media !== undefined) {
       if (!record(x.media) || !id(x.media.fileId, 128) ||
           !["image", "audio", "file", "video"].includes(String(x.media.type)) ||
@@ -77,6 +84,7 @@ export function validateBackupStructure(dump: unknown): void {
   // Outgoing ciphertext in a backup is inert after restore, but is still
   // untrusted input. Avoid accepting executable shapes or multi-megabyte
   // "frame" fields into a database that may be inspected later.
+  const queuedIds = new Set<string>();
   for (const x of outbox) {
     if (!record(x) || !id(x.id, 128) || !id(x.peer, 128) ||
         typeof x.kind !== "string" || !id(x.kind, 64) ||
@@ -89,6 +97,8 @@ export function validateBackupStructure(dump: unknown): void {
         !Number.isSafeInteger(x.updatedAt) || (x.updatedAt as number) <= 0 ||
         !Number.isSafeInteger(x.nextAttemptAt) || (x.nextAttemptAt as number) < 0)
       throw new Error("Invalid backup outbox record");
+    if (queuedIds.has(x.id)) throw new Error("Duplicate backup outbox record");
+    queuedIds.add(x.id);
   }
 
   const lifecycleKeys = new Set<string>();
@@ -109,6 +119,7 @@ export function validateBackupStructure(dump: unknown): void {
   }
 
   let encodedMediaBytes = 0;
+  const blobIds = new Set<string>();
   for (const x of blobs) {
     if (!record(x) || !id(x.fileId, 128) || !id(x.name, 255) ||
         typeof x.mimeType !== "string" || x.mimeType.length > 128 ||
@@ -116,6 +127,8 @@ export function validateBackupStructure(dump: unknown): void {
         (x.size as number) > MAX_BLOB_SIZE ||
         !validMediaBase64(x.dataB64, x.size as number))
       throw new Error("Invalid backup attachment");
+    if (blobIds.has(x.fileId)) throw new Error("Duplicate backup attachment");
+    blobIds.add(x.fileId);
     encodedMediaBytes += (x.dataB64 as string).length;
     if (encodedMediaBytes > MAX_TOTAL_MEDIA_BASE64)
       throw new Error("Backup media exceeds the current portable format limit");

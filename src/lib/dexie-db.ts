@@ -486,19 +486,20 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       // Filter BEFORE Base64 decoding. A removed 100 MB attachment should
       // never be recreated in memory merely to discard it after import.
       const existingBlobIds = new Set(await dxdb.blobs.toCollection().primaryKeys());
-      const blobRows: BlobRecord[] = (dump.blobs || [])
-        .filter((b) => !existingBlobIds.has(b.fileId) &&
-          !deniedBackupMedia.has(b.fileId) &&
-          !isProtectedByConsumedTombstone(b.fileId, revoked))
-        .map((b) => ({
-          fileId: b.fileId,
-          mimeType: b.mimeType,
-          name: b.name,
-          size: b.size,
-          storedAt: b.storedAt,
+      // Decode and persist each attachment individually inside the SAME
+      // atomic restore transaction. The former array map constructed every
+      // recovered Blob at once, multiplying peak WebView memory use and
+      // crashing some devices on otherwise valid medium-sized backups.
+      for (const b of dump.blobs || []) {
+        if (existingBlobIds.has(b.fileId) ||
+            deniedBackupMedia.has(b.fileId) ||
+            isProtectedByConsumedTombstone(b.fileId, revoked)) continue;
+        await dxdb.blobs.put({
+          fileId: b.fileId, mimeType: b.mimeType, name: b.name,
+          size: b.size, storedAt: b.storedAt,
           data: base64ToBlob(b.dataB64, b.mimeType),
-        }));
-      await dxdb.blobs.bulkPut(blobRows);
+        });
+      }
       // Reconcile already-present messages too: the restored tombstone is
       // authoritative even when an older local message still references media.
       for (const key of revoked) {
