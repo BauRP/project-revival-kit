@@ -630,19 +630,22 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
       if (!validBlobFileId(fileId) || !have) return;
       const hasWindow = inner.body.windowStart !== undefined ||
         inner.body.windowCount !== undefined;
+      const available = await getBlob(fileId);
+      if (!available || !(await canPeerRequestBlob(from, fileId))) {
+        await sendEphemeral(from, "blob_missing", { fileId });
+        return;
+      }
       const window = hasWindow
         ? boundedMediaTransferWindow(inner.body.windowStart, inner.body.windowCount,
-          Math.max(1, Math.ceil(((await getBlob(fileId))?.data.size ?? 0) / BLOB_CHUNK_BYTES)))
+          Math.max(1, Math.ceil(available.data.size / BLOB_CHUNK_BYTES)))
         : null;
       if (hasWindow && !window) return;
-      if (await hasBlob(fileId) && await canPeerRequestBlob(from, fileId)) {
+      {
         // A 1 GB attachment may take hours. Never block the signed inbound
         // inbox and other chats while sending its individual Tor chunks.
         mediaSendGate.start(from, fileId, () =>
           sendBlob(from, fileId, (i) => !have.has(i) &&
             (!window || (i >= window.start && i < window.start + window.count))));
-      } else {
-        await sendEphemeral(from, "blob_missing", { fileId });
       }
       return;
     }
@@ -930,11 +933,15 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
 async function canPeerRequestBlob(peer: string, fileId: string): Promise<boolean> {
   if (!fileId || !isValidOnion(peer)) return false;
   const self = await ensureLocalIdentity();
-  const rows = await dxdb.messages.where("to").equals(peer).toArray();
-  return rows.some((row) => {
-    const media = row.media as { fileId?: string } | undefined;
-    return row.from === self && media?.fileId === fileId;
-  });
+  // Send-time permission is rechecked for every chunk. Use an IndexedDB
+  // cursor and stop at the first matching message, rather than allocating
+  // the peer's entire chat history for every 48 KB of a large file.
+  const match = await dxdb.messages.where("to").equals(peer)
+    .filter((row) => {
+      const media = row.media as { fileId?: string } | undefined;
+      return row.from === self && media?.fileId === fileId;
+    }).first();
+  return !!match;
 }
 
 // ─── Blob transfer (sealed, chunked, resumable) ──────────────
