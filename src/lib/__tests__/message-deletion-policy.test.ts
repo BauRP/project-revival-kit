@@ -153,3 +153,13 @@ describe("signed Tor chunk manifest must match its parent message", () => {
       "application/octet-stream",2,0)).toBe(false);
   });
 });
+
+import { mayPersistIncomingChunk } from "../message-deletion-policy";
+describe("atomic Tor chunk storage authorization", () => {
+  it("never permits a late chunk after message deletion", () => {
+    expect(mayPersistIncomingChunk({deleted:true},undefined)).toBe(false);
+    expect(mayPersistIncomingChunk(undefined,{consumed:true})).toBe(false);
+    expect(mayPersistIncomingChunk({deleted:false},{consumed:false})).toBe(true);
+    expect(mayPersistIncomingChunk(undefined,undefined)).toBe(true);
+  });
+});

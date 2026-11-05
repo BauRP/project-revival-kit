@@ -164,3 +164,15 @@ export function matchesIncomingChunkManifest(
     media.size >= 0 &&
     Math.max(1, Math.ceil(media.size / chunkBytes)) === totalChunks;
 }
+
+/** A local deletion/one-time consumption is terminal even for chunk writes
+ * already queued by the Tor transport before the user pressed Delete/View.
+ */
+export function mayPersistIncomingChunk(
+  localDeletion: unknown, consumedMedia: unknown,
+): boolean {
+  return !isDeletedMessageRecord(localDeletion) &&
+    !(!!consumedMedia && typeof consumedMedia === "object" &&
+      !Array.isArray(consumedMedia) &&
+      (consumedMedia as { consumed?: unknown }).consumed === true);
+}

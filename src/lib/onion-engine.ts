@@ -57,7 +57,7 @@ import { matchesPublishedOnion } from "./onion-publication-policy";
 import { mayQueueOriginalText } from "./outbox-delivery-policy";
 import { shouldApplyRemoteReaction } from "./reaction-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage, matchesIncomingChunkManifest } from "./message-deletion-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage, matchesIncomingChunkManifest, mayPersistIncomingChunk } from "./message-deletion-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, sameOutgoingDispatchRoute, type DispatchCommitResult } from "./dispatch-commit";
@@ -1022,18 +1022,6 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
   const prior = partialReceives.get(fileId);
   if (prior && (prior.from !== from || prior.totalChunks !== chunks ||
       prior.name !== body.name || prior.mimeType !== body.mimeType)) return;
-  if (!prior) {
-    // A signed chunk is still untrusted. Don't allocate durable storage for
-    // a spoofed manifest, or a media ID whose parent message is missing.
-    // Query with an IndexedDB cursor to avoid loading the full conversation.
-    const recipient = await ensureLocalIdentity();
-    const expected = await dxdb.messages.where("from").equals(from)
-      .filter((msg) => matchesIncomingChunkManifest(
-        msg, from, recipient, fileId, body.name as string,
-        body.mimeType as string, chunks, BLOB_CHUNK_BYTES,
-      )).first();
-    if (!expected) return;
-  }
   const entry: PartialReceive = prior || {
     fileId,
     from,
@@ -1063,11 +1051,44 @@ async function acceptBlobChunk(from: string, body: Record<string, unknown>): Pro
     ? matchesChunkDigest(new Uint8Array(await diskChunk.data.arrayBuffer()), diskChunk.digest)
     : false;
   if (diskChunk && storedValid && diskChunk.digest !== body.digest) return;
-  if (!storedValid) await dxdb.partial_chunks.put({
-    key, fileId, from, index, totalChunks: chunks,
-    name: entry.name, mimeType: entry.mimeType, digest: String(body.digest),
-    data: new Blob([chunkBytes as BlobPart]), updatedAt: Date.now(),
+  // Atomically authorize the current parent message and write the chunk.
+  // Deletion and consumed-media purges use this same lifecycle table, so a
+  // delayed chunk cannot recreate unreferenced media after a user deletes it.
+  const recipient = await ensureLocalIdentity();
+  const persisted = await dxdb.transaction("rw", [
+    dxdb.messages, dxdb.lifecycle, dxdb.partial_chunks,
+  ], async () => {
+    const matched = await dxdb.messages.where("from").equals(from)
+      .filter((msg) => matchesIncomingChunkManifest(
+        msg, from, recipient, fileId, entry.name, entry.mimeType,
+        chunks, BLOB_CHUNK_BYTES,
+      )).first();
+    if (!matched) return false;
+    const [deleted, consumed] = await Promise.all([
+      dxdb.lifecycle.get(deletedMessageKey(matched.id)),
+      dxdb.lifecycle.get(consumedMediaKey(fileId)),
+    ]);
+    if (!mayPersistIncomingChunk(deleted?.data, consumed?.data)) return false;
+    const current = await dxdb.partial_chunks.get(key);
+    if (current && (current.from !== from || current.name !== entry.name ||
+        current.mimeType !== entry.mimeType ||
+        current.totalChunks !== chunks)) return false;
+    if (!storedValid || !current) await dxdb.partial_chunks.put({
+      key, fileId, from, index, totalChunks: chunks,
+      name: entry.name, mimeType: entry.mimeType,
+      digest: String(body.digest),
+      data: new Blob([chunkBytes as BlobPart]), updatedAt: Date.now(),
+    });
+    return true;
   });
+  if (!persisted) {
+    partialReceives.delete(fileId);
+    if (blobRequests.get(fileId) === pending) {
+      blobRequests.delete(fileId);
+      pending.resolve(false);
+    }
+    return;
+  }
   entry.received.add(index);
   entry.updatedAt = Date.now();
   // A large Tor transfer can legitimately take longer than two minutes.
