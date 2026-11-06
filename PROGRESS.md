@@ -9,13 +9,13 @@
 | Приложение | **Trivo Chat Elite**, приватный Android/Web мессенджер с Tor v3 onion, локальными данными и E2EE |
 | GitHub | https://github.com/BauRP/project-revival-kit |
 | Рабочая ветка | **chatgpt/trivo-security-compat-20261031**; **main не менять** |
-| Последний подтверждённый КОДОВЫЙ HEAD, на базе которого составлен журнал | **0f362856bc8da0d1767605afb868e859ed79ce94** |
-| Последний полностью успешный workflow | **build-300**, https://github.com/BauRP/project-revival-kit/actions/runs/42145518504 (build-298/299 также success) |
-| Проверенная APK | https://github.com/BauRP/project-revival-kit/releases/download/build-300/app-universal-debug.apk — универсальная debug APK, CI success |
-| Оценка готовности ПО | **36,9%** (+0,2 п.п. с прошлого проверенного этапа), историческая приблизительная оценка; не выводится автоматически из кода |
-| Недавняя работа | build-298–300: атомарные монотонные статусы Tor send/ACK/read, сохранение статуса при локальной записи; индексированные запросы истории, память при чистке Blob-кэша, проверка нескольких ссылок на одно вложение; CI Bun/Gradle caching |
+| Последний подтверждённый КОДОВЫЙ HEAD, на базе которого составлен журнал | **313948878d470124e0d3bd39db6d3126aa1832ce** |
+| Последний полностью успешный workflow | **build-303**, https://github.com/BauRP/project-revival-kit/actions/runs/42146708932; build-301/302 также success |
+| Проверенная APK | https://github.com/BauRP/project-revival-kit/releases/download/build-303/app-universal-debug.apk — универсальная debug APK, CI success |
+| Оценка готовности ПО | **37,0%** (прошлая 36,9%, +0,1 п.п.), консервативная приблизительная оценка программной готовности |
+| Недавняя работа | **build-301–303:** нет позднего UI sent после delivered, replay inbox последовательно по ID, outbox использует индексированные peer/due выборки и сортировку только метаданных (не всех ciphertext). Ранее build-298–300: сохранение монотонных состояний Dexie и снижение расхода памяти на чаты/файлы |
 | **P0, наибольшие пробелы** | Реального PQXDH/ML-KEM **нет**; локальная Dexie-база переписки не шифруется полностью; нет независимого от WebView нативного фонового отправителя; полноценной встроенной офлайн-STT-модели нет |
-| **Ближайшая инженерная задача** | P0: шифрование локальной истории и crash-safe миграция без потери данных. Независимый P1: гарантировать порядок UI-событий delivered/sent при конкурентном ACK и расширить интеграционные Dexie/Tor tests |
+| **Ближайшая инженерная задача** | **P0:** реальное шифрование локальной истории и безопасная миграция. Независимый **P1:** fault injection и интеграционные Dexie/Tor ACK/native replay tests. Монотонные статусы БД и UI уже исправлены в build-298/301 |
 | Открыть первыми | src/lib/dexie-db.ts, src/lib/storage.ts, src/lib/safe-storage.ts, src/lib/crypto.ts, android/app/src/main/java/com/baurp/trivochat/SecureVaultPlugin.java, src/lib/p2p.ts, src/lib/backup.ts, src/lib/backup-merge-policy.ts |
 | Контрольные команды | **bun install --frozen-lockfile** → **bunx vitest run** → **bunx tsc --noEmit --pretty false** → **CAP_BUILD=1 bun run build** → stage-web/fix-relative-assets/verify-web-dir → **npx cap sync android** → в android: **./gradlew clean assembleDebug --no-daemon --stacktrace** |
 | Ограничения | Нет Firebase/Supabase, внешней базы, рекламы, обязательной регистрации на сервере или облачного AI; secrets не записывать. Жалобы/репорты (направление 13) **на паузе**. Никаких принудительных push/rebase/squash опубликованной истории |
@@ -24,7 +24,7 @@
 
 ### Что делать при возобновлении (быстро)
 1. Открыть https://github.com/BauRP/project-revival-kit/blob/chatgpt/trivo-security-compat-20261031/PROGRESS.md.
-2. Проверить git ref рабочей ветки; сравнить с последней зафиксированной **кодовой** базой 0f362856…; отдельно учесть документационные коммиты и новые изменения третьих сторон.
+2. Проверить git ref рабочей ветки; сравнить с последней зафиксированной **кодовой** базой 31394887…; отдельно учесть документационные коммиты и новые изменения третьих сторон.
 3. Если HEAD изменён другим ChatGPT/Lovable — прочитать diff именно этих коммитов, проверить конфликты и актуализировать записи; не перезаписывать чужую работу.
 4. Перейти к очереди P0/P1 в разделе 9. Сначала реальные исправления, затем unit + TypeScript + Android APK в одном логическом пакете.
 5. Обновить таблицу готовности **только за реально реализованное и автоматически проверенное**. Полный физический runtime на телефоне пользователя — отдельная пользовательская проверка, не «недоделанная программная работа».
@@ -89,7 +89,7 @@
 
 ## 3. Готовность по 20 направлениям — базовая точка
 
-**Зафиксированная после build-300 общая оценка: 36,9%** (предыдущая 36,7%, +0,2 п.п. за успешно проверенные изменения). Это прежняя согласованная **оценка программной готовности**, не объективное вычисление количества функций. Проценты не суммировать/не усреднять как общий показатель: направления различаются по весу, сложности и рискам. Если методика весов станет фиксированной, описать её явно. **Пауза направления 13 не даёт права объявить его выполненным.**
+**Зафиксированная после build-303 общая оценка: 37,0%** (предыдущая 36,9%, +0,1 п.п. за подтверждённые UI события и экономную обработку Tor очередей). Это прежняя согласованная **оценка программной готовности**, не объективное вычисление количества функций. Проценты не суммировать/не усреднять как общий показатель: направления различаются по весу, сложности и рискам. Если методика весов станет фиксированной, описать её явно. **Пауза направления 13 не даёт права объявить его выполненным.**
 
 | № | Направление | Готово | Последний прирост | Что есть / проверено | Остаток и ограничения |
 |---|---|---:|---:|---|---|
@@ -97,14 +97,14 @@
 | 2 | Шифрование локальной БД/ключей | **19,9%** | 0 | Android Keystore для identity, scheduled text; identity recovery; CI | Dexie messages/lifecycle/contact/поиск остаются plaintext на диске; миграция без потери данных |
 | 3 | Резервные копии и восстановление | **62,7%** | +0,8 | V2 AES-GCM, portable identity, validation, atomic *.pending rename, удаление tombstones, последовательный импорт Blob; build-291/294 | Большие архивы/пределы памяти, независимые фоны, детальные recovery tests, гарантия crash-safe переносимости |
 | 4 | Отложенная отправка | **43,2%** | +0,7 | trivo-outbox, Keystore, миграция, dedupe, clock correction, visibility wake; build-295 | Доставка при завершённом WebView/force-stop, строгие жизненные циклы, device-level проверка |
-| 5 | Фоновый Tor | **51,6%** | 0 | Нативный FGS, retry, статус, inbound queue, bootstrap; build-295 | Full background outgoing + incoming обработки без активного JS; Android FGS ограничения |
-| 6 | Защита сообщений/edit/delete | **62,2%** | **+0,3** | build-298: статус не откатывается с delivered/read в sent при конкурентном ACK; проверено Vitest, TypeScript, Android debug APK | UI-callback ordering и интеграционные гонки, затем e2e Tor |
+| 5 | Фоновый Tor | **51,8%** | **+0,2** | Native FGS, durable inbound; build-302/303 последовательная загрузка encrypted frames и индексированные очереди | Приём и отправка при завершённом WebView, FGS restrictions, real runtime |
+| 6 | Защита сообщений/edit/delete | **62,4%** | **+0,2** | build-298 монотонность в Dexie, build-301 bounded UI callbacks (поздний sent после delivered подавляется) + Vitest | Integration race tests и two-peer tests |
 | 7 | Офлайн STT | **5,0%** | 0 | UI и обработчики-заглушки, stt-cache без plaintext | Реальная модель и inference в APK offline, многоязычность и метрики |
 | 8 | Уведомления | **46,2%** | 0 | local notifications, mute/block/silent, приватные preview, fail-closed | Фоновая нативная обработка, каналы/режимы Android, надёжное отображение |
 | 9 | Безопасная проверка файлов | **26,8%** | +0,5 | MIME/signatures/EXIF/active content, signed manifest, валидация полученного Blob | Не антивирус; расширенные форматы/unsafe вложения, DoS scanning, sandbox |
 | 10 | Синхронизация профилей | **26,8%** | 0 | profile-wire/profile-policy, signed peer updates и Dexie | конфликт версий, offline reconcile, полноценные тесты синхронизации |
 | 11 | Реакции/синхронизация | **36,1%** | 0 | реакции в lifecycle, timestamps, retry; tests | восстановление после потери связи, гонки, multi-client случаи |
-| 12 | Экономия трафика/медиа | **75,5%** | **+0,5** | build-299/300: индексированный просмотр истории, cursor очистки Blob-кэша, узкий отбор вложений и сохранение живых shared-ссылок | Streaming assembly больших файлов, cancel, другие O(n) |
+| 12 | Экономия трафика/медиа | **75,8%** | **+0,3** | build-299/300 indexed chat/cache; build-302/303 не загружает всю Tor очередь в память и выбирает индексом peer/due | Streaming больших вложений, нагрузочные тесты |
 | 13 | Жалобы/репорты **ПАУЗА** | **0%** | 0 | Кодовая UI-заготовка может существовать | Не менять без разрешения пользователя |
 | 14 | Одноразовые вложения | **40,2%** | +0,6 | lifecycle + consumed tombstone, backup merge, atomic chunk auth; build-291/293 | тесты гонок и полная проверка на телефонах, split/backup сценарии |
 | 15 | Подлинный Tor статус | **27,0%** | 0 | strict isTorServiceReady; проверка .onion; status chip; build-283 | серверная достижимость, показ ошибок/повторных reconnect |
@@ -177,7 +177,7 @@
 | src/lib/inbound-durability.ts | политика подтверждения/долговечной обработки пакета | onion-engine.ts; tests/inbound-durability |
 | src/lib/dispatch-commit.ts | shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, sameOutgoingDispatchRoute | onion-engine.ts; tests/dispatch-commit |
 | src/lib/outbox-delivery-policy.ts | mayQueueOriginalText: нельзя возобновить локально удалённое исходящее сообщение | onion-engine.ts; tests/outbox-delivery-policy |
-| src/lib/delivery-status-policy.ts | advanceDeliveryStatus: монотонный порядок pending/sent/delivered/read | onion-engine.ts, p2p.ts; tests/delivery-status-policy; build-298 |
+| src/lib/delivery-status-policy.ts | advanceDeliveryStatus и shouldEmitDeliveryEvent: монотонный порядок статуса в БД и доставки уведомлений UI | onion-engine.ts/p2p.ts; tests/delivery-status-policy, builds 298/301 |
 | src/lib/p2p.ts | Интерфейс P2PMessage, sendP2PMessage, getMessagesForChat, redaction, legacy migration | onion-engine, dexie-db, ChatRoom; не путать с устаревшими WebRTC путями |
 | src/lib/profile.ts / profile-policy.ts / profile-wire.ts | Локальный/удалённый профиль, publish/hydrate/validation | src/components/ProfilePage.tsx; tests/profile-* |
 | src/lib/reactions.ts / reaction-policy.ts | reactionRecordKey, toggleReaction, broadcastReaction, persistence/timestamp | ChatRoom, onion-engine; tests/reaction-timestamps |
@@ -295,13 +295,19 @@
 ---
 
 ### Проверенные проблемы и исправления 2026-11-06
-- **STATUS-ACK-01 / FIXED-CI build-298:** sendOutboxOnce мог откатывать статус pending → sent, пока параллельный DELIVERED_ACK уже поставил delivered. Теперь атомарный Dexie modify с advanceDeliveryStatus; локальное сохранение также не понижает статус. **Открыто:** порядок UI-callback уведомлений при редкой гонке (отдельно от сохраняемого DB статуса).
+- **STATUS-ACK-01 / FIXED-CI builds-298/301:** DB-статусы обновляются монотонно и atomic; bounded recentDeliveryEvents + shouldEmitDeliveryEvent подавляют поздний UI sent после delivered; Vitest и APK success. Открыты независимые fault-injection integration проверки.|
 - **PERF-CHAT-01 / FIXED-CI build-299:** getMessagesForChat не читает все чужие чаты; выборка по двум индексам from/to в read transaction, merge с тестами.
 - **PERF-BLOB-01 / FIXED-CI build-299:** Blob cache eviction теперь идёт курсором oldest-first и не собирает массив всех Blob; не удаляет вложения, на которые ссылаются сообщения.
 - **MEDIA-REF-01 / FIXED-CI build-300:** вложение может быть связано с несколькими сообщениями; удалённый parent не должен мешать приёмке файла по другому живому parent.
 - **CI-ACCEL-01 / FIXED-CI build-298:** setup-java cache:gradle и GitHub Actions Bun-download cache (по bun.lock). Предыдущие workflow не пересобирать без причин.
 - **Сборки:** build-298, build-299, build-300 = SUCCESS (unit, TypeScript, web, Android debug, SDK/ABI, release upload); это не тест на двух физических устройствах.
 
+
+### Исправления нового проверенного пакета — 2026-11-06
+- **STATUS-UI-01 / FIXED-CI build-301:** после предыдущего fix DB ещё могла прийти задержанная UI нотификация sent вслед за delivered. Внедрены bounded recentDeliveryEvents и shouldEmitDeliveryEvent; Vitest + strict TypeScript + APK прошли. Порядок интерфейсных событий теперь монотонен, остаются отдельные интеграционные испытания.
+- **PERF-INBOX-01 / FIXED-CI build-302:** recoverInbox вместо `toArray()` полных шифрованных кадров получает упорядоченные первичные ключи и обрабатывает каждую запись последовательно, снижая риск WebView OOM.
+- **PERF-OUTBOX-01 / FIXED-CI build-302/303:** из очереди перестали хранить одновременно весь sealed ciphertext. В build-303 выборка использует индексы peer/nextAttemptAt и сортировку метаданных, порядок createdAt сохранён. Не утверждать, что Android background sender независимо от WebView уже реализован.
+- **CI:** 301 https://github.com/BauRP/project-revival-kit/actions/runs/42146398182 ; 302 https://github.com/BauRP/project-revival-kit/actions/runs/42146576834 ; 303 https://github.com/BauRP/project-revival-kit/actions/runs/42146708932 ; все success. Emulator и two-phone Tor тестов в этом запуске не было.
 
 ## 7. Журнал фактической разработки и GitHub CI
 
@@ -330,8 +336,15 @@
 | 2026-11-06 | **b78dea2f** / **build-298** | src/lib/onion-engine.ts, p2p.ts, delivery-status-policy.ts и тесты; защита от отката статуса при ACK, CI caches | **SUCCESS** https://github.com/BauRP/project-revival-kit/actions/runs/42145196304 |
 | 2026-11-06 | **6ad5a0b7** / **build-299** | dexie-db.ts, p2p.ts, conversation-index-policy.ts и тесты; индексированный чат и курсор Blob-кэша | **SUCCESS** https://github.com/BauRP/project-revival-kit/actions/runs/42145442229 |
 | 2026-11-06 | **0f362856** / **build-300** | dexie-db.ts; защита случаев с несколькими сообщениями на один fileId и удалением одной ссылки | **SUCCESS** https://github.com/BauRP/project-revival-kit/actions/runs/42145518504 |
+| 2026-11-06 | **792b5c57** (docs) | PROGRESS.md обновлён после build-298/300; не изменение кода | GitHub confirmed |
+| 2026-11-06 | **c9179ead** / **build-301** | onion-engine, delivery-status-policy + tests: bounded UI event tracker, не посылать late sent после delivered | **SUCCESS** https://github.com/BauRP/project-revival-kit/actions/runs/42146398182 |
+| 2026-11-06 | **dca1decc** / **build-302** | onion-engine: восстановление encrypted inbox по одному кадру; очередь outbox без массивов всех ciphertext | **SUCCESS** https://github.com/BauRP/project-revival-kit/actions/runs/42146576834 |
+| 2026-11-06 | **31394887** / **build-303** | onion-engine: peer/due индексированные scans и сортировка только metadata, точный createdAt order | **SUCCESS** https://github.com/BauRP/project-revival-kit/actions/runs/42146708932 |
 
 **Последние полные workflows (все SUCCESS):**
+- build-303: https://github.com/BauRP/project-revival-kit/actions/runs/42146708932
+- build-302: https://github.com/BauRP/project-revival-kit/actions/runs/42146576834
+- build-301: https://github.com/BauRP/project-revival-kit/actions/runs/42146398182
 - build-300: https://github.com/BauRP/project-revival-kit/actions/runs/42145518504
 - build-299: https://github.com/BauRP/project-revival-kit/actions/runs/42145442229
 - build-298: https://github.com/BauRP/project-revival-kit/actions/runs/42145196304
@@ -457,7 +470,7 @@ cd android
 
 ## 11. С чего продолжить в следующем чате
 
-**Контрольная точка кода: 0f362856bc8da0d1767605afb868e859ed79ce94, build-300 SUCCESS, общая готовность ПО 36,9% (+0,2 п.п.).** Коммит, создающий сам PROGRESS.md, лежит после этой точки и не меняет программный функционал. При новом чате сначала получить HEAD, проверить diff: может быть не только документ, но и новая разработка Lovable/другого ChatGPT.
+**Контрольная точка кода: 313948878d470124e0d3bd39db6d3126aa1832ce, build-303 SUCCESS, общая готовность ПО 37,0% (+0,1 п.п. с build-300).** Создающий запись документационный коммит не изменяет программный код.
 
 **Главный следующий блок P0: закрыть реальный пробел безопасности локальной истории**. Работать от требований: Android Keystore, offline, без лишнего ручного пароля, без тихой смены identity, без потери существующих сообщений, с безопасным crash-safe восстановлением. Не обещать результат, пока нет реализации и тестов. Первые файлы:
 - src/lib/dexie-db.ts — таблицы и миграция истории, indexes; exportDexieDump/importDexieDump.
@@ -466,7 +479,7 @@ cd android
 - src/lib/backup.ts, src/lib/backup-crypto.ts, src/lib/backup-merge-policy.ts, src/lib/backup-validation.ts — обязательное безоткатное восстановление.
 - src/lib/__tests__/identity-validation.test.ts, backup-merge-policy.test.ts, backup-validation.test.ts, hidden-message-migration.test.ts — начать с точных тестов.
 
-**Независимая следующая P1 задача для быстрого продолжения:** `src/lib/onion-engine.ts` (deliveryListeners callback), `src/lib/delivery-status-policy.ts`, `src/lib/__tests__/delivery-status-policy.test.ts`. После build-298 состояние в IndexedDB гарантированно монотонно, но поздний асинхронный callback `sent` теоретически может оказаться после callback `delivered`. Добавить ограниченный per-ID tracker, tests на порядок событий, далее Dexie+ACK integration. Не менять содержимое сообщений и не снижать статус в storage.
+**Независимая следующая P1 задача для быстрого продолжения:** `src/lib/onion-engine.ts`, `src/lib/inbound-durability.ts`, `src/lib/dexie-db.ts`, `android/app/src/main/java/com/baurp/trivochat/tor/NativeInboundQueue.java`. Добавить реальные integration/fault-injection тесты Tor ACK и crash/replay; уже выполненные в builds 298/301 UI-status и builds 302/303 memory-queue fixes не повторять.
 
 **Пошаговый инженерный план:**
 1. Построить data flow: где именно лежит plaintext, кому нужен поиск/index, какие поля нужны UI. Составить versioned encrypted record format, key hierarchy, threat model; не хранить новый master key plaintext/вместе с ciphertext.
