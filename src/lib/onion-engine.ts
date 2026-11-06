@@ -41,7 +41,7 @@ import {
   type StoredMessage,
 } from "./dexie-db";
 import { dbGetStrict, dbPutStrict } from "./storage";
-import { isLegacyFriendEvent, isPermanentlyInvalidInboundFrame } from "./inbound-durability";
+import { isLegacyFriendEvent, isPermanentlyInvalidInboundFrame, canReuseInboundRawId } from "./inbound-durability";
 import { InboundFrameSingleFlight } from "./inbound-frame-single-flight";
 import { KeyedSerialQueue } from "./keyed-serial-queue";
 import { validateIncomingTextMessage } from "./inbound-message";
@@ -593,7 +593,21 @@ async function acceptRawFrame(raw: string): Promise<void> {
   // simultaneously. Coalesce the complete durable operation by signed ID.
   const id = `${outer.from}:${outer.sig}`;
   await inboundFrameFlights.run(id, async () => {
-    await dxdb.inbox_raw.put({ id, raw, receivedAt: Date.now() });
+    // The same signature-derived key may appear in a malicious retransmit.
+    // Never overwrite the first durably committed frame with different raw
+    // ciphertext, even if two WebViews or crash replay races hit the DB.
+    const admitted = await dxdb.transaction("rw", dxdb.inbox_raw, async () => {
+      const existing = await dxdb.inbox_raw.get(id);
+      if (!canReuseInboundRawId(existing?.raw, raw)) return false;
+      if (!existing) {
+        await dxdb.inbox_raw.add({ id, raw, receivedAt: Date.now() });
+      }
+      return true;
+    });
+    if (!admitted) {
+      console.warn("[onion] rejected conflicting signed frame ID");
+      return;
+    }
     await processInboxRecord(id, raw);
   });
 }

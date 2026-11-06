@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isLegacyFriendEvent, isPermanentlyInvalidInboundFrame } from "../inbound-durability";
+import { isLegacyFriendEvent, isPermanentlyInvalidInboundFrame, canReuseInboundRawId } from "../inbound-durability";
 
 describe("incoming Tor cross-database durability", () => {
   it("retains friend events until the separate database transaction completes", () => {
@@ -36,5 +36,16 @@ describe("encrypted inbound recovery after transient crypto failures", () => {
       new Error("unknown error"),
       null, "open: decryption failed",
     ]) expect(isPermanentlyInvalidInboundFrame(failure)).toBe(false);
+  });
+});
+
+describe("durable signed frame ID cannot overwrite another ciphertext", () => {
+  it("accepts a first frame and byte-identical retransmission", () => {
+    expect(canReuseInboundRawId(undefined, "signed-frame")).toBe(true);
+    expect(canReuseInboundRawId("signed-frame", "signed-frame")).toBe(true);
+  });
+  it("rejects conflicting raw contents under one signature-derived key", () => {
+    expect(canReuseInboundRawId("legitimate-sealed-data", "forged-sealed-data")).toBe(false);
+    expect(canReuseInboundRawId("", "different")).toBe(false);
   });
 });

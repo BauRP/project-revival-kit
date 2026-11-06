@@ -19,3 +19,13 @@ export function isPermanentlyInvalidInboundFrame(error: unknown): boolean {
     error.message === "open: decryption failed" ||
     error.message === "open: malformed decrypted JSON";
 }
+
+/** The signature-derived inbox primary key does not permit another raw body
+ * to overwrite a still-unprocessed ciphertext. Replayed identical raw frames
+ * remain valid and must get their durable ACK after idempotent processing.
+ */
+export function canReuseInboundRawId(
+  previousRaw: string | undefined, arrivingRaw: string,
+): boolean {
+  return previousRaw === undefined || previousRaw === arrivingRaw;
+}
