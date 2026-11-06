@@ -11,6 +11,7 @@ import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, find
 import { hasExpiredMessage } from "./message-retention";
 import { dxdb, upsertContact, type StoredMessage } from "./dexie-db";
 import { advanceDeliveryStatus } from "./delivery-status-policy";
+import { mergeConversationRows } from "./conversation-index-policy";
 import {
   onionEnsureConnection,
   onionIsConnectedTo,
@@ -255,10 +256,15 @@ export async function clearMessagesForChat(peer: string): Promise<void> {
 
 export async function getMessagesForChat(peer: string): Promise<P2PMessage[]> {
   const now = Date.now();
-  const rows = await dxdb.messages.filter((m) => m.from === peer || m.to === peer).toArray();
-  return (rows as unknown as P2PMessage[])
-    .filter((m) => !m.deleteAt || m.deleteAt > now)
-    .sort((a, b) => a.timestamp - b.timestamp);
+  // Indexed from/to queries avoid scanning unrelated chats on every opening.
+  // Keep one read transaction so a new message cannot slip between scans.
+  const [sent, received] = await dxdb.transaction("r", dxdb.messages, () =>
+    Promise.all([
+      dxdb.messages.where("to").equals(peer).toArray(),
+      dxdb.messages.where("from").equals(peer).toArray(),
+    ]),
+  );
+  return mergeConversationRows(sent, received, now) as P2PMessage[];
 }
 
 /** One-time move of messages from the legacy key-value DB into Dexie. */

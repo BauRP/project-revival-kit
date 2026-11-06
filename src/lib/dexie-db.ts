@@ -198,21 +198,22 @@ export async function putReceivedBlob(
     [dxdb.messages, dxdb.lifecycle, dxdb.blobs], async () => {
       if (isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data))
         return false;
-      const candidates = await dxdb.messages.where("from").equals(sender).toArray();
-      for (const msg of candidates) {
-        if (!matchesReceivedAttachmentMetadata(
+      // Stop at the first metadata-matching signed parent message rather
+      // than materializing an entire peer's chat (including long text and
+      // media objects) for each received attachment.
+      const parent = await dxdb.messages.where("from").equals(sender)
+        .filter((msg) => matchesReceivedAttachmentMetadata(
           msg, sender, recipient, fileId, name, mimeType, data.size,
-        )) continue;
-        if (isDeletedMessageRecord((await dxdb.lifecycle.get(deletedMessageKey(msg.id)))?.data))
-          continue;
-        await dxdb.blobs.put({
-          fileId, mimeType: mimeType || data.type || "application/octet-stream",
-          name: name || `file-${fileId}`,
-          size: data.size, data, storedAt: Date.now(),
-        });
-        return true;
-      }
-      return false;
+        )).first();
+      if (!parent) return false;
+      if (isDeletedMessageRecord((await dxdb.lifecycle.get(deletedMessageKey(parent.id)))?.data))
+        return false;
+      await dxdb.blobs.put({
+        fileId, mimeType: mimeType || data.type || "application/octet-stream",
+        name: name || `file-${fileId}`,
+        size: data.size, data, storedAt: Date.now(),
+      });
+      return true;
     });
   if (saved) void enforceMediaCacheLimit().catch(() => undefined);
   return saved;
@@ -275,9 +276,10 @@ export async function getTotalBlobBytes(): Promise<number> {
 }
 
 /**
- * If the on-device blob cache reaches or exceeds 3 GiB, delete exactly the
- * oldest 50% of entries (sorted ascending by storedAt). The newer half is
- * kept untouched. Returns the number of entries deleted.
+ * If stored media reaches the cache ceiling, reclaim oldest unreferenced
+ * files until below the limit. Never evict a file still used by a message.
+ * Returns the number of deleted files; if every blob is referenced the cache
+ * may remain above the limit to avoid destructive data loss.
  */
 export async function enforceMediaCacheLimit(
   limitBytes: number = MEDIA_CACHE_LIMIT_BYTES,
@@ -292,15 +294,15 @@ export async function enforceMediaCacheLimit(
     const media = message.media as { fileId?: string } | undefined;
     if (media?.fileId) referenced.add(media.fileId);
   });
-  const all = await dxdb.blobs.orderBy("storedAt").toArray();
+  // Cursor iteration avoids allocating a second array of every stored
+  // Blob at once when the cache contains gigabytes of private media.
   const victims: string[] = [];
   let freed = 0;
-  for (const record of all) {
-    if (total - freed < limitBytes) break;
-    if (referenced.has(record.fileId)) continue;
+  await dxdb.blobs.orderBy("storedAt").each((record) => {
+    if (total - freed < limitBytes || referenced.has(record.fileId)) return;
     victims.push(record.fileId);
     freed += record.size || 0;
-  }
+  });
   if (victims.length) await dxdb.blobs.bulkDelete(victims);
   return victims.length;
 }
