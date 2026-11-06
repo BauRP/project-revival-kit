@@ -7,8 +7,8 @@ describe("authenticated but untrusted Tor frame bodies", () => {
     expect(validateDispatchBody("signed attacker data")).toBeNull();
     expect(validateDispatchBody({id:"",type:"text_message"})).toBeNull();
     expect(validateDispatchBody({id:"x".repeat(129),type:"text_message"})).toBeNull();
-    expect(validateDispatchBody({id:"bad\\nID",type:"text_message"})).toBeNull();
-    expect(validateDispatchBody({id:"safe",type:"bad\\nkind"})).toBeNull();
+    expect(validateDispatchBody({id:"bad\nID",type:"text_message"})).toBeNull();
+    expect(validateDispatchBody({id:"safe",type:"bad\nkind"})).toBeNull();
   });
   it("limits acknowledgement batch and individual identifiers before database lookups", () => {
     expect(boundedAcknowledgements(["one","two"])).toEqual(["one","two"]);
@@ -16,7 +16,7 @@ describe("authenticated but untrusted Tor frame bodies", () => {
     expect(boundedAcknowledgements(Array(33).fill("id"))).toEqual([]);
     expect(boundedAcknowledgements({ ids: ["x"] })).toEqual([]);
     expect(boundedAcknowledgements(["one","one","two"])).toEqual(["one","two"]);
-    expect(boundedAcknowledgements(["ok","bad\\nID",{},null])).toEqual(["ok"]);
+    expect(boundedAcknowledgements(["ok","bad\nID",{},null])).toEqual(["ok"]);
   });
 });
 
