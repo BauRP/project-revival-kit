@@ -9,13 +9,13 @@
 | Приложение | **Trivo Chat Elite**, приватный Android/Web мессенджер с Tor v3 onion, локальными данными и E2EE |
 | GitHub | https://github.com/BauRP/project-revival-kit |
 | Рабочая ветка | **chatgpt/trivo-security-compat-20261031**; **main не менять** |
-| Последний подтверждённый КОДОВЫЙ HEAD, на базе которого составлен журнал | **5a0d45e153c7a4e6b03037a08040a8563ef8639f** |
-| Последний полностью успешный workflow | **build-311**, https://github.com/BauRP/project-revival-kit/actions/runs/42165882854; Vitest, TypeScript, web, **JVM unit tests**, Android APK, SDK/ABI checks = SUCCESS |
-| Проверенная APK | https://github.com/BauRP/project-revival-kit/releases/download/build-311/app-universal-debug.apk — универсальная debug APK, CI success, 62614743 bytes |
-| Оценка готовности ПО | **37,4%** (+0,1 п.п. с 37,3%), консервативная приблизительная оценка проверенного кода, без прироста для неразработанных функций |
-| Недавняя работа | **build-311:** исправлено recovery `NativeInboundQueue` после падения Android `AtomicFile` (`.bak`), проверка полностью записанных байтов перед TCP ACK, удаление базового и резервного файла при JS ACK. Добавлены Java/JUnit tests и запуск `testDebugUnitTest` в CI. Более ранние Tor replay/ACK исправления build-305–310 сохраняются. |
+| Последний подтверждённый КОДОВЫЙ HEAD, на базе которого составлен журнал | **b3efeb6cc6ae0dfe2db8111b73ca611d32d0bbf4** |
+| Последний полностью успешный workflow | **build-312**, https://github.com/BauRP/project-revival-kit/actions/runs/42166428094; build-311 также success; Vitest, TypeScript, web, Android JVM tests, universal APK, SDK/ABI checks |
+| Проверенная APK | https://github.com/BauRP/project-revival-kit/releases/download/build-312/app-universal-debug.apk — универсальная debug APK, CI success, 62614751 bytes |
+| Оценка готовности ПО | **37,5%** (+0,1 п.п. с 37,4%, +0,2 п.п. за этот запуск от 37,3%), оценка проверенной программной части |
+| Недавняя работа | **build-311:** crash recovery NativeInboundQueue AtomicFile .bak; read-back verification before ACK; Android JUnit tests now run in CI. **build-312:** входящие Tor media chunks принимаются по любому действующему подписанному сообщению-родителю, даже если другой родитель удалён; глобальный consumed tombstone остаётся запретом, проверка в одной Dexie transaction; Vitest/Android APK success. |
 | **P0, наибольшие пробелы** | Реального PQXDH/ML-KEM **нет**; локальная Dexie-база переписки не шифруется полностью; нет независимого от WebView нативного фонового отправителя; полноценной встроенной офлайн-STT-модели нет |
-| **Ближайшая инженерная задача** | **P0:** реальное шифрование локальной истории Dexie: versioned ciphertext, Keystore, crash-safe migration, backup/search compatibility. **P1:** Android native `AtomicFile` integration/fault-injection test на device/emulator и encrypted frame ACK после real disk recovery; JVM tests только проверяют filename/backup policy. |
+| **Ближайшая инженерная задача** | **P0:** реальное шифрование Dexie messages/lifecycle с Keystore, idempotent crash-safe migration, backup/search compatibility; работать по коду. **P1:** stress/fault injection native AtomicFile rollback + ACK, и shared-media/one-time consumption Dexie integration. JVM/Vitest есть, emulator/device runtime пока не выполнялся. |
 | Открыть первыми | src/lib/dexie-db.ts, src/lib/storage.ts, src/lib/safe-storage.ts, src/lib/crypto.ts, android/app/src/main/java/com/baurp/trivochat/SecureVaultPlugin.java, src/lib/p2p.ts, src/lib/backup.ts, src/lib/backup-merge-policy.ts |
 | Контрольные команды | **bun install --frozen-lockfile** → **bunx vitest run** → **bunx tsc --noEmit --pretty false** → **CAP_BUILD=1 bun run build** → stage-web/fix-relative-assets/verify-web-dir → **npx cap sync android** → в android: **./gradlew clean assembleDebug --no-daemon --stacktrace** |
 | Ограничения | Нет Firebase/Supabase, внешней базы, рекламы, обязательной регистрации на сервере или облачного AI; secrets не записывать. Жалобы/репорты (направление 13) **на паузе**. Никаких принудительных push/rebase/squash опубликованной истории. **AGENTS2.md — постоянные инструкции; AGENTS.md Lovable не трогать.** |
@@ -24,7 +24,7 @@
 
 ### Что делать при возобновлении (быстро)
 1. Открыть https://github.com/BauRP/project-revival-kit/blob/chatgpt/trivo-security-compat-20261031/PROGRESS.md.
-2. Проверить git ref рабочей ветки; сравнить с последней зафиксированной **кодовой** базой 5a0d45e1…; отдельно учесть документационные коммиты и новые изменения третьих сторон.
+2. Проверить git ref рабочей ветки; сравнить с последней зафиксированной **кодовой** базой b3efeb6c…; отдельно учесть документационные коммиты и новые изменения третьих сторон.
 3. Если HEAD изменён другим ChatGPT/Lovable — прочитать diff именно этих коммитов, проверить конфликты и актуализировать записи; не перезаписывать чужую работу.
 4. Перейти к очереди P0/P1 в разделе 9. Сначала реальные исправления, затем unit + TypeScript + Android APK в одном логическом пакете.
 5. Обновить таблицу готовности **только за реально реализованное и автоматически проверенное**. Полный физический runtime на телефоне пользователя — отдельная пользовательская проверка, не «недоделанная программная работа».
@@ -89,7 +89,7 @@
 
 ## 3. Готовность по 20 направлениям — базовая точка
 
-**Зафиксированная после build-311 общая оценка: 37,4%** (предыдущая 37,3%, +0,1 п.п. за Java native queue crash-recovery fixes и проверенные JUnit tests). Это прежняя согласованная **оценка программной готовности**, не объективное вычисление количества функций. Проценты не суммировать/не усреднять как общий показатель: направления различаются по весу, сложности и рискам. Если методика весов станет фиксированной, описать её явно. **Пауза направления 13 не даёт права объявить его выполненным.**
+**Зафиксированная после build-312 общая оценка: 37,5%** (предыдущая 37,4%, +0,1 п.п. за исправление получения общего вложения при наличии удалённого и живого родителя; за весь запуск +0,2 п.п. с 37,3%). Это прежняя согласованная **оценка программной готовности**, не объективное вычисление количества функций. Проценты не суммировать/не усреднять как общий показатель: направления различаются по весу, сложности и рискам. Если методика весов станет фиксированной, описать её явно. **Пауза направления 13 не даёт права объявить его выполненным.**
 
 | № | Направление | Готово | Последний прирост | Что есть / проверено | Остаток и ограничения |
 |---|---|---:|---:|---|---|
@@ -97,20 +97,20 @@
 | 2 | Шифрование локальной БД/ключей | **19,9%** | 0 | Android Keystore для identity, scheduled text; identity recovery; CI | Dexie messages/lifecycle/contact/поиск остаются plaintext на диске; миграция без потери данных |
 | 3 | Резервные копии и восстановление | **62,7%** | 0 | V2 AES-GCM, portable identity, validation, atomic *.pending rename, удаление tombstones, последовательный импорт Blob; build-291/294 | Большие архивы/пределы памяти, независимые фоны, детальные recovery tests, гарантия crash-safe переносимости |
 | 4 | Отложенная отправка | **43,2%** | 0 | trivo-outbox, Keystore, миграция, dedupe, clock correction, visibility wake; build-295 | Доставка при завершённом WebView/force-stop, строгие жизненные циклы, device-level проверка |
-| 5 | Фоновый Tor | **52,3%** | **+0,2** | Native FGS, durable sealed queue; build-311: legacy AtomicFile backup recovery, verified disk commit before TCP ACK, atomic deletion incl. backup; JUnit tests/Android APK successful | Нативная отправка без WebView, integration power-loss/FGS tests |
-| 6 | Защита сообщений/edit/delete | **63,1%** | **+0,1** | Tor ACK и tombstones, monotonic statuses; build-311: подтверждение сетевого получения только после read-back committed sealed frame, backup не воскресает после ACK | Encrypted local history, ACK real peer integration |
+| 5 | Фоновый Tor | **52,3%** | 0 | Native FGS, durable sealed queue; build-311: legacy AtomicFile backup recovery, verified disk commit before TCP ACK, atomic deletion incl. backup; JUnit tests/Android APK successful | Нативная отправка без WebView, integration power-loss/FGS tests |
+| 6 | Защита сообщений/edit/delete | **63,1%** | 0 | Tor ACK и tombstones, monotonic statuses; build-311: подтверждение сетевого получения только после read-back committed sealed frame, backup не воскресает после ACK | Encrypted local history, ACK real peer integration |
 | 7 | Офлайн STT | **5,0%** | 0 | UI и обработчики-заглушки, stt-cache без plaintext | Реальная модель и inference в APK offline, многоязычность и метрики |
 | 8 | Уведомления | **46,2%** | 0 | local notifications, mute/block/silent, приватные preview, fail-closed | Фоновая нативная обработка, каналы/режимы Android, надёжное отображение |
 | 9 | Безопасная проверка файлов | **26,8%** | 0 | MIME/signatures/EXIF/active content, signed manifest, валидация полученного Blob | Не антивирус; расширенные форматы/unsafe вложения, DoS scanning, sandbox |
 | 10 | Синхронизация профилей | **26,8%** | 0 | profile-wire/profile-policy, signed peer updates и Dexie | конфликт версий, offline reconcile, полноценные тесты синхронизации |
 | 11 | Реакции/синхронизация | **36,1%** | 0 | реакции в lifecycle, timestamps, retry; tests | восстановление после потери связи, гонки, multi-client случаи |
-| 12 | Экономия трафика/медиа | **76,0%** | 0 | 48KiB chunked transfer, resume/retries; build-309/310: keyed serial queue не допускает двух параллельных записей/финальных сборок одного fileId, другие файлы параллельны | Streaming 1GiB, нагрузочная память/OEM tests |
+| 12 | Экономия трафика/медиа | **76,1%** | **+0,1** | 48KiB chunks/resume, build-309/310 serialized chunk writes; **build-312** получает общий файл по действующей ссылке, если другой родитель удалён | 1GiB streaming, memory/OEM/load tests |
 | 13 | Жалобы/репорты **ПАУЗА** | **0%** | 0 | Кодовая UI-заготовка может существовать | Не менять без разрешения пользователя |
-| 14 | Одноразовые вложения | **40,2%** | 0 | lifecycle + consumed tombstone, backup merge, atomic chunk auth; build-291/293 | тесты гонок и полная проверка на телефонах, split/backup сценарии |
+| 14 | Одноразовые вложения | **40,3%** | **+0,1** | consumed tombstones, backup merge; **build-312** atomic chunk authorization across live shared parent messages with global consumed protection | Dexie integration, offline/restore/one-time race tests |
 | 15 | Подлинный Tor статус | **27,0%** | 0 | strict isTorServiceReady; проверка .onion; status chip; build-283 | серверная достижимость, показ ошибок/повторных reconnect |
 | 16 | Маскировка трафика | **8,0%** | 0 | экспериментальный sealed cover; off default | реальная доказуемая защита от анализа трафика, аккумулятор/сеть |
 | 17 | Android permissions | **66,5%** | 0 | manifest, runtime on-demand, native services; CI SDK audit | Android 13+/14+/16+/17 permission and FGS variations |
-| 18 | Автоматизированные испытания | **69,5%** | **+0,5** | Vitest, TSC, web, APK, SDK/ABI; build-311: впервые Android JUnit `testDebugUnitTest` в CI + 4 теста NativeInboundQueueFilesTest; SUCCESS | Dexie/Tor/AtomicFile Android runtime integration, emulator/logcat, crash fault injection |
+| 18 | Автоматизированные испытания | **69,6%** | **+0,1** | Vitest+TSC+web+APK+JVM; build-311 Android JUnit suite; **build-312** added 3 tests for shared media/deletion/consumption and storage error | Native Android crash/fault injection, Tor peer integration/emulator |
 | 19 | Android 7–17 и экраны | **18,8%** | 0 | min24/target36, WebView inset handling, ABI CI | API/gestures/IME/fold/rotation/runtime/Android17 |
 | 20 | Защита истории переписки | **57,0%** | 0 | per-chat toggle, sync, denied remote edit/delete, notice, tests | конфликт состояний offline, UI одинаковое поведение всех кнопок, сквозные peer tests |
 
@@ -350,6 +350,15 @@
 - **Точность доказательств:** Java JVM unit-тесты проверяют правила имён и поиск backup, но **не имитируют реальное падение Android во время fsync/rename**; реальное crash fault-injection в эмуляторе/Android пока не выполнялось. Не объявлять покрытие Android 17 или независимую фоновую отправку.
 - **Метрики:** фон Tor 52,1 → **52,3%** (+0,2), защита сообщений 63,0 → **63,1%** (+0,1), тесты 69,0 → **69,5%** (+0,5), общая оценка 37,3 → **37,4%** (+0,1 п.п.). P0 шифрование Dexie и PQXDH не изменены.
 
+### 2026-11-06 — build-312: приём общих вложений с независимо удалёнными родителями
+
+- **Кодовый коммит:** `b3efeb6c` после успешной build-311; изменены `src/lib/onion-engine.ts`, `src/lib/message-deletion-policy.ts`, `src/lib/__tests__/message-deletion-policy.test.ts`. Ветка `chatgpt/trivo-security-compat-20261031`; `main` и `AGENTS.md` не трогали.
+- **Реальный дефект:** `persistBlobChunk()` выбирал только `.first()` signed parent для одного fileId. Если первый parent имел tombstone, а второй подходящий parent был жив, приходящие verified chunks ошибочно отклонялись; предыдущие исправления `putReceivedBlob` не покрывали этап записи чанков.
+- **Исправление:** выборка `toArray()` лишь среди совпадающих authenticated manifest записей; внутри прежней Dexie `rw` transaction проверяется **каждый** подходящий parent по личному deletion tombstone, и глобальный consumed one-time tombstone; разрешение только при хотя бы одном живом parent. Чужие/несовпадающие media metadata не авторизуются; отсутствие ссылок и ошибка чтения lifecycle приводят к отказу/rollback, не к «успеху».
+- **Тесты:** `hasAuthorizedAttachmentParent` покрыт Vitest (первый parent удалён, второй жив; пустой/все удалены/consumed; ошибка IndexedDB не становится разрешением). Реальная Dexie transaction в этих unit тестах не запускалась.
+- **CI:** **build-312 completed/success** на SHA `b3efeb6cc6ae0dfe2db8111b73ca611d32d0bbf4`, https://github.com/BauRP/project-revival-kit/actions/runs/42166428094; Vitest, strict TSC, web staging, `testDebugUnitTest`, `assembleDebug`, Android SDK/ABI audit, GitHub Release APK https://github.com/BauRP/project-revival-kit/releases/download/build-312/app-universal-debug.apk.
+- **Границы:** P0 encrypted local history и PQXDH по-прежнему не реализованы; Android runtime two-phone tests не проводились. Прирост за этот пакет: направление 12 +0,1 п.п., 14 +0,1 п.п., тесты 18 +0,1 п.п., общий ПО 37,4 → 37,5%.
+
 ## 7. Журнал фактической разработки и GitHub CI
 
 **Все указанные SHA — коммиты в рабочей ветке.** Ниже приоритет недавним пакетам, полезным для следующего запуска, без переписывания переписки.
@@ -383,6 +392,7 @@
 | 2026-11-06 | **31394887** / **build-303** | onion-engine: peer/due индексированные scans и сортировка только metadata, точный createdAt order | **SUCCESS** https://github.com/BauRP/project-revival-kit/actions/runs/42146708932 |
 
 **Последние полные workflow:**
+- **build-312 SUCCESS:** https://github.com/BauRP/project-revival-kit/actions/runs/42166428094 (shared media parent authorization + Android JVM tests)
 - **build-311 SUCCESS:** https://github.com/BauRP/project-revival-kit/actions/runs/42165882854 (впервые JVM unit tests + universal APK)
 - **build-310 SUCCESS:** https://github.com/BauRP/project-revival-kit/actions/runs/42152531633
 - build-309 SUCCESS: https://github.com/BauRP/project-revival-kit/actions/runs/42152309466
@@ -531,7 +541,7 @@ cd android
 
 ## 11. С чего продолжить в следующем чате
 
-**Контрольная точка кода: 5a0d45e153c7a4e6b03037a08040a8563ef8639f, build-311 SUCCESS, общая готовность ПО 37,4% (+0,1 п.п. с build-310).** Создающий запись документационный коммит не изменяет программный код.
+**Контрольная точка кода: b3efeb6cc6ae0dfe2db8111b73ca611d32d0bbf4, build-312 SUCCESS, общая готовность ПО 37,5% (+0,2 п.п. с build-310).** Создающий запись документационный коммит не изменяет программный код.
 
 **Главный следующий блок P0: закрыть реальный пробел безопасности локальной истории**. Работать от требований: Android Keystore, offline, без лишнего ручного пароля, без тихой смены identity, без потери существующих сообщений, с безопасным crash-safe восстановлением. Не обещать результат, пока нет реализации и тестов. Первые файлы:
 - src/lib/dexie-db.ts — таблицы и миграция истории, indexes; exportDexieDump/importDexieDump.
@@ -545,6 +555,8 @@ cd android
 **Ближайшая независимая P1 задача:** тесты реальных Dexie commit + signed ACK + NativeInboundQueue replay/failure injection: `src/lib/onion-engine.ts`, `src/lib/dexie-db.ts`, `android/app/src/main/java/com/baurp/trivochat/tor/NativeInboundQueue.java`, `src/lib/inbound-durability.ts`. В builds 305–310 уже закрыты concurrent same-frame/same-file races, collision и crypto transient retention; не повторять их. Если нативная среда недоступна, перейти к реально исполняемым unit test + безопасной архитектуре P0 at-rest encryption.
 
 **Следующая точка P1 (независимо от P0):** `NativeInboundQueue.java`, `NativeInboundQueueFiles.java`, `TorTransportPlugin.java`, `onion-engine.ts`: Android runtime fault-injection AtomicFile rollback/ACK и передача после power-loss. Java `testDebugUnitTest` уже настроен в CI, не дублировать. История `build-311` содержит границу доказательств. 
+
+**Следующая независимая P1 задача:** stress/fault injection Android native queue и Dexie media lifecycle: `android/app/src/main/java/com/baurp/trivochat/tor/NativeInboundQueue.java`, `src/lib/onion-engine.ts`, `src/lib/message-deletion-policy.ts`, `src/lib/dexie-db.ts`. Builds 311/312 уже исправили AtomicFile recovery и shared signed media parent lookup. Не повторять завершённое.
 
 **Пошаговый инженерный план:**
 1. Построить data flow: где именно лежит plaintext, кому нужен поиск/index, какие поля нужны UI. Составить versioned encrypted record format, key hierarchy, threat model; не хранить новый master key plaintext/вместе с ciphertext.
