@@ -512,19 +512,26 @@ async function sendOutboxOnce(id: string): Promise<boolean> {
 }
 
 async function drainOutboxFor(peer: string): Promise<void> {
-  const due = await dxdb.outbox.where("peer").equals(peer).sortBy("createdAt");
-  for (const rec of due) {
-    if (!(await attemptOutbox(rec.id))) return;
+  // Preserve send creation order without allocating every sealed frame.
+  const ids = await dxdb.outbox.orderBy("createdAt")
+    .filter((row) => row.peer === peer).primaryKeys();
+  for (const id of ids) {
+    if (!(await attemptOutbox(id))) return;
   }
 }
 
 export async function drainOutbox(): Promise<void> {
   if (!isTorNativeAvailable()) return;
-  const due = await dxdb.outbox.where("nextAttemptAt").belowOrEqual(Date.now()).sortBy("createdAt");
+  const now = Date.now();
+  // This primary-key list is small compared with ciphertext. The previous
+  // sortBy materialized every multi-megabyte sealed frame in WebView memory.
+  const ids = await dxdb.outbox.orderBy("createdAt")
+    .filter((row) => row.nextAttemptAt <= now).primaryKeys();
   const failedPeers = new Set<string>();
-  for (const rec of due) {
-    if (failedPeers.has(rec.peer)) continue;
-    if (!(await attemptOutbox(rec.id))) failedPeers.add(rec.peer);
+  for (const id of ids) {
+    const record = await dxdb.outbox.get(id);
+    if (!record || failedPeers.has(record.peer)) continue;
+    if (!(await attemptOutbox(id))) failedPeers.add(record.peer);
   }
 }
 
@@ -578,12 +585,17 @@ async function acceptRawFrame(raw: string): Promise<void> {
 /** Replay every unprocessed inbound frame (crash / power-loss recovery). */
 export async function recoverInbox(): Promise<number> {
   await ensureLocalIdentity();
-  const rows = await dxdb.inbox_raw.orderBy("receivedAt").toArray();
-  for (const row of rows) {
+  // The encrypted native/JS queues may contain large frames (up to 8 MiB
+  // each). Read only ordered primary keys first, then one ciphertext at a
+  // time, avoiding an entire second queue copy in WebView heap.
+  const ids = await dxdb.inbox_raw.orderBy("receivedAt").primaryKeys();
+  for (const id of ids) {
+    const row = await dxdb.inbox_raw.get(id);
+    if (!row) continue; // ACK/replay may have removed it concurrently.
     try { await processInboxRecord(row.id, row.raw); }
     catch (error) { console.warn("[onion] retaining failed inbox row for retry", error); }
   }
-  return rows.length;
+  return ids.length;
 }
 
 async function processInboxRecord(rawId: string, raw: string): Promise<void> {
