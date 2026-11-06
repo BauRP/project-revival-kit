@@ -43,6 +43,7 @@ import {
 import { dbGetStrict, dbPutStrict } from "./storage";
 import { isLegacyFriendEvent, isPermanentlyInvalidInboundFrame } from "./inbound-durability";
 import { InboundFrameSingleFlight } from "./inbound-frame-single-flight";
+import { KeyedSerialQueue } from "./keyed-serial-queue";
 import { validateIncomingTextMessage } from "./inbound-message";
 import { chunkDigest, matchesChunkDigest } from "./chunk-integrity";
 import { inspectAttachmentBlob } from "./security-scan";
@@ -140,6 +141,7 @@ interface PartialReceive {
   retryCursor?: number;
 }
 const partialReceives = new Map<string, PartialReceive>();
+const inboundChunkQueue = new KeyedSerialQueue();
 
 function safeEach<T extends (...args: never[]) => void>(set: Set<T>, ...args: Parameters<T>) {
   set.forEach((cb) => {
@@ -1065,6 +1067,15 @@ async function sendBlob(peer: string, fileId: string, include: (index: number) =
 }
 
 async function acceptBlobChunk(from: string, body: Record<string, unknown>): Promise<void> {
+  const fileId = body.fileId;
+  if (!validBlobFileId(fileId)) return;
+  // Two signed chunk frames can arrive from live Tor and replay at once.
+  // Serialize one file's lifecycle/chunk writes and final assembly so the
+  // same file cannot be assembled twice or resolve the request prematurely.
+  await inboundChunkQueue.run(fileId, () => persistBlobChunk(from, body));
+}
+
+async function persistBlobChunk(from: string, body: Record<string, unknown>): Promise<void> {
   const fileId = body.fileId;
   if (!validBlobFileId(fileId)) return;
   const pending = blobRequests.get(fileId);
