@@ -41,6 +41,9 @@ public class SecureVaultPlugin extends Plugin {
     private static final int TAG_BITS = 128;
     private static final int MAX_IDENTITY_BYTES = 32 * 1024;
     private static final int MAX_SCHEDULE_BYTES = 1024 * 1024;
+    // A sealed identity contains a 12-byte IV and AES-GCM tag plus Base64
+    // framing; preserve the prior input limit while bounding disk reads.
+    private static final int MAX_SEALED_IDENTITY_BYTES = MAX_IDENTITY_BYTES * 2;
     private final SecureRandom random = new SecureRandom();
 
     private synchronized SecretKey key() throws Exception {
@@ -154,7 +157,11 @@ public class SecureVaultPlugin extends Plugin {
      */
     public static String recoverTorServiceKey(android.content.Context context) throws Exception {
         AtomicFile backup = new AtomicFile(new File(context.getFilesDir(), BACKUP));
-        if (!backup.getBaseFile().exists())
+        // Legacy AtomicFile may leave ONLY a .bak file if the process dies
+        // between startWrite and finishWrite. readFully() restores that copy;
+        // checking only the base file would incorrectly discard this identity.
+        byte[] protectedBackup = readProtectedIdentityBackup(backup);
+        if (protectedBackup == null)
             throw new IllegalStateException("No identity recovery copy on this device");
 
         KeyStore store = KeyStore.getInstance("AndroidKeyStore");
@@ -163,7 +170,7 @@ public class SecureVaultPlugin extends Plugin {
         if (!(entry instanceof KeyStore.SecretKeyEntry))
             throw new IllegalStateException("Device identity Keystore key is unavailable");
 
-        String sealedText = new String(backup.readFully(), StandardCharsets.UTF_8);
+        String sealedText = new String(protectedBackup, StandardCharsets.UTF_8);
         String[] parts = sealedText.split("\\.", -1);
         if (parts.length != 2) throw new IllegalArgumentException("Invalid sealed identity format");
         byte[] iv = Base64.decode(parts[0], Base64.NO_WRAP);
@@ -205,6 +212,22 @@ public class SecureVaultPlugin extends Plugin {
         return new AtomicFile(new File(getContext().getFilesDir(), BACKUP));
     }
 
+    /**
+     * Read the last durable Keystore-sealed identity or recover AtomicFile's
+     * legacy backup. Never use the existence of the base file alone as a
+     * signal that this device lacks its existing Tor identity.
+     */
+    private static byte[] readProtectedIdentityBackup(AtomicFile file) throws Exception {
+        File base = file.getBaseFile();
+        if (!VaultBackupFiles.hasReadableBackup(base)) return null;
+        if (!VaultBackupFiles.fitsSealedSize(base, MAX_SEALED_IDENTITY_BYTES))
+            throw new IllegalStateException("Stored identity recovery copy is oversized or empty");
+        byte[] bytes = file.readFully(); // Restores .bak using AtomicFile semantics.
+        if (bytes.length == 0 || bytes.length > MAX_SEALED_IDENTITY_BYTES)
+            throw new IllegalStateException("Invalid sealed recovery copy size");
+        return bytes;
+    }
+
     @PluginMethod
     public void saveIdentity(PluginCall call) {
         try {
@@ -222,6 +245,14 @@ public class SecureVaultPlugin extends Plugin {
                 if (out != null) file.failWrite(out);
                 throw e;
             }
+            // An AtomicFile implementation may log a failed rename without
+            // throwing. Do not report identity recovery is backed up unless
+            // the committed bytes can be read and authenticated again.
+            byte[] durable = readProtectedIdentityBackup(file);
+            if (durable == null || !MessageDigest.isEqual(
+                    durable, sealed.getBytes(StandardCharsets.UTF_8)))
+                throw new IllegalStateException("Identity recovery write verification failed");
+            open(new String(durable, StandardCharsets.UTF_8));
             call.resolve();
         } catch (Exception error) {
             call.reject("Cannot save encrypted identity", error.getMessage(), error);
@@ -233,10 +264,10 @@ public class SecureVaultPlugin extends Plugin {
         try {
             AtomicFile file = backupFile();
             JSObject data = new JSObject();
-            if (!file.getBaseFile().exists()) {
+            byte[] bytes = readProtectedIdentityBackup(file);
+            if (bytes == null) {
                 data.put("sealed", JSObject.NULL);
             } else {
-                byte[] bytes = file.readFully();
                 String sealed = new String(bytes, StandardCharsets.UTF_8);
                 // Never return corrupted / undecryptable backup as a valid key.
                 open(sealed);
