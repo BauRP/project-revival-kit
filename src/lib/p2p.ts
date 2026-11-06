@@ -10,6 +10,7 @@ import { sanitizeRestoredOneTimeMessage } from "./one-time-policy";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage, deletedLifecycleShell } from "./message-deletion-policy";
 import { hasExpiredMessage } from "./message-retention";
 import { dxdb, upsertContact, type StoredMessage } from "./dexie-db";
+import { advanceDeliveryStatus } from "./delivery-status-policy";
 import {
   onionEnsureConnection,
   onionIsConnectedTo,
@@ -129,7 +130,11 @@ export async function saveLocalMessage(msg: P2PMessage): Promise<void> {
     const erased = await dxdb.lifecycle.get(deletedMessageKey(msg.id));
     if (isDeletedMessageRecord(erased?.data))
       throw new Error("Cannot save a locally deleted message");
-    await dxdb.messages.put(msg as unknown as StoredMessage);
+    const previous = await dxdb.messages.get(msg.id);
+    const safe = previous
+      ? { ...msg, status: advanceDeliveryStatus(previous.status, msg.status) }
+      : msg;
+    await dxdb.messages.put(safe as unknown as StoredMessage);
   });
 }
 

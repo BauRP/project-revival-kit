@@ -61,6 +61,7 @@ import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, find
 import { duplicateMessageMatches } from "./inbound-identity";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, sameOutgoingDispatchRoute, type DispatchCommitResult } from "./dispatch-commit";
+import { advanceDeliveryStatus } from "./delivery-status-policy";
 import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp, canMutateDeletedMessage, isDuplicateRemoteDeletion } from "./lifecycle-auth";
 
 export const ONION_SERVICE_PORT = 8443;
@@ -482,11 +483,17 @@ async function sendOutboxOnce(id: string): Promise<boolean> {
       nextAttemptAt: Date.now() + backoff(attempts),
     } satisfies Partial<OutboxRecord>);
   if (ok && rec.kind === "text_message") {
-    const msg = await dxdb.messages.get(id);
-    if (msg && msg.status === "pending") {
-      await dxdb.messages.update(id, { status: "sent" });
-      safeEach(deliveryListeners, id, "sent");
-    }
+    // The remote ACK can commit while send() is still resolving. Update only
+    // inside an atomic Dexie modify, never from a stale status snapshot.
+    let changedToSent = false;
+    await dxdb.messages.where("id").equals(id).modify((message) => {
+      const next = advanceDeliveryStatus(message.status, "sent");
+      if (next !== message.status) {
+        message.status = next;
+        changedToSent = true;
+      }
+    });
+    if (changedToSent) safeEach(deliveryListeners, id, "sent");
   }
   return ok;
 }
@@ -612,9 +619,11 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
           // this EXACT peer; forged/foreign message IDs cannot update the UI.
           if (!rec || rec.peer !== from) continue;
           await dxdb.outbox.delete(mid);
-          const msg = await dxdb.messages.get(mid);
-          if (msg && msg.status !== "read")
-            await dxdb.messages.update(mid, { status: "delivered" });
+          if (rec.kind === "text_message") {
+            await dxdb.messages.where("id").equals(mid).modify((message) => {
+              message.status = advanceDeliveryStatus(message.status, "delivered");
+            });
+          }
           confirmed.push(mid);
         }
         await dxdb.inbox_raw.delete(rawId);
