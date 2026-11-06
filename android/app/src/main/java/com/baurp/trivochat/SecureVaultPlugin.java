@@ -36,6 +36,7 @@ import javax.crypto.spec.GCMParameterSpec;
 @CapacitorPlugin(name = "SecureVault")
 public class SecureVaultPlugin extends Plugin {
     private static final String ALIAS = "trivo_identity_aes_gcm_v1";
+    private static final String DATA_WRAP_ALIAS = "trivo_local_data_aes_wrap_v1";
     private static final String BACKUP = "identity-backup-v1";
     private static final int IV_BYTES = 12;
     private static final int TAG_BITS = 128;
@@ -47,15 +48,19 @@ public class SecureVaultPlugin extends Plugin {
     private final SecureRandom random = new SecureRandom();
 
     private synchronized SecretKey key() throws Exception {
+        return keystoreKey(ALIAS);
+    }
+
+    private synchronized SecretKey keystoreKey(String alias) throws Exception {
         KeyStore store = KeyStore.getInstance("AndroidKeyStore");
         store.load(null);
-        KeyStore.Entry entry = store.getEntry(ALIAS, null);
+        KeyStore.Entry entry = store.getEntry(alias, null);
         if (entry instanceof KeyStore.SecretKeyEntry) {
             return ((KeyStore.SecretKeyEntry) entry).getSecretKey();
         }
         KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
         generator.init(new KeyGenParameterSpec.Builder(
-                ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+                alias, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
                 .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                 .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                 .setKeySize(256)
@@ -68,12 +73,16 @@ public class SecureVaultPlugin extends Plugin {
     }
 
     private String seal(String plaintext, int maxBytes) throws Exception {
+        return seal(plaintext, maxBytes, key());
+    }
+
+    private String seal(String plaintext, int maxBytes, SecretKey wrappingKey) throws Exception {
         byte[] input = plaintext.getBytes(StandardCharsets.UTF_8);
         if (input.length > maxBytes) throw new IllegalArgumentException("Vault plaintext too large");
         byte[] iv = new byte[IV_BYTES];
         random.nextBytes(iv);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(Cipher.ENCRYPT_MODE, key(), new GCMParameterSpec(TAG_BITS, iv));
+        cipher.init(Cipher.ENCRYPT_MODE, wrappingKey, new GCMParameterSpec(TAG_BITS, iv));
         byte[] sealed = cipher.doFinal(input);
         return Base64.encodeToString(iv, Base64.NO_WRAP) + "." +
                 Base64.encodeToString(sealed, Base64.NO_WRAP);
@@ -84,6 +93,10 @@ public class SecureVaultPlugin extends Plugin {
     }
 
     private String open(String encrypted, int maxBytes) throws Exception {
+        return open(encrypted, maxBytes, key());
+    }
+
+    private String open(String encrypted, int maxBytes, SecretKey wrappingKey) throws Exception {
         if (encrypted == null || encrypted.length() > maxBytes * 2)
             throw new IllegalArgumentException("Invalid vault payload");
         String[] parts = encrypted.split("\\.", -1);
@@ -92,7 +105,7 @@ public class SecureVaultPlugin extends Plugin {
         byte[] sealed = Base64.decode(parts[1], Base64.NO_WRAP);
         if (iv.length != IV_BYTES) throw new IllegalArgumentException("Invalid vault IV");
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(Cipher.DECRYPT_MODE, key(), new GCMParameterSpec(TAG_BITS, iv));
+        cipher.init(Cipher.DECRYPT_MODE, wrappingKey, new GCMParameterSpec(TAG_BITS, iv));
         return new String(cipher.doFinal(sealed), StandardCharsets.UTF_8);
     }
 
@@ -145,6 +158,55 @@ public class SecureVaultPlugin extends Plugin {
             call.resolve(result);
         } catch (Exception error) {
             call.reject("Cannot decrypt scheduled text", error.getMessage(), error);
+        }
+    }
+
+    /**
+     * Wrap a 32-byte local-record encryption key under a separate
+     * non-exportable Android Keystore AES key. Never persist its raw bytes.
+     * The wrapping key is created only on an explicit first-time setup.
+     */
+    @PluginMethod
+    public void sealLocalDataKey(PluginCall call) {
+        try {
+            String raw = call.getString("keyBase64");
+            if (raw == null || raw.length() != 44)
+                throw new IllegalArgumentException("Invalid local data key");
+            byte[] decoded = Base64.decode(raw, Base64.NO_WRAP);
+            if (decoded.length != 32 ||
+                    !Base64.encodeToString(decoded, Base64.NO_WRAP).equals(raw))
+                throw new IllegalArgumentException("Invalid local data key");
+            JSObject result = new JSObject();
+            result.put("sealed", seal(raw, 128, keystoreKey(DATA_WRAP_ALIAS)));
+            Arrays.fill(decoded, (byte) 0);
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("Cannot wrap local encryption key", error.getMessage(), error);
+        }
+    }
+
+    @PluginMethod
+    public void openLocalDataKey(PluginCall call) {
+        try {
+            // Never silently rotate a missing Keystore key when a previously
+            // sealed database master key needs unlocking.
+            KeyStore store = KeyStore.getInstance("AndroidKeyStore");
+            store.load(null);
+            KeyStore.Entry entry = store.getEntry(DATA_WRAP_ALIAS, null);
+            if (!(entry instanceof KeyStore.SecretKeyEntry))
+                throw new IllegalStateException("Local encryption Keystore key missing");
+            String raw = open(call.getString("sealed"), 128,
+                    ((KeyStore.SecretKeyEntry) entry).getSecretKey());
+            byte[] decoded = Base64.decode(raw, Base64.NO_WRAP);
+            if (decoded.length != 32 ||
+                    !Base64.encodeToString(decoded, Base64.NO_WRAP).equals(raw))
+                throw new IllegalStateException("Corrupted local data key");
+            JSObject result = new JSObject();
+            result.put("keyBase64", raw);
+            Arrays.fill(decoded, (byte) 0);
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("Cannot unlock local encryption key", error.getMessage(), error);
         }
     }
 
