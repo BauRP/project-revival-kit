@@ -78,9 +78,9 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
-      - name: Build Android APK (debug)
+      - name: Run Android JVM tests and build APK (debug)
         working-directory: android
-        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+        run: ./gradlew clean testDebugUnitTest assembleDebug --no-daemon --stacktrace
 
       - name: Select Universal APK
         id: apk

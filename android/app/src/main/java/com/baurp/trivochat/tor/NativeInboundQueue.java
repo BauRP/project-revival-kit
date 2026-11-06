@@ -69,13 +69,34 @@ public final class NativeInboundQueue {
         return id != null && id.matches("[a-f0-9]{64}");
     }
 
-    private static File[] entries(File folder) {
-        File[] files = folder.listFiles((dir, name) -> name.matches("[a-f0-9]{64}\\.frame"));
-        if (files == null) return new File[0];
+    private static File[] entries(File folder) throws IOException {
+        File[] files = folder.listFiles();
+        if (files == null) throw new IOException("Cannot enumerate inbound queue");
+        String[] names = new String[files.length];
+        for (int i = 0; i < files.length; i++) names[i] = files[i].getName();
+        String[] basenames = NativeInboundQueueFiles.candidateBaseNames(names);
+        File[] result = new File[basenames.length];
+        for (int i = 0; i < basenames.length; i++) {
+            File base = new File(folder, basenames[i]);
+            // Android's AtomicFile can leave a legacy .bak after abrupt
+            // termination. Reading base directly would silently ignore an
+            // otherwise recoverable, previously ACKed sealed frame.
+            File backup = new File(base.getPath() + ".bak");
+            if (backup.exists()) {
+                try (FileInputStream ignored = new AtomicFile(base).openRead()) {
+                    // openRead restores a legacy backup before returning.
+                } catch (IOException failure) {
+                    // Preserve the backup for a later recovery attempt;
+                    // never discard private messages to unblock the queue.
+                    Log.e(TAG, "Unable to recover atomic inbound backup " + base.getName(), failure);
+                }
+            }
+            result[i] = base;
+        }
         // Frame hashes are not chronological. Replay oldest persisted frames first.
-        Arrays.sort(files, Comparator.comparingLong(File::lastModified)
+        Arrays.sort(result, Comparator.comparingLong(File::lastModified)
                 .thenComparing(File::getName));
-        return files;
+        return result;
     }
 
     /** Save first, then tell the network sender the frame was received. */
@@ -85,6 +106,9 @@ public final class NativeInboundQueue {
         if (bytes.length > Socks5Client.MAX_FRAME_BYTES) throw new IOException("Oversized frame");
         synchronized (LOCK) {
             File dir = folder(context);
+            // Recover legacy atomic backups BEFORE testing duplicate data,
+            // enforcing queue limits or deciding that an entry is new.
+            File[] pending = entries(dir);
             String id = hash(frame);
             File target = new File(dir, id + ".frame");
             // A hash-derived filename is not evidence that its on-disk bytes
@@ -113,13 +137,18 @@ public final class NativeInboundQueue {
                 }
                 if (identical) return id;
             }
-            File[] pending = entries(dir);
             long total = 0;
-            for (File file : pending) total += file.length();
+            for (File file : pending) {
+                File legacy = new File(file.getPath() + ".bak");
+                total += file.isFile() ? file.length() : legacy.length();
+            }
             // Replacing a corrupted entry should not count twice against the
             // queue budget. AtomicFile commits the new bytes before TCP ACK.
-            long replacedLength = existing ? target.length() : 0L;
-            int prospectiveEntries = pending.length + (existing ? 0 : 1);
+            File legacyTarget = new File(target.getPath() + ".bak");
+            boolean reserved = existing || legacyTarget.isFile();
+            long replacedLength = existing ? target.length() :
+                    (legacyTarget.isFile() ? legacyTarget.length() : 0L);
+            int prospectiveEntries = pending.length + (reserved ? 0 : 1);
             if (prospectiveEntries > MAX_ENTRIES ||
                 total - replacedLength + bytes.length > MAX_BYTES)
                 throw new IOException("Inbound queue full; sender must retry later");
@@ -134,7 +163,33 @@ public final class NativeInboundQueue {
                 if (out != null) atomic.failWrite(out);
                 throw error;
             }
+            // Some platform AtomicFile implementations log a failed rename
+            // instead of throwing. Verify committed bytes before transport
+            // emits the TCP ACK: otherwise a power/storage error could lose
+            // a message permanently.
+            if (!target.isFile() || target.length() != bytes.length ||
+                    !matchesCommittedBytes(atomic, bytes))
+                throw new IOException("Inbound atomic commit could not be verified");
             return id;
+        }
+    }
+
+    private static boolean matchesCommittedBytes(AtomicFile atomic, byte[] bytes) {
+        try (FileInputStream in = atomic.openRead()) {
+            byte[] buffer = new byte[8192];
+            int offset = 0;
+            while (offset < bytes.length) {
+                int n = in.read(buffer, 0, Math.min(buffer.length, bytes.length - offset));
+                if (n <= 0) return false;
+                for (int i = 0; i < n; i++) {
+                    if (buffer[i] != bytes[offset + i]) return false;
+                }
+                offset += n;
+            }
+            return in.read() == -1;
+        } catch (IOException failure) {
+            Log.e(TAG, "Unable to verify inbound atomic commit", failure);
+            return false;
         }
     }
 
@@ -155,7 +210,7 @@ public final class NativeInboundQueue {
                     continue;
                 }
                 byte[] bytes = new byte[(int) length];
-                try (FileInputStream in = new FileInputStream(file)) {
+                try (FileInputStream in = new AtomicFile(file).openRead()) {
                     int pos = 0;
                     while (pos < bytes.length) {
                         int n = in.read(bytes, pos, bytes.length - pos);
@@ -212,7 +267,13 @@ public final class NativeInboundQueue {
         if (!safeId(id)) throw new IOException("Invalid inbound queue ID");
         synchronized (LOCK) {
             File target = new File(folder(context), id + ".frame");
-            return !target.exists() || target.delete();
+            AtomicFile atomic = new AtomicFile(target);
+            // Deleting only the base would allow an old legacy .bak to
+            // resurrect the acknowledged frame on the next replay.
+            atomic.delete();
+            return !target.exists() &&
+                    !new File(target.getPath() + ".bak").exists() &&
+                    !new File(target.getPath() + ".new").exists();
         }
     }
 }
