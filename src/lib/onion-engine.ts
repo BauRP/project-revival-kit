@@ -41,7 +41,7 @@ import {
   type StoredMessage,
 } from "./dexie-db";
 import { dbGetStrict, dbPutStrict } from "./storage";
-import { isLegacyFriendEvent } from "./inbound-durability";
+import { isLegacyFriendEvent, isPermanentlyInvalidInboundFrame } from "./inbound-durability";
 import { InboundFrameSingleFlight } from "./inbound-frame-single-flight";
 import { validateIncomingTextMessage } from "./inbound-message";
 import { chunkDigest, matchesChunkDigest } from "./chunk-integrity";
@@ -634,9 +634,17 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
         typeof inner.body !== "object" || Array.isArray(inner.body))
       throw new Error("Invalid decrypted frame body");
   } catch (e) {
-    console.warn("[onion] rejected inbound frame:", e instanceof Error ? e.message : e);
-    await dxdb.inbox_raw.delete(rawId);
-    return;
+    if (isPermanentlyInvalidInboundFrame(e)) {
+      console.warn("[onion] permanently rejected authenticated frame structure");
+      await dxdb.inbox_raw.delete(rawId);
+      return;
+    }
+    // An unavailable crypto worker, temporarily unreadable identity, or a
+    // JavaScript runtime error must NEVER erase a frame native Tor already
+    // acknowledged as durably received. Rethrow so native replay retains it.
+    console.warn("[onion] retaining inbound frame after transient open failure",
+      e instanceof Error ? e.message : e);
+    throw e;
   }
   const from = outer.from;
   markReachable(from, true);

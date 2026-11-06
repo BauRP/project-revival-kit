@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isLegacyFriendEvent } from "../inbound-durability";
+import { isLegacyFriendEvent, isPermanentlyInvalidInboundFrame } from "../inbound-durability";
 
 describe("incoming Tor cross-database durability", () => {
   it("retains friend events until the separate database transaction completes", () => {
@@ -10,5 +10,30 @@ describe("incoming Tor cross-database durability", () => {
     for (const kind of ["text_message","message_lifecycle","message_reaction","message_status"]) {
       expect(isLegacyFriendEvent(kind)).toBe(false);
     }
+  });
+});
+
+describe("encrypted inbound recovery after transient crypto failures", () => {
+  it("rejects only verified permanent authentication/frame errors", () => {
+    for (const msg of [
+      "open: unsupported frame version",
+      "open: frame not addressed to this device",
+      "open: invalid sender onion address",
+      "open: signature verification failed",
+      "open: decryption failed",
+      "Invalid decrypted frame",
+      "Invalid decrypted frame body",
+    ]) expect(isPermanentlyInvalidInboundFrame(new Error(msg))).toBe(true);
+  });
+  it("retains ciphertext for retry if worker, DB, or identity access fails", () => {
+    for (const failure of [
+      new Error("crypto worker crashed"),
+      new Error("Keystore temporarily unavailable"),
+      new Error("IndexedDB quota exceeded"),
+      new Error("Crypto worker timed out"),
+      new Error("Unexpected token"),
+      new Error("unknown error"),
+      null, "open: decryption failed",
+    ]) expect(isPermanentlyInvalidInboundFrame(failure)).toBe(false);
   });
 });
