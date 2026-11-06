@@ -309,6 +309,13 @@
 - **PERF-OUTBOX-01 / FIXED-CI build-302/303:** из очереди перестали хранить одновременно весь sealed ciphertext. В build-303 выборка использует индексы peer/nextAttemptAt и сортировку метаданных, порядок createdAt сохранён. Не утверждать, что Android background sender независимо от WebView уже реализован.
 - **CI:** 301 https://github.com/BauRP/project-revival-kit/actions/runs/42146398182 ; 302 https://github.com/BauRP/project-revival-kit/actions/runs/42146576834 ; 303 https://github.com/BauRP/project-revival-kit/actions/runs/42146708932 ; все success. Emulator и two-phone Tor тестов в этом запуске не было.
 
+### 2026-11-06 — входящий Tor replay: устранение гонки (проверка в ожидании CI)
+
+- **Новый кодовый пакет:** `src/lib/inbound-frame-single-flight.ts` + `src/lib/__tests__/inbound-frame-single-flight.test.ts` и `src/lib/onion-engine.ts`: один подписанный кадр обрабатывается единожды при параллельном `acceptRawFrame` и `recoverInbox`, но ошибки IndexedDB допускают повторную попытку без потери записи/ACK. Независимые отправители не блокируют друг друга.
+- `src/lib/inbound-frame-policy.ts` и тесты: проверка буквального и ограниченного id/type до базы, дедупликация ACK ID, отбрасывание control characters. Не менять wire format и правило ACK только после durable commit.
+- **Проверки на этапе commit:** изменения сохраняются перед запуском GitHub Actions; наличие кода/тестов не означает success. Подтверждение, ссылка на CI и прирост будут внесены после окончания workflow. До подтверждения **готовность 37,0%, прирост 0,0**.
+- P0 настоящего шифрования Dexie, PQ и офлайн STT **не затрагивали**. Следующий независимый этап: fault-injection native очереди, hardening повреждённых signed frames, затем безопасное storage encryption.
+
 ## 7. Журнал фактической разработки и GitHub CI
 
 **Все указанные SHA — коммиты в рабочей ветке.** Ниже приоритет недавним пакетам, полезным для следующего запуска, без переписывания переписки.

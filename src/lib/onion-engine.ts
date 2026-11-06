@@ -42,6 +42,7 @@ import {
 } from "./dexie-db";
 import { dbGetStrict, dbPutStrict } from "./storage";
 import { isLegacyFriendEvent } from "./inbound-durability";
+import { InboundFrameSingleFlight } from "./inbound-frame-single-flight";
 import { validateIncomingTextMessage } from "./inbound-message";
 import { chunkDigest, matchesChunkDigest } from "./chunk-integrity";
 import { inspectAttachmentBlob } from "./security-scan";
@@ -107,6 +108,7 @@ const connectionListeners = new Set<(peer: string, connected: boolean) => void>(
 const statusListeners = new Set<(status: TorStatus) => void>();
 const deliveryListeners = new Set<(messageId: string, state: DeliveryState) => void>();
 const recentDeliveryEvents = new Map<string, DeliveryEvent>();
+const inboundFrameFlights = new InboundFrameSingleFlight();
 const MAX_DELIVERY_EVENT_HISTORY = 4096;
 function notifyDelivery(messageId: string, state: DeliveryEvent): void {
   const prior = recentDeliveryEvents.get(messageId);
@@ -584,10 +586,14 @@ async function acceptRawFrame(raw: string): Promise<void> {
     return;
   }
   if (!isPlausibleSealedFrame(outer)) return;
-  // Persist with full signature to prevent truncated-ID collisions.
+  // Persist with full signature to prevent truncated-ID collisions. A live
+  // notification and native replay may attempt to save/process the same frame
+  // simultaneously. Coalesce the complete durable operation by signed ID.
   const id = `${outer.from}:${outer.sig}`;
-  await dxdb.inbox_raw.put({ id, raw, receivedAt: Date.now() });
-  await processInboxRecord(id, raw);
+  await inboundFrameFlights.run(id, async () => {
+    await dxdb.inbox_raw.put({ id, raw, receivedAt: Date.now() });
+    await processInboxRecord(id, raw);
+  });
 }
 
 /** Replay every unprocessed inbound frame (crash / power-loss recovery). */
@@ -600,8 +606,16 @@ export async function recoverInbox(): Promise<number> {
   for (const id of ids) {
     const row = await dxdb.inbox_raw.get(id);
     if (!row) continue; // ACK/replay may have removed it concurrently.
-    try { await processInboxRecord(row.id, row.raw); }
-    catch (error) { console.warn("[onion] retaining failed inbox row for retry", error); }
+    try {
+      await inboundFrameFlights.run(row.id, async () => {
+        // The live path may have processed and removed this row while it was
+        // waiting on the same frame lock. Never process a deleted stale copy.
+        const current = await dxdb.inbox_raw.get(row.id);
+        if (current) await processInboxRecord(current.id, current.raw);
+      });
+    } catch (error) {
+      console.warn("[onion] retaining failed inbox row for retry", error);
+    }
   }
   return ids.length;
 }
