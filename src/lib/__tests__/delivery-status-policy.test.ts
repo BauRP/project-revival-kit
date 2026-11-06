@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advanceDeliveryStatus, type DeliveryStatus } from "../delivery-status-policy";
+import { advanceDeliveryStatus, shouldEmitDeliveryEvent, type DeliveryStatus } from "../delivery-status-policy";
 
 describe("monotonic authenticated Tor delivery status", () => {
   const states: DeliveryStatus[] = ["pending","sent","delivered","read"];
@@ -16,5 +16,16 @@ describe("monotonic authenticated Tor delivery status", () => {
     expect(advanceDeliveryStatus("delivered","sent")).toBe("delivered");
     expect(advanceDeliveryStatus("read","delivered")).toBe("read");
     expect(advanceDeliveryStatus("sent","delivered")).toBe("delivered");
+  });
+});
+
+describe("Tor UI events can never regress after a remote ACK", () => {
+  it("allows sent then delivered, but not delivered then a late sent", () => {
+    expect(shouldEmitDeliveryEvent(undefined, "sent")).toBe(true);
+    expect(shouldEmitDeliveryEvent("sent", "delivered")).toBe(true);
+    expect(shouldEmitDeliveryEvent("delivered", "sent")).toBe(false);
+    expect(shouldEmitDeliveryEvent("delivered", "delivered")).toBe(false);
+    expect(shouldEmitDeliveryEvent("sent", "sent")).toBe(false);
+    expect(shouldEmitDeliveryEvent(undefined, "delivered")).toBe(true);
   });
 });

@@ -61,7 +61,7 @@ import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, find
 import { duplicateMessageMatches } from "./inbound-identity";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, sameOutgoingDispatchRoute, type DispatchCommitResult } from "./dispatch-commit";
-import { advanceDeliveryStatus } from "./delivery-status-policy";
+import { advanceDeliveryStatus, shouldEmitDeliveryEvent, type DeliveryEvent } from "./delivery-status-policy";
 import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp, canMutateDeletedMessage, isDuplicateRemoteDeletion } from "./lifecycle-auth";
 
 export const ONION_SERVICE_PORT = 8443;
@@ -106,6 +106,19 @@ const incomingDispatchListeners = new Set<(payload: Record<string, unknown>) => 
 const connectionListeners = new Set<(peer: string, connected: boolean) => void>();
 const statusListeners = new Set<(status: TorStatus) => void>();
 const deliveryListeners = new Set<(messageId: string, state: DeliveryState) => void>();
+const recentDeliveryEvents = new Map<string, DeliveryEvent>();
+const MAX_DELIVERY_EVENT_HISTORY = 4096;
+function notifyDelivery(messageId: string, state: DeliveryEvent): void {
+  const prior = recentDeliveryEvents.get(messageId);
+  if (!shouldEmitDeliveryEvent(prior, state)) return;
+  recentDeliveryEvents.delete(messageId);
+  recentDeliveryEvents.set(messageId, state);
+  if (recentDeliveryEvents.size > MAX_DELIVERY_EVENT_HISTORY) {
+    const oldest = recentDeliveryEvents.keys().next().value;
+    if (oldest) recentDeliveryEvents.delete(oldest);
+  }
+  safeEach(deliveryListeners, messageId, state);
+}
 
 const reachability = new Map<string, number>();
 interface BlobRequest {
@@ -493,7 +506,7 @@ async function sendOutboxOnce(id: string): Promise<boolean> {
         changedToSent = true;
       }
     });
-    if (changedToSent) safeEach(deliveryListeners, id, "sent");
+    if (changedToSent) notifyDelivery(id, "sent");
   }
   return ok;
 }
@@ -628,7 +641,7 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
         }
         await dxdb.inbox_raw.delete(rawId);
       });
-      confirmed.forEach((mid) => safeEach(deliveryListeners, mid, "delivered"));
+      confirmed.forEach((mid) => notifyDelivery(mid, "delivered"));
       return;
     }
     case "hello":

@@ -11,3 +11,13 @@ export function advanceDeliveryStatus(
 ): DeliveryStatus {
   return ORDER[incoming] > ORDER[current] ? incoming : current;
 }
+
+/** In-memory UI events are monotonic too: a late TCP "sent" callback may
+ * finish after the already delivered ACK. Keep the stored state authoritative.
+ */
+export type DeliveryEvent = "sent" | "delivered";
+export function shouldEmitDeliveryEvent(
+  previous: DeliveryEvent | undefined, incoming: DeliveryEvent,
+): boolean {
+  return previous !== incoming && previous !== "delivered";
+}
