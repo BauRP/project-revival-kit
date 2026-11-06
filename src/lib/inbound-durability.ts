@@ -16,5 +16,6 @@ export function isPermanentlyInvalidInboundFrame(error: unknown): boolean {
     error.message === "open: frame not addressed to this device" ||
     error.message === "open: invalid sender onion address" ||
     error.message === "open: signature verification failed" ||
-    error.message === "open: decryption failed";
+    error.message === "open: decryption failed" ||
+    error.message === "open: malformed decrypted JSON";
 }

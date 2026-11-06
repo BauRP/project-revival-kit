@@ -42,6 +42,10 @@ describe("durable inbound frame structural validation", () => {
     expect(isPlausibleSealedFrame(good)).toBe(true);
     expect(isPlausibleSealedFrame({...good, from:"invalid.onion"})).toBe(false);
     expect(isPlausibleSealedFrame({...good, sig:"!"})).toBe(false);
+    expect(isPlausibleSealedFrame({...good, epk:"A".repeat(40)})).toBe(false);
+    expect(isPlausibleSealedFrame({...good, n:"A".repeat(28)})).toBe(false);
+    expect(isPlausibleSealedFrame({...good, sig:"A".repeat(84)})).toBe(false);
+    expect(isPlausibleSealedFrame({...good, c:"AAAA"})).toBe(false);
     expect(isPlausibleSealedFrame({...good, c:"A".repeat(12_000_000)})).toBe(false);
     expect(isPlausibleSealedFrame(null)).toBe(false);
   });

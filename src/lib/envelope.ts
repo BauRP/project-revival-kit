@@ -36,7 +36,13 @@ export function isPlausibleSealedFrame(value: unknown): value is SealedFrame {
     typeof f.to === "string" &&
     publicKeyFromOnion(f.from) !== null && publicKeyFromOnion(f.to) !== null &&
     Number.isSafeInteger(f.ts) && (f.ts as number) > 0 &&
-    b64(f.epk, 44) && b64(f.n, 32) && b64(f.c, 11_200_000) && b64(f.sig, 88);
+    // NaCl fields have fixed byte lengths: 32-byte ephemeral X25519 key,
+    // 24-byte nonce and 64-byte Ed25519 signature. Reject malformed
+    // base64 before invoking expensive worker crypto or storing durable frames.
+    b64(f.epk, 44) && (f.epk as string).length === 44 &&
+    b64(f.n, 32) && (f.n as string).length === 32 &&
+    b64(f.c, 11_200_000) && (f.c as string).length >= 24 &&
+    b64(f.sig, 88) && (f.sig as string).length === 88;
 }
 
 function signedBytes(f: Omit<SealedFrame, "sig">): Uint8Array {
@@ -91,5 +97,12 @@ export function openFrame(
     selfX,
   );
   if (!opened) throw new Error("open: decryption failed");
-  return JSON.parse(encodeUTF8(opened));
+  // Authentic sender ciphertext can still decode to malformed application
+  // JSON. Label this as permanently invalid, rather than retrying a poison
+  // frame forever after every WebView restart.
+  try {
+    return JSON.parse(encodeUTF8(opened));
+  } catch {
+    throw new Error("open: malformed decrypted JSON");
+  }
 }

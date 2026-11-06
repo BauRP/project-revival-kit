@@ -21,6 +21,7 @@ describe("encrypted inbound recovery after transient crypto failures", () => {
       "open: invalid sender onion address",
       "open: signature verification failed",
       "open: decryption failed",
+      "open: malformed decrypted JSON",
       "Invalid decrypted frame",
       "Invalid decrypted frame body",
     ]) expect(isPermanentlyInvalidInboundFrame(new Error(msg))).toBe(true);
