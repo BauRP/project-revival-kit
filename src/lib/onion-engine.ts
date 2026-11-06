@@ -512,26 +512,34 @@ async function sendOutboxOnce(id: string): Promise<boolean> {
 }
 
 async function drainOutboxFor(peer: string): Promise<void> {
-  // Preserve send creation order without allocating every sealed frame.
-  const ids = await dxdb.outbox.orderBy("createdAt")
-    .filter((row) => row.peer === peer).primaryKeys();
-  for (const id of ids) {
-    if (!(await attemptOutbox(id))) return;
+  // Query the peer index (not the entire DB). Keep only small metadata for
+  // ordering, not whole sealed ciphertext frames in a retained array.
+  const queue: Array<{ id: string; createdAt: number }> = [];
+  await dxdb.outbox.where("peer").equals(peer).each((row) => {
+    queue.push({ id: row.id, createdAt: row.createdAt });
+  });
+  queue.sort((a, b) => a.createdAt - b.createdAt);
+  for (const item of queue) {
+    if (!(await attemptOutbox(item.id))) return;
   }
 }
 
 export async function drainOutbox(): Promise<void> {
   if (!isTorNativeAvailable()) return;
   const now = Date.now();
-  // This primary-key list is small compared with ciphertext. The previous
-  // sortBy materialized every multi-megabyte sealed frame in WebView memory.
-  const ids = await dxdb.outbox.orderBy("createdAt")
-    .filter((row) => row.nextAttemptAt <= now).primaryKeys();
+  // Restrict the indexed scan to due events, while preserving original
+  // creation ordering and holding IDs/timestamps instead of sealed frames.
+  const due: Array<{ id: string; peer: string; createdAt: number }> = [];
+  await dxdb.outbox.where("nextAttemptAt").belowOrEqual(now).each((row) => {
+    due.push({ id: row.id, peer: row.peer, createdAt: row.createdAt });
+  });
+  due.sort((a, b) => a.createdAt - b.createdAt);
   const failedPeers = new Set<string>();
-  for (const id of ids) {
-    const record = await dxdb.outbox.get(id);
-    if (!record || failedPeers.has(record.peer)) continue;
-    if (!(await attemptOutbox(id))) failedPeers.add(record.peer);
+  for (const item of due) {
+    if (failedPeers.has(item.peer)) continue;
+    const record = await dxdb.outbox.get(item.id);
+    if (!record || record.peer !== item.peer) continue;
+    if (!(await attemptOutbox(item.id))) failedPeers.add(item.peer);
   }
 }
 
