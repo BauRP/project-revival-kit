@@ -53,15 +53,15 @@ export async function importLocalRecordKey(rawKey: Uint8Array): Promise<CryptoKe
   if (!(rawKey instanceof Uint8Array) || rawKey.byteLength !== 32)
     throw new Error("Local storage AES key must be exactly 32 bytes");
   if (!globalThis.crypto?.subtle) throw new Error("Secure on-device WebCrypto unavailable");
-  return crypto.subtle.importKey("raw", rawKey, { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
+  return crypto.subtle.importKey("raw", new Uint8Array(rawKey), { name: "AES-GCM" }, false, ["encrypt", "decrypt"]);
 }
 
 export async function sealLocalRecord(
   key: CryptoKey, table: string, recordId: string, plaintext: string,
 ): Promise<SealedLocalRecord> {
-  const aad = binding(table, recordId);
+  const aad = new Uint8Array(binding(table, recordId));
   if (typeof plaintext !== "string") throw new Error("Invalid plaintext");
-  const bytes = encoder.encode(plaintext);
+  const bytes = new Uint8Array(encoder.encode(plaintext));
   if (bytes.byteLength > MAX_PLAINTEXT_BYTES) throw new Error("Local record too large");
   if (!globalThis.crypto?.subtle) throw new Error("Secure on-device WebCrypto unavailable");
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -78,11 +78,11 @@ export async function sealLocalRecord(
 export async function openLocalRecord(
   key: CryptoKey, table: string, recordId: string, sealed: SealedLocalRecord,
 ): Promise<string> {
-  const aad = binding(table, recordId);
+  const aad = new Uint8Array(binding(table, recordId));
   if (!sealed || sealed.version !== VERSION || sealed.algorithm !== "AES-256-GCM")
     throw new Error("Unsupported encrypted local record version");
-  const iv = decode64(sealed.nonce, 16);
-  const ciphertext = decode64(sealed.ciphertext, MAX_CIPHERTEXT_B64 + 4);
+  const iv = new Uint8Array(decode64(sealed.nonce, 16));
+  const ciphertext = new Uint8Array(decode64(sealed.ciphertext, MAX_CIPHERTEXT_B64 + 4));
   if (iv.byteLength !== 12 || ciphertext.byteLength < 16 ||
       ciphertext.byteLength > MAX_PLAINTEXT_BYTES + 16)
     throw new Error("Invalid encrypted local record lengths");
