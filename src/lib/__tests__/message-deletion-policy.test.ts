@@ -163,3 +163,31 @@ describe("atomic Tor chunk storage authorization", () => {
     expect(mayPersistIncomingChunk(undefined,undefined)).toBe(true);
   });
 });
+
+import { hasAuthorizedAttachmentParent } from "../message-deletion-policy";
+describe("incoming shared attachments after independent message deletion", () => {
+  const parents = [{ id: "deleted" }, { id: "alive" }, { id: "not-checked" }];
+  it("accepts a second live signed parent without reviving the deleted one", async () => {
+    const checked: string[] = [];
+    const ok = await hasAuthorizedAttachmentParent(parents, async (parent) => {
+      checked.push(parent.id);
+      return mayPersistIncomingChunk(
+        parent.id === "deleted" ? { deleted: true } : undefined,
+        undefined,
+      );
+    });
+    expect(ok).toBe(true);
+    expect(checked).toEqual(["deleted", "alive"]);
+  });
+  it("rejects empty, all-deleted, and globally consumed media", async () => {
+    expect(await hasAuthorizedAttachmentParent([], async () => true)).toBe(false);
+    expect(await hasAuthorizedAttachmentParent(parents, async () => false)).toBe(false);
+    expect(await hasAuthorizedAttachmentParent(parents, async () =>
+      mayPersistIncomingChunk(undefined, { consumed: true }))).toBe(false);
+  });
+  it("propagates storage failures instead of treating unreadable tombstones as live", async () => {
+    await expect(hasAuthorizedAttachmentParent(parents, async () => {
+      throw new Error("IndexedDB transaction failed");
+    })).rejects.toThrow("IndexedDB transaction failed");
+  });
+});

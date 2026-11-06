@@ -165,6 +165,20 @@ export function matchesIncomingChunkManifest(
     Math.max(1, Math.ceil(media.size / chunkBytes)) === totalChunks;
 }
 
+/** A shared attachment may have multiple independently tombstoned parent
+ * messages. Choose any authorized, live signed reference; one deleted parent
+ * must not block another. Never authorize an empty candidate set.
+ */
+export async function hasAuthorizedAttachmentParent<T>(
+  matchingParents: readonly T[],
+  isAuthorized: (parent: T) => Promise<boolean>,
+): Promise<boolean> {
+  for (const parent of matchingParents) {
+    if (await isAuthorized(parent)) return true;
+  }
+  return false;
+}
+
 /** A local deletion/one-time consumption is terminal even for chunk writes
  * already queued by the Tor transport before the user pressed Delete/View.
  */

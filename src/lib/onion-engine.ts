@@ -59,7 +59,7 @@ import { matchesPublishedOnion } from "./onion-publication-policy";
 import { mayQueueOriginalText } from "./outbox-delivery-policy";
 import { shouldApplyRemoteReaction } from "./reaction-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage, matchesIncomingChunkManifest, mayPersistIncomingChunk } from "./message-deletion-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage, matchesIncomingChunkManifest, mayPersistIncomingChunk, hasAuthorizedAttachmentParent } from "./message-deletion-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, sameOutgoingDispatchRoute, type DispatchCommitResult } from "./dispatch-commit";
@@ -1147,17 +1147,20 @@ async function persistBlobChunk(from: string, body: Record<string, unknown>): Pr
   const persisted = await dxdb.transaction("rw", [
     dxdb.messages, dxdb.lifecycle, dxdb.partial_chunks,
   ], async () => {
-    const matched = await dxdb.messages.where("from").equals(from)
+    // A fileId may be referenced by multiple authenticated messages.
+    // The first matching parent might be locally deleted even while another
+    // reference is live. Materialize ONLY metadata-matching parents, and
+    // authorize against tombstones in this same atomic write transaction.
+    const matching = await dxdb.messages.where("from").equals(from)
       .filter((msg) => matchesIncomingChunkManifest(
         msg, from, recipient, fileId, entry.name, entry.mimeType,
         chunks, BLOB_CHUNK_BYTES,
-      )).first();
-    if (!matched) return false;
-    const [deleted, consumed] = await Promise.all([
-      dxdb.lifecycle.get(deletedMessageKey(matched.id)),
-      dxdb.lifecycle.get(consumedMediaKey(fileId)),
-    ]);
-    if (!mayPersistIncomingChunk(deleted?.data, consumed?.data)) return false;
+      )).toArray();
+    const consumed = await dxdb.lifecycle.get(consumedMediaKey(fileId));
+    if (!await hasAuthorizedAttachmentParent(matching, async (parent) => {
+      const deleted = await dxdb.lifecycle.get(deletedMessageKey(parent.id));
+      return mayPersistIncomingChunk(deleted?.data, consumed?.data);
+    })) return false;
     const current = await dxdb.partial_chunks.get(key);
     if (current && (current.from !== from || current.name !== entry.name ||
         current.mimeType !== entry.mimeType ||
