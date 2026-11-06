@@ -6,9 +6,12 @@ describe("Tor media chunks are serialized per file", () => {
     const queue = new KeyedSerialQueue();
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
+    let signalStarted!: () => void;
+    const started = new Promise<void>((resolve) => { signalStarted = resolve; });
     const events: string[] = [];
     const first = queue.run("same-file", async () => {
       events.push("first-start");
+      signalStarted();
       await gate;
       events.push("first-end");
     });
@@ -16,7 +19,9 @@ describe("Tor media chunks are serialized per file", () => {
       events.push("second-start");
       events.push("second-end");
     });
-    await Promise.resolve();
+    // Queue scheduling takes more than one microtask. Wait for the actual
+    // start signal instead of relying on a fragile fixed microtask count.
+    await started;
     expect(events).toEqual(["first-start"]);
     release();
     await Promise.all([first, second]);
