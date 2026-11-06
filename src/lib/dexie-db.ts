@@ -201,19 +201,24 @@ export async function putReceivedBlob(
       // Stop at the first metadata-matching signed parent message rather
       // than materializing an entire peer's chat (including long text and
       // media objects) for each received attachment.
-      const parent = await dxdb.messages.where("from").equals(sender)
+      const parents = await dxdb.messages.where("from").equals(sender)
         .filter((msg) => matchesReceivedAttachmentMetadata(
           msg, sender, recipient, fileId, name, mimeType, data.size,
-        )).first();
-      if (!parent) return false;
-      if (isDeletedMessageRecord((await dxdb.lifecycle.get(deletedMessageKey(parent.id)))?.data))
-        return false;
-      await dxdb.blobs.put({
-        fileId, mimeType: mimeType || data.type || "application/octet-stream",
-        name: name || `file-${fileId}`,
-        size: data.size, data, storedAt: Date.now(),
-      });
-      return true;
+        )).toArray();
+      // Multiple messages can reference the same attachment. An earlier
+      // locally deleted reference must not prevent the live reference from
+      // accepting its signed media. Only matching parents are materialized.
+      for (const parent of parents) {
+        if (isDeletedMessageRecord((await dxdb.lifecycle.get(deletedMessageKey(parent.id)))?.data))
+          continue;
+        await dxdb.blobs.put({
+          fileId, mimeType: mimeType || data.type || "application/octet-stream",
+          name: name || `file-${fileId}`,
+          size: data.size, data, storedAt: Date.now(),
+        });
+        return true;
+      }
+      return false;
     });
   if (saved) void enforceMediaCacheLimit().catch(() => undefined);
   return saved;
