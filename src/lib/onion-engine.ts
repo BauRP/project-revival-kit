@@ -48,7 +48,7 @@ import { validateIncomingTextMessage } from "./inbound-message";
 import { chunkDigest, matchesChunkDigest } from "./chunk-integrity";
 import { inspectAttachmentBlob } from "./security-scan";
 import { orderedCompleteChunkSet } from "./media-chunks";
-import { sealIncomingChunk, readIncomingChunk, persistedChunkPlainSize } from "./partial-chunk-vault";
+import { sealIncomingChunk, readIncomingChunk, persistedChunkPlainSize, upgradeVerifiedLegacyChunk } from "./partial-chunk-vault";
 import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
 import { validateDispatchBody, boundedAcknowledgements, boundedDispatchString } from "./inbound-frame-policy";
@@ -1220,6 +1220,12 @@ async function assemblePersistedBlob(fileId: string, from: string): Promise<Asse
   for (const row of ordered) {
     const bytes = await readIncomingChunk(row);
     if (!matchesChunkDigest(bytes, row.digest)) return "incomplete";
+    // Upgrade legacy plaintext only after verification. Replacement is
+    // atomic and cannot resurrect a deleted or consumed chunk.
+    if (row.encrypted === undefined) {
+      try { await upgradeVerifiedLegacyChunk(row, bytes); }
+      catch (error) { console.warn("[onion] legacy chunk upgrade deferred", error); }
+    }
     parts.push(new Blob([new Uint8Array(bytes)]));
   }
   const first = ordered[0];
@@ -1268,7 +1274,13 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
           const received = new Set<number>();
           for (const row of same) {
             const bytes = await readIncomingChunk(row);
-            if (matchesChunkDigest(bytes, row.digest)) received.add(row.index);
+            if (matchesChunkDigest(bytes, row.digest)) {
+              received.add(row.index);
+              if (row.encrypted === undefined) {
+                try { await upgradeVerifiedLegacyChunk(row, bytes); }
+                catch (error) { console.warn("[onion] legacy chunk upgrade deferred", error); }
+              }
+            }
           }
           partial = { fileId, from: source, name: first.name,
             mimeType: first.mimeType, totalChunks: first.totalChunks,

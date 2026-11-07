@@ -10,6 +10,8 @@ import { dxdb, type PartialBlobChunkRecord } from "./dexie-db";
 import { openLocalRecord, sealLocalRecord, type SealedLocalRecord } from "./local-record-crypto";
 import { acquirePersistedLocalRecordKey } from "./local-record-key-store";
 import { platform } from "./platform";
+import { matchesChunkDigest } from "./chunk-integrity";
+import { mayUpgradeLegacyChunk } from "./legacy-chunk-migration";
 
 export const MAX_DECRYPTED_CHUNK_BYTES = 48 * 1024;
 const ENCRYPTED_CHUNK_MIME = "application/x-trivo-encrypted-chunk";
@@ -133,4 +135,30 @@ export async function readIncomingChunk(
 ): Promise<Uint8Array> {
   const key = row.encrypted === 1 ? await obtainAndroidChunkKey() : undefined;
   return openPartialChunkBytes(row, key);
+}
+
+/**
+ * Best-effort migration for legacy plaintext in-progress downloads. Verify
+ * integrity before encrypting, and atomically compare the original snapshot
+ * before replacing. On any Keystore/storage error retain the original bytes,
+ * allowing the next app run to retry without losing the transfer.
+ */
+export async function upgradeVerifiedLegacyChunk(
+  row: PartialBlobChunkRecord,
+  alreadyReadBytes: Uint8Array,
+): Promise<boolean> {
+  if (!shouldEncryptPartialChunks() || row.encrypted !== undefined ||
+      row.data.type === ENCRYPTED_CHUNK_MIME ||
+      !matchesChunkDigest(alreadyReadBytes, row.digest))
+    return false;
+  const encrypted = await sealIncomingChunk(row.key, alreadyReadBytes);
+  if (encrypted.encrypted !== 1) return false;
+  return dxdb.transaction("rw", dxdb.partial_chunks, async () => {
+    const latest = await dxdb.partial_chunks.get(row.key);
+    if (!mayUpgradeLegacyChunk(row, latest)) return false;
+    await dxdb.partial_chunks.update(row.key, {
+      ...encrypted, updatedAt: Date.now(),
+    });
+    return true;
+  });
 }
