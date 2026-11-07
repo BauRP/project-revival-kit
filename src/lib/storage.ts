@@ -25,8 +25,14 @@ function openDB(): Promise<IDBDatabase> {
         db.createObjectStore("contacts");
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      // A stale tab must release old DB connections when a later APK needs
+      // a schema version upgrade. Otherwise IndexedDB.open can hang forever.
+      req.result.onversionchange = () => req.result.close();
+      resolve(req.result);
+    };
+    req.onerror = () => reject(req.error || new Error("Cannot open local database"));
+    req.onblocked = () => reject(new Error("Local database is blocked by another open tab"));
   });
 }
 
@@ -67,39 +73,47 @@ export async function dbPutStrict(store: string, key: string, value: unknown): P
   });
 }
 
+/**
+ * Non-critical UI callers historically treated quota/abort errors as a
+ * successful save or a missing key. This is unsafe for identity migration,
+ * private notes and contacts: all callers now observe transaction failure.
+ * The strict operations close each IDB connection on commit or abort.
+ */
 export async function dbGet<T>(store: string, key: string): Promise<T | undefined> {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(store, "readonly");
-      const req = tx.objectStore(store).get(key);
-      req.onsuccess = () => resolve(req.result as T | undefined);
-      req.onerror = () => reject(req.error);
-    });
-  } catch (e) {
-    console.warn("[Storage] dbGet error:", e);
-    return undefined;
-  }
+  return dbGetStrict<T>(store, key);
 }
 
 export async function dbPut(store: string, key: string, value: unknown): Promise<void> {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(store, "readwrite");
-      const objectStore = tx.objectStore(store);
-      // If store has inline keyPath, don't pass explicit key
-      if (objectStore.keyPath) {
-        objectStore.put(value);
-      } else {
-        objectStore.put(value, key);
-      }
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-  } catch (e) {
-    console.warn("[Storage] dbPut error:", e);
-  }
+  return dbPutStrict(store, key, value);
+}
+
+/**
+ * Reserve a protected setting exactly once. Never allow concurrent startup
+ * instances to replace a previous Keystore-wrapped data encryption key.
+ * ConstraintError is propagated; the caller must re-read the winning key.
+ */
+export async function dbAddStrict(store: string, key: string, value: unknown): Promise<void> {
+  const db = await openDB();
+  return new Promise<void>((resolve, reject) => {
+    try {
+      const transaction = db.transaction(store, "readwrite");
+      const target = transaction.objectStore(store);
+      if (target.keyPath) target.add(value);
+      else target.add(value, key);
+      transaction.oncomplete = () => { db.close(); resolve(); };
+      transaction.onerror = () => {
+        db.close();
+        reject(transaction.error || new Error("Atomic storage insert failed"));
+      };
+      transaction.onabort = () => {
+        db.close();
+        reject(transaction.error || new Error("Atomic storage insert aborted"));
+      };
+    } catch (error) {
+      db.close();
+      reject(error);
+    }
+  });
 }
 
 /** Count without copying sensitive records into JS memory on identity recovery. */
@@ -159,36 +173,30 @@ export async function dbGetAllStrict<T>(store: string): Promise<T[]> {
 }
 
 export async function dbGetAll<T>(store: string): Promise<T[]> {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(store, "readonly");
-      const req = tx.objectStore(store).getAll();
-      req.onsuccess = () => resolve(req.result as T[]);
-      req.onerror = () => reject(req.error);
-      tx.oncomplete = () => db.close();
-      tx.onabort = () => db.close();
-      tx.onerror = () => db.close();
-    });
-  } catch (e) {
-    console.warn("[Storage] dbGetAll error:", e);
-    return [];
-  }
+  return dbGetAllStrict<T>(store);
 }
 
+/** A deleted key is gone only after IDBTransaction.oncomplete, not at request success. */
 export async function dbDelete(store: string, key: string): Promise<void> {
-  try {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
+  const db = await openDB();
+  return new Promise<void>((resolve, reject) => {
+    try {
       const tx = db.transaction(store, "readwrite");
       tx.objectStore(store).delete(key);
       tx.oncomplete = () => { db.close(); resolve(); };
-      tx.onerror = () => { db.close(); reject(tx.error); };
-      tx.onabort = () => db.close();
-    });
-  } catch (e) {
-    console.warn("[Storage] dbDelete error:", e);
-  }
+      tx.onerror = () => {
+        db.close();
+        reject(tx.error || new Error("IndexedDB deletion failed"));
+      };
+      tx.onabort = () => {
+        db.close();
+        reject(tx.error || new Error("IndexedDB deletion aborted"));
+      };
+    } catch (error) {
+      db.close();
+      reject(error);
+    }
+  });
 }
 
 /** Delete each database after closing active Dexie connections. */
