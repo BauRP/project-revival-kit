@@ -68,6 +68,11 @@ export interface BlobRecord {
   size: number;
   data: Blob;
   storedAt: number;
+  /**
+   * Only verified received-cache files may be evicted. Locally uploaded or
+   * old pre-origin-tag records may be the user's sole surviving copy.
+   */
+  origin?: "local" | "received";
 }
 
 export interface LifecycleRecord {
@@ -179,6 +184,7 @@ export async function putBlob(
       size: data.size,
       data,
       storedAt: Date.now(),
+      origin: "local",
     });
   });
   // Opportunistic cache enforcement (non-blocking, errors swallowed).
@@ -216,6 +222,7 @@ export async function putReceivedBlob(
           fileId, mimeType: mimeType || data.type || "application/octet-stream",
           name: name || `file-${fileId}`,
           size: data.size, data, storedAt: Date.now(),
+          origin: "received",
         });
         return true;
       }
