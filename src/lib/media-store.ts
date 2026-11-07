@@ -4,7 +4,7 @@
 //  over the sealed Tor blob protocol (onion-engine.ts).
 // ============================================================================
 
-import { dxdb, getBlob, putBlob } from "./dexie-db";
+import { dxdb, getBlob, putBlob, discardUnreferencedUpload } from "./dexie-db";
 import { onionRequestBlob } from "./onion-engine";
 import { stripExifMetadata, inspectAttachmentBlob } from "./security-scan";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
@@ -93,7 +93,7 @@ export function uploadFileToTrivo(
     await putBlob(fileId, working, outputName, outputMime);
     if (aborted) {
       // Cancellation during the actual disk commit must not leave an orphan.
-      await dxdb.blobs.delete(fileId);
+      await discardUnreferencedUpload(fileId);
       throw new Error("Upload aborted");
     }
     onProgress?.({ loaded: total, total, percent: 100 });

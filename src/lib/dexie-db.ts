@@ -14,6 +14,7 @@ import { stripSessionMediaUrl } from "./backup-media-policy";
 import { lifecycleRowsForRestore } from "./backup-merge-policy";
 import { assertPortableBackupFits } from "./backup-budget";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, unusedBackupMedia, matchesReceivedAttachmentMetadata } from "./message-deletion-policy";
+import { canEvictUnreferencedMedia } from "./media-cache-policy";
 
 export interface ContactRecord {
   onion: string;
@@ -289,27 +290,56 @@ export async function getTotalBlobBytes(): Promise<number> {
 export async function enforceMediaCacheLimit(
   limitBytes: number = MEDIA_CACHE_LIMIT_BYTES,
 ): Promise<number> {
-  const total = await getTotalBlobBytes();
-  if (total < limitBytes) return 0;
+  if (!Number.isSafeInteger(limitBytes) || limitBytes < 1)
+    throw new Error("Invalid media cache limit");
+  // A message can be attached between checking references and deleting a
+  // previously unreferenced Blob. Both the reference snapshot and the delete
+  // MUST share one IndexedDB transaction to prevent accidental data loss.
+  return dxdb.transaction("rw", [dxdb.messages, dxdb.blobs], async () => {
+    let total = 0;
+    const referenced = new Set<string>();
+    await dxdb.messages.each((message) => {
+      const media = message.media as { fileId?: string } | undefined;
+      if (typeof media?.fileId === "string") referenced.add(media.fileId);
+    });
+    await dxdb.blobs.each((record) => {
+      if (Number.isFinite(record.size) && record.size > 0) total += record.size;
+    });
+    if (total < limitBytes) return 0;
 
-  // Never delete a blob still referenced by a message. The old policy
-  // removed half the user's attachments regardless of whether they were needed.
-  const referenced = new Set<string>();
-  await dxdb.messages.each((message) => {
-    const media = message.media as { fileId?: string } | undefined;
-    if (media?.fileId) referenced.add(media.fileId);
+    const now = Date.now();
+    const victims: string[] = [];
+    let freed = 0;
+    // Don't allocate all media payloads in a separate JS array. A cursor
+    // exposes only one Blob at a time; collect small identifiers for deletion.
+    await dxdb.blobs.orderBy("storedAt").each((record) => {
+      if (total - freed < limitBytes ||
+          !canEvictUnreferencedMedia(record, referenced, now)) return;
+      victims.push(record.fileId);
+      if (Number.isFinite(record.size) && record.size > 0) freed += record.size;
+    });
+    if (victims.length) await dxdb.blobs.bulkDelete(victims);
+    return victims.length;
   });
-  // Cursor iteration avoids allocating a second array of every stored
-  // Blob at once when the cache contains gigabytes of private media.
-  const victims: string[] = [];
-  let freed = 0;
-  await dxdb.blobs.orderBy("storedAt").each((record) => {
-    if (total - freed < limitBytes || referenced.has(record.fileId)) return;
-    victims.push(record.fileId);
-    freed += record.size || 0;
+}
+
+/**
+ * An upload can be cancelled AFTER its durable Blob commit. Another task
+ * could already have attached its fileId to a message. Removing that file
+ * without checking references would corrupt a sent message. Serialize the
+ * cancellation check with all message writes.
+ */
+export async function discardUnreferencedUpload(fileId: string): Promise<boolean> {
+  if (!fileId) throw new Error("Missing uploaded file ID");
+  return dxdb.transaction("rw", [dxdb.messages, dxdb.blobs], async () => {
+    const references = await dxdb.messages.filter((message) => {
+      const media = message.media as { fileId?: unknown } | undefined;
+      return media?.fileId === fileId;
+    }).count();
+    if (references > 0) return false;
+    await dxdb.blobs.delete(fileId);
+    return true;
   });
-  if (victims.length) await dxdb.blobs.bulkDelete(victims);
-  return victims.length;
 }
 
 let cacheMonitorTimer: ReturnType<typeof setInterval> | null = null;
