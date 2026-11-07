@@ -59,7 +59,7 @@ import { MediaSendGate } from "./media-send-gate";
 import { matchesPublishedOnion } from "./onion-publication-policy";
 import { mayQueueOriginalText } from "./outbox-delivery-policy";
 import { shouldApplyRemoteReaction } from "./reaction-policy";
-import { canReactToVisibleMessage } from "./reaction-deletion-policy";
+import { canReactToVisibleMessage, queuedReactionEventIds } from "./reaction-deletion-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage, matchesIncomingChunkManifest, mayPersistIncomingChunk, hasAuthorizedAttachmentParent } from "./message-deletion-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
@@ -788,7 +788,7 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
   }
   await dxdb.transaction("rw", [
     dxdb.messages, dxdb.inbox_raw, dxdb.lifecycle, dxdb.contacts,
-    dxdb.blobs, dxdb.partial_chunks,
+    dxdb.blobs, dxdb.partial_chunks, dxdb.outbox,
   ], async () => {
     if (type === "text_message") {
       const validated = validateIncomingTextMessage(payload);
@@ -961,6 +961,15 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
               await dxdb.partial_chunks.where("fileId").anyOf(orphaned).delete();
             }
           }
+          // A signed global deletion is also terminal for local pending
+          // reactions. Cancel immutable reaction-event outbox IDs while the
+          // same IndexedDB transaction removes their lifecycle records.
+          const reactions = await dxdb.lifecycle.where("messageId").equals(mid)
+            .filter((row) => row.chatKey.startsWith("reaction::")).toArray();
+          const reactionIds = queuedReactionEventIds(reactions);
+          if (reactionIds.length) await dxdb.outbox.bulkDelete(reactionIds);
+          if (reactions.length)
+            await dxdb.lifecycle.bulkDelete(reactions.map((row) => row.key));
           // Prevent late retries and old backups from recreating the deleted
           // message body even when a visible tombstone shell is retained.
           const now = Date.now();

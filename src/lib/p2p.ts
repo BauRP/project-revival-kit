@@ -11,6 +11,7 @@ import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, find
 import { hasExpiredMessage } from "./message-retention";
 import { dxdb, upsertContact, type StoredMessage } from "./dexie-db";
 import { advanceDeliveryStatus } from "./delivery-status-policy";
+import { queuedReactionEventIds } from "./reaction-deletion-policy";
 import { mergeConversationRows } from "./conversation-index-policy";
 import {
   onionEnsureConnection,
@@ -174,10 +175,15 @@ async function eraseLocalMessages(
     await dxdb.messages.bulkDelete(ids);
     // A canceled/expired outgoing dispatch must not be replayed on reconnect.
     await dxdb.outbox.bulkDelete(ids);
-    const toDelete = await dxdb.lifecycle.where("messageId").anyOf(ids)
-      .filter((r) => r.chatKey !== LOCAL_DELETED_CHAT_KEY &&
-        r.chatKey !== "consumed-media").primaryKeys();
-    if (toDelete.length) await dxdb.lifecycle.bulkDelete(toDelete);
+    const lifecycleRows = await dxdb.lifecycle.where("messageId").anyOf(ids)
+      .filter((row) => row.chatKey !== LOCAL_DELETED_CHAT_KEY &&
+        row.chatKey !== "consumed-media").toArray();
+    // Pending reactions are queued under their immutable event IDs, not the
+    // deleted message ID. Cancel those in the SAME delete transaction.
+    const reactionEvents = queuedReactionEventIds(lifecycleRows);
+    if (reactionEvents.length) await dxdb.outbox.bulkDelete(reactionEvents);
+    if (lifecycleRows.length)
+      await dxdb.lifecycle.bulkDelete(lifecycleRows.map((row) => row.key));
     if (orphanedFiles.length) {
       await dxdb.blobs.bulkDelete(orphanedFiles);
       await dxdb.partial_chunks.where("fileId").anyOf(orphanedFiles).delete();
@@ -231,8 +237,7 @@ export async function redactMessageForMe(
     // the user's reaction to a message they deliberately erased.
     const reactions = await dxdb.lifecycle.where("messageId").equals(messageId)
       .filter((row) => row.chatKey.startsWith("reaction::")).toArray();
-    const outboundIds = reactions.map((row) => row.data.outboundEventId)
-      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    const outboundIds = queuedReactionEventIds(reactions);
     if (outboundIds.length) await dxdb.outbox.bulkDelete(outboundIds);
     if (reactions.length) await dxdb.lifecycle.bulkDelete(reactions.map((row) => row.key));
     if (unused.length) {

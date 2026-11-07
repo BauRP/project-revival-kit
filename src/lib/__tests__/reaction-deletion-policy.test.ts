@@ -36,3 +36,25 @@ describe("deleted message cannot regain a remote or locally queued reaction", ()
     expect(Object.prototype.hasOwnProperty.call(filtered,"__proto__")).toBe(false);
   });
 });
+
+import { queuedReactionEventIds } from "../reaction-deletion-policy";
+
+describe("deletion cancels queued reactions under their actual event IDs", () => {
+  it("cancels all immutable dispatch IDs and deduplicates retries", () => {
+    expect(queuedReactionEventIds([
+      {chatKey:"reaction::peer",data:{outboundEventId:"event-one"}},
+      {chatKey:"reaction::peer",data:{outboundEventId:"event-two"}},
+      {chatKey:"reaction::peer",data:{outboundEventId:"event-one"}},
+      {chatKey:"other",data:{outboundEventId:"unrelated"}},
+    ])).toEqual(["event-one","event-two"]);
+  });
+  it("ignores invalid IDs and unrelated lifecycle rows", () => {
+    expect(queuedReactionEventIds([
+      {chatKey:"reaction::peer",data:{outboundEventId:""}},
+      {chatKey:"reaction::peer",data:{outboundEventId:"invalid\n"}},
+      {chatKey:"reaction::peer",data:{outboundEventId:42}},
+      {chatKey:"reaction::peer",data:{outboundEventId:"x".repeat(129)}},
+      {chatKey:"profile::peer",data:{outboundEventId:"not-a-reaction"}},
+    ])).toEqual([]);
+  });
+});

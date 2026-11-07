@@ -32,3 +32,21 @@ export function pruneDeletedReactionMap<T>(
   }
   return safe;
 }
+
+/**
+ * A reaction's queued Tor dispatch has its own event ID, not the message ID.
+ * Deleting only outbox[messageId] leaves the old reaction eligible for replay.
+ * Never accept a malformed or unrelated event ID as a delete target.
+ */
+export function queuedReactionEventIds(
+  rows: readonly { chatKey: string; data: Record<string, unknown> }[],
+): string[] {
+  const ids = new Set<string>();
+  for (const row of rows) {
+    if (!row.chatKey.startsWith("reaction::")) continue;
+    const id = row.data.outboundEventId;
+    if (typeof id === "string" && id.length > 0 && id.length <= 128 &&
+        !/[\u0000-\u001f\u007f]/.test(id)) ids.add(id);
+  }
+  return [...ids];
+}
