@@ -37,3 +37,15 @@ export function lifecycleRowsForRestore<T extends BackupLifecycleRow>(
   return restored.filter((row) => !existingKeys.has(row.key) ||
     isIrreversiblePrivacyMarker(row));
 }
+
+/** Restoration of a deletion must not retain old edit text, reactions or
+ * pending reaction replay metadata from either the current device or backup.
+ * Irreversible tombstones remain authoritative and must be kept.
+ */
+export function lifecycleRowsToPurgeForDeletedMessages<T extends BackupLifecycleRow>(
+  rows: readonly T[],
+  deletedIds: ReadonlySet<string>,
+): T[] {
+  return rows.filter((row) => deletedIds.has(row.messageId) &&
+    row.chatKey !== LOCAL_DELETED_CHAT_KEY && row.chatKey !== "consumed-media");
+}

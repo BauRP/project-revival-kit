@@ -11,7 +11,8 @@ import Dexie, { type Table } from "dexie";
 import { consumedMediaKey, isConsumedMediaRecord, isProtectedByConsumedTombstone, sanitizeRestoredOneTimeMessage } from "./one-time-policy";
 import { validateBackupStructure } from "./backup-validation";
 import { stripSessionMediaUrl } from "./backup-media-policy";
-import { lifecycleRowsForRestore } from "./backup-merge-policy";
+import { lifecycleRowsForRestore, lifecycleRowsToPurgeForDeletedMessages } from "./backup-merge-policy";
+import { queuedReactionEventIds } from "./reaction-deletion-policy";
 import { assertPortableBackupFits } from "./backup-budget";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, unusedBackupMedia, matchesReceivedAttachmentMetadata } from "./message-deletion-policy";
 import { canEvictUnreferencedMedia, isMatchingReceivedCache } from "./media-cache-policy";
@@ -526,7 +527,20 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
         remaining.map((message) => ({ media: message.media })),
       );
       if (existingDeleted.length) await dxdb.messages.bulkDelete(existingDeleted.map((m) => m.id));
-      if (deletedIds.size) await dxdb.outbox.bulkDelete([...deletedIds]);
+      if (deletedIds.size) {
+        await dxdb.outbox.bulkDelete([...deletedIds]);
+        // Backup merge can restore an old "edit" or reaction beside a newer
+        // deletion tombstone. Erase mutable lifecycle plaintext and cancel
+        // queued reaction events in the same all-tables restore transaction.
+        // Otherwise a reconnect may resend a reaction for a deleted message.
+        const lifecycleRows = await dxdb.lifecycle.where("messageId")
+          .anyOf([...deletedIds]).toArray();
+        const stale = lifecycleRowsToPurgeForDeletedMessages(lifecycleRows, deletedIds);
+        const pendingReactionIds = queuedReactionEventIds(stale);
+        if (pendingReactionIds.length)
+          await dxdb.outbox.bulkDelete(pendingReactionIds);
+        if (stale.length) await dxdb.lifecycle.bulkDelete(stale.map((r) => r.key));
+      }
       if (orphaned.length) {
         await dxdb.blobs.bulkDelete(orphaned);
         await dxdb.partial_chunks.where("fileId").anyOf(orphaned).delete();
