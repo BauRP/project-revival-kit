@@ -48,6 +48,7 @@ import { validateIncomingTextMessage } from "./inbound-message";
 import { chunkDigest, matchesChunkDigest } from "./chunk-integrity";
 import { inspectAttachmentBlob } from "./security-scan";
 import { orderedCompleteChunkSet } from "./media-chunks";
+import { sealIncomingChunk, readIncomingChunk, persistedChunkPlainSize } from "./partial-chunk-vault";
 import { validateSharedProfile } from "./profile-wire";
 import { deniedByHistoryProtection } from "./history-protection-policy";
 import { validateDispatchBody, boundedAcknowledgements, boundedDispatchString } from "./inbound-frame-policy";
@@ -1137,9 +1138,11 @@ async function persistBlobChunk(from: string, body: Record<string, unknown>): Pr
   // Repair an interrupted or corrupted disk write with a freshly verified
   // chunk while refusing attempts to overwrite a valid chunk with new data.
   const storedValid = diskChunk
-    ? matchesChunkDigest(new Uint8Array(await diskChunk.data.arrayBuffer()), diskChunk.digest)
+    ? matchesChunkDigest(await readIncomingChunk(diskChunk), diskChunk.digest)
     : false;
   if (diskChunk && storedValid && diskChunk.digest !== body.digest) return;
+  // Keep native Keystore/crypto outside IndexedDB transactions.
+  const protectedPayload = await sealIncomingChunk(key, chunkBytes);
   // Atomically authorize the current parent message and write the chunk.
   // Deletion and consumed-media purges use this same lifecycle table, so a
   // delayed chunk cannot recreate unreferenced media after a user deletes it.
@@ -1164,13 +1167,17 @@ async function persistBlobChunk(from: string, body: Record<string, unknown>): Pr
     const current = await dxdb.partial_chunks.get(key);
     if (current && (current.from !== from || current.name !== entry.name ||
         current.mimeType !== entry.mimeType ||
-        current.totalChunks !== chunks)) return false;
-    if (!storedValid || !current) await dxdb.partial_chunks.put({
-      key, fileId, from, index, totalChunks: chunks,
-      name: entry.name, mimeType: entry.mimeType,
-      digest: String(body.digest),
-      data: new Blob([chunkBytes as BlobPart]), updatedAt: Date.now(),
-    });
+        current.totalChunks !== chunks ||
+        current.digest !== String(body.digest))) return false;
+    if (!storedValid || !current ||
+        (protectedPayload.encrypted === 1 && current.encrypted !== 1)) {
+      await dxdb.partial_chunks.put({
+        key, fileId, from, index, totalChunks: chunks,
+        name: entry.name, mimeType: entry.mimeType,
+        digest: String(body.digest),
+        ...protectedPayload, updatedAt: Date.now(),
+      });
+    }
     return true;
   });
   if (!persisted) {
@@ -1206,14 +1213,14 @@ type AssemblyOutcome = "saved" | "incomplete" | "rejected";
 async function assemblePersistedBlob(fileId: string, from: string): Promise<AssemblyOutcome> {
   const records = await dxdb.partial_chunks.where("fileId").equals(fileId).toArray();
   const ordered = orderedCompleteChunkSet(
-    records.map((row) => ({ ...row, size: row.data.size })), fileId, from,
+    records.map((row) => ({ ...row, size: persistedChunkPlainSize(row) })), fileId, from,
   );
   if (!ordered) return "incomplete";
   const parts: BlobPart[] = [];
   for (const row of ordered) {
-    const bytes = new Uint8Array(await row.data.arrayBuffer());
+    const bytes = await readIncomingChunk(row);
     if (!matchesChunkDigest(bytes, row.digest)) return "incomplete";
-    parts.push(row.data);
+    parts.push(new Blob([new Uint8Array(bytes)]));
   }
   const first = ordered[0];
   // Recheck after digest verification: revocation can race a large assembly.
@@ -1254,11 +1261,13 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
             row.totalChunks === first.totalChunks && row.name === first.name &&
             row.mimeType === first.mimeType &&
             Number.isSafeInteger(row.index) && row.index >= 0 && row.index < first.totalChunks &&
-            row.data.size <= BLOB_CHUNK_BYTES &&
-            (row.index === first.totalChunks - 1 || row.data.size === BLOB_CHUNK_BYTES));
+            persistedChunkPlainSize(row) <= BLOB_CHUNK_BYTES &&
+            persistedChunkPlainSize(row) >= 0 &&
+            (row.index === first.totalChunks - 1 ||
+              persistedChunkPlainSize(row) === BLOB_CHUNK_BYTES));
           const received = new Set<number>();
           for (const row of same) {
-            const bytes = new Uint8Array(await row.data.arrayBuffer());
+            const bytes = await readIncomingChunk(row);
             if (matchesChunkDigest(bytes, row.digest)) received.add(row.index);
           }
           partial = { fileId, from: source, name: first.name,

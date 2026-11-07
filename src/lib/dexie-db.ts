@@ -94,6 +94,9 @@ export interface PartialBlobChunkRecord {
   mimeType: string;
   digest: string;
   data: Blob;
+  /** Android AES-GCM sealed fragment; old records omit these fields. */
+  encrypted?: 1;
+  plaintextSize?: number;
   updatedAt: number;
 }
 
