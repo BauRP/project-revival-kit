@@ -2,6 +2,8 @@ import { dbGet } from "@/lib/storage";
 import { dxdb, type LifecycleRecord } from "./dexie-db";
 import { onionRegisterIncomingListener, onionSendDispatch, ensureLocalIdentity } from "./onion-engine";
 import { isValidOnion } from "./onion-id";
+import { deletedMessageKey, isDeletedMessageRecord } from "./message-deletion-policy";
+import { canReactToVisibleMessage, pruneDeletedReactionMap } from "./reaction-deletion-policy";
 
 /** Reactions are durable Dexie records, with tombstones for removals. */
 export type ReactionMap = Record<string, Record<string, string>>;
@@ -26,7 +28,12 @@ export async function getReactions(chatId: string): Promise<ReactionMap> {
     else delete actors[actor]; // durable removal overrides legacy value
     map[row.messageId] = actors;
   }
-  return map;
+  const ids = Object.keys(map);
+  if (!ids.length) return map;
+  const tombstones = await dxdb.lifecycle.bulkGet(ids.map(deletedMessageKey));
+  const deleted = new Set(ids.filter((id, i) =>
+    isDeletedMessageRecord(tombstones[i]?.data)));
+  return deleted.size ? pruneDeletedReactionMap(map, deleted) : map;
 }
 
 /** Monotonic local/remote timestamp to preserve rapid successive reaction changes. */
@@ -41,7 +48,13 @@ export async function toggleReaction(
   if (!messageId || !reactorId || !emoji || emoji.length > 24)
     throw new Error("Invalid reaction");
   const legacy = await dbGet<ReactionMap>("settings", legacyKey(chatId));
-  await dxdb.transaction("rw", dxdb.lifecycle, async () => {
+  await dxdb.transaction("rw", [dxdb.messages, dxdb.lifecycle], async () => {
+    // A deleted message stays deleted even when the UI still displays its
+    // redacted placeholder or an event races the user's Delete action.
+    const stored = await dxdb.messages.get(messageId);
+    const erased = await dxdb.lifecycle.get(deletedMessageKey(messageId));
+    if (!canReactToVisibleMessage(stored, chatId, reactorId, erased?.data))
+      throw new Error("Cannot react to a deleted or unrelated message");
     const key = reactionRecordKey(chatId, messageId, reactorId);
     const previous = await dxdb.lifecycle.get(key);
     const oldEmoji = previous ? previous.data.emoji : legacy?.[messageId]?.[reactorId];
@@ -90,6 +103,11 @@ async function persistReactionToOutbox(peer: string, messageId: string, self: st
   const key = reactionRecordKey(peer, messageId, self);
   const stored = await dxdb.lifecycle.get(key);
   if (!stored) return;
+  const [message, erased] = await Promise.all([
+    dxdb.messages.get(messageId),
+    dxdb.lifecycle.get(deletedMessageKey(messageId)),
+  ]);
+  if (!canReactToVisibleMessage(message, peer, self, erased?.data)) return;
   const emoji = stored.data.emoji;
   if (emoji !== null && (typeof emoji !== "string" || emoji.length > 24)) return;
   const eventId = typeof stored.data.outboundEventId === "string"

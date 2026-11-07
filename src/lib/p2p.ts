@@ -226,6 +226,15 @@ export async function redactMessageForMe(
       data: { deleted: true, deletedAt: now }, updatedAt: now,
     });
     await dxdb.outbox.delete(messageId);
+    // Delete-for-me is terminal: remove old per-message reactions and any
+    // unshipped sealed reaction frames so later reconnection cannot replay
+    // the user's reaction to a message they deliberately erased.
+    const reactions = await dxdb.lifecycle.where("messageId").equals(messageId)
+      .filter((row) => row.chatKey.startsWith("reaction::")).toArray();
+    const outboundIds = reactions.map((row) => row.data.outboundEventId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0);
+    if (outboundIds.length) await dxdb.outbox.bulkDelete(outboundIds);
+    if (reactions.length) await dxdb.lifecycle.bulkDelete(reactions.map((row) => row.key));
     if (unused.length) {
       await dxdb.blobs.bulkDelete(unused);
       await dxdb.partial_chunks.where("fileId").anyOf(unused).delete();
