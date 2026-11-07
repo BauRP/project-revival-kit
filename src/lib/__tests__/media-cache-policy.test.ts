@@ -50,3 +50,22 @@ describe("local user files and legacy unknown blobs are never cache-evicted", ()
       {fileId:"legacy",storedAt:longAgo,origin:"received"},new Set(),now)).toBe(true);
   });
 });
+
+import { isMatchingReceivedCache } from "../media-cache-policy";
+
+describe("signed media does not overwrite an existing fileId", () => {
+  const incoming = {name:"photo.jpg",mimeType:"image/jpeg",size:123};
+  it("never replaces a local upload or unclassified old blob", () => {
+    expect(isMatchingReceivedCache({...incoming,origin:"local"}, incoming)).toBe(false);
+    expect(isMatchingReceivedCache(incoming, incoming)).toBe(false);
+  });
+  it("accepts an exact retransmission of an already validated received blob", () => {
+    expect(isMatchingReceivedCache({...incoming,origin:"received"},incoming)).toBe(true);
+  });
+  it("rejects changed sender name, content type and length", () => {
+    const previous={...incoming,origin:"received"};
+    expect(isMatchingReceivedCache(previous,{...incoming,name:"other.jpg"})).toBe(false);
+    expect(isMatchingReceivedCache(previous,{...incoming,mimeType:"text/html"})).toBe(false);
+    expect(isMatchingReceivedCache(previous,{...incoming,size:321})).toBe(false);
+  });
+});

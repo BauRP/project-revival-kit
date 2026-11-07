@@ -20,3 +20,19 @@ export function canEvictUnreferencedMedia(
       record.storedAt > now) return false;
   return now - record.storedAt >= graceMs;
 }
+
+/**
+ * An authenticated download may use the same fileId as another local
+ * attachment. Never replace an existing local upload or old legacy blob.
+ * A retransmission of a confirmed received cache entry is idempotent only
+ * if its signed metadata still matches the original.
+ */
+export function isMatchingReceivedCache(
+  existing: { origin?: string; name: string; mimeType: string; size: number },
+  incoming: { name: string; mimeType: string; size: number },
+): boolean {
+  return existing.origin === "received" &&
+    existing.name === incoming.name &&
+    existing.mimeType === incoming.mimeType &&
+    existing.size === incoming.size;
+}

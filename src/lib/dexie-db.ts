@@ -14,7 +14,7 @@ import { stripSessionMediaUrl } from "./backup-media-policy";
 import { lifecycleRowsForRestore } from "./backup-merge-policy";
 import { assertPortableBackupFits } from "./backup-budget";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, unusedBackupMedia, matchesReceivedAttachmentMetadata } from "./message-deletion-policy";
-import { canEvictUnreferencedMedia } from "./media-cache-policy";
+import { canEvictUnreferencedMedia, isMatchingReceivedCache } from "./media-cache-policy";
 
 export interface ContactRecord {
   onion: string;
@@ -218,10 +218,20 @@ export async function putReceivedBlob(
       for (const parent of parents) {
         if (isDeletedMessageRecord((await dxdb.lifecycle.get(deletedMessageKey(parent.id)))?.data))
           continue;
-        await dxdb.blobs.put({
-          fileId, mimeType: mimeType || data.type || "application/octet-stream",
+        const incomingMeta = {
           name: name || `file-${fileId}`,
-          size: data.size, data, storedAt: Date.now(),
+          mimeType: mimeType || data.type || "application/octet-stream",
+          size: data.size,
+        };
+        const existing = await dxdb.blobs.get(fileId);
+        if (existing) {
+          // Signed peer media must never overwrite the user's local upload
+          // (or an older unknown-origin blob). Duplicate received frames
+          // may reuse only the same previously validated metadata.
+          return isMatchingReceivedCache(existing, incomingMeta);
+        }
+        await dxdb.blobs.add({
+          fileId, ...incomingMeta, data, storedAt: Date.now(),
           origin: "received",
         });
         return true;
