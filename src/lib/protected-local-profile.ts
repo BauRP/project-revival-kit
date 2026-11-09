@@ -112,7 +112,26 @@ export async function commitSealedProfile(
 }
 
 /** Keep the native profile private; web preview has no Android Keystore. */
-export async function readStoredLocalProfile(): Promise<{
+/**
+ * Protect the still-readable legacy copy until both the ciphertext integrity
+ * and its binding to the current identity have been verified. Cleanup is
+ * retryable if the app is interrupted after decrypting.
+ */
+export async function openAndRetireLegacyProfile(
+  encrypted: unknown,
+  currentUserId: string,
+  key: CryptoKey,
+  oldRead: () => Promise<unknown>,
+  oldErase: () => Promise<void>,
+): Promise<UserProfile> {
+  const opened = await openLocalProfile(key, encrypted);
+  assertStoredProfileOwner(opened, currentUserId);
+  const old = await oldRead();
+  if (old !== undefined) await oldErase();
+  return opened;
+}
+
+export async function readStoredLocalProfile(currentUserId: string): Promise<{
   value: unknown; migrateLegacy: boolean;
 }> {
   if (platform() !== "android")
@@ -121,11 +140,14 @@ export async function readStoredLocalProfile(): Promise<{
   const ciphertext = await dbGetStrict<unknown>("settings", LOCAL_PROFILE_ENCRYPTED_ID);
   if (ciphertext !== undefined) {
     const key = await acquireLocalDataKey();
-    const opened = await openLocalProfile(key, ciphertext);
-    // On crash after writing ciphertext, the sealed copy is authoritative.
-    // Remove any leftover legacy plaintext only after verified decryption.
-    const old = await dbGetStrict("settings", LOCAL_PROFILE_LEGACY_ID);
-    if (old !== undefined) await dbDelete("settings", LOCAL_PROFILE_LEGACY_ID);
+    // On crash after writing ciphertext, the sealed copy is authoritative
+    // ONLY if its authenticated identity matches the currently opened account.
+    // Do not erase the legacy record before proving both conditions.
+    const opened = await openAndRetireLegacyProfile(
+      ciphertext, currentUserId, key,
+      () => dbGetStrict("settings", LOCAL_PROFILE_LEGACY_ID),
+      () => dbDelete("settings", LOCAL_PROFILE_LEGACY_ID),
+    );
     return { value: opened, migrateLegacy: false };
   }
   const old = await dbGetStrict("settings", LOCAL_PROFILE_LEGACY_ID);

@@ -72,7 +72,7 @@ function normalize(raw: unknown, fallbackId: string): UserProfile | null {
 /** Loads the local user's persisted profile (creates an empty one on first run). */
 export async function loadMyProfile(userId: string): Promise<UserProfile> {
   if (localLoaded && localProfile && localProfile.userId === userId) return localProfile;
-  const { value: stored, migrateLegacy } = await readStoredLocalProfile();
+  const { value: stored, migrateLegacy } = await readStoredLocalProfile(userId);
   // A malformed or foreign existing record is NOT a fresh install.
   // Never overwrite such a profile with a default state or another identity.
   assertStoredProfileOwner(stored, userId);

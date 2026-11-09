@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { importLocalRecordKey } from "../local-record-crypto";
 import {
   sealLocalProfile, openLocalProfile, parseSealedLocalProfile, commitSealedProfile,
+  openAndRetireLegacyProfile,
 } from "../protected-local-profile";
 import type { UserProfile } from "../profile";
 
@@ -87,5 +88,44 @@ describe("profile migration must preserve legacy identity and data on failure", 
       .toThrow("malformed");
     expect(() => assertStoredProfileOwner({...saved(),updatedAt:NaN},identity))
       .toThrow("malformed");
+  });
+});
+
+describe("identity-verified encrypted profile recovery before deleting legacy", () => {
+  it("retains old plaintext when ciphertext belongs to a different identity", async () => {
+    const original = saved();
+    const ciphertext = await sealLocalProfile(await key(20),original);
+    const erase = vi.fn(async () => undefined);
+    await expect(openAndRetireLegacyProfile(
+      ciphertext,"different-identity.onion",await key(20),
+      async () => original,erase,
+    )).rejects.toThrow("another identity");
+    expect(erase).not.toHaveBeenCalled();
+  });
+  it("retains old plaintext on authentication failure", async () => {
+    const original = saved();
+    const ciphertext = await sealLocalProfile(await key(21),original);
+    const erase = vi.fn(async () => undefined);
+    await expect(openAndRetireLegacyProfile(
+      ciphertext,identity,await key(22),
+      async () => original,erase,
+    )).rejects.toThrow();
+    expect(erase).not.toHaveBeenCalled();
+  });
+  it("deletes old plaintext only after decrypting and verifying same identity", async () => {
+    const original = saved();
+    const ciphertext = await sealLocalProfile(await key(23),original);
+    const erase = vi.fn(async () => undefined);
+    expect(await openAndRetireLegacyProfile(
+      ciphertext,identity,await key(23),
+      async () => original,erase,
+    )).toEqual(original);
+    expect(erase).toHaveBeenCalledOnce();
+    const noOld = vi.fn(async () => undefined);
+    expect(await openAndRetireLegacyProfile(
+      ciphertext,identity,await key(23),
+      async () => undefined,noOld,
+    )).toEqual(original);
+    expect(noOld).not.toHaveBeenCalled();
   });
 });
