@@ -15,6 +15,7 @@ import { lifecycleRowsForRestore, lifecycleRowsToPurgeForDeletedMessages } from 
 import { queuedReactionEventIds } from "./reaction-deletion-policy";
 import { assertPortableBackupFits } from "./backup-budget";
 import { assertExportSnapshotSafe } from "./backup-snapshot-policy";
+import { encodePortableMedia, decodePortableMedia } from "./backup-media-codec";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, unusedBackupMedia, matchesReceivedAttachmentMetadata } from "./message-deletion-policy";
 import { canEvictUnreferencedMedia, isMatchingReceivedCache } from "./media-cache-policy";
 
@@ -394,25 +395,8 @@ export interface DexieDump {
   blobs: Array<Omit<BlobRecord, "data"> & { dataB64: string }>;
 }
 
-async function blobToBase64(blob: Blob): Promise<string> {
-  const buf = new Uint8Array(await blob.arrayBuffer());
-  let s = "";
-  const CHUNK = 0x8000;
-  for (let i = 0; i < buf.length; i += CHUNK) {
-    s += String.fromCharCode.apply(
-      null,
-      Array.from(buf.subarray(i, i + CHUNK)) as unknown as number[],
-    );
-  }
-  return btoa(s);
-}
-
-function base64ToBlob(b64: string, mime: string): Blob {
-  const bin = atob(b64);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return new Blob([out], { type: mime });
-}
+// Preserve the existing portable archive schema while bounding the amount
+// of binary media copied into WebView memory per encoding/decoding operation.
 
 /**
  * The current JSON-based portable format cannot encode gigabyte blobs.
@@ -469,7 +453,7 @@ export async function exportDexieDump(): Promise<DexieDump> {
       name: b.name,
       size: b.size,
       storedAt: b.storedAt,
-      dataB64: await blobToBase64(b.data),
+      dataB64: await encodePortableMedia(b.data),
     });
   }
   return {
@@ -583,7 +567,7 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
         await dxdb.blobs.put({
           fileId: b.fileId, mimeType: b.mimeType, name: b.name,
           size: b.size, storedAt: b.storedAt,
-          data: base64ToBlob(b.dataB64, b.mimeType),
+          data: decodePortableMedia(b.dataB64, b.mimeType),
         });
       }
       // Reconcile already-present messages too: the restored tombstone is
