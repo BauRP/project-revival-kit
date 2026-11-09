@@ -15,6 +15,7 @@ import { lifecycleRowsForRestore, lifecycleRowsToPurgeForDeletedMessages } from 
 import { queuedReactionEventIds } from "./reaction-deletion-policy";
 import { assertPortableBackupFits } from "./backup-budget";
 import { assertExportSnapshotSafe } from "./backup-snapshot-policy";
+import { sanitizePortableExportPrivacy } from "./backup-export-privacy";
 import { encodePortableMedia, decodePortableMedia } from "./backup-media-codec";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, unusedBackupMedia, matchesReceivedAttachmentMetadata } from "./message-deletion-policy";
 import { canEvictUnreferencedMedia, isMatchingReceivedCache } from "./media-cache-policy";
@@ -439,14 +440,21 @@ export async function exportDexieDump(): Promise<DexieDump> {
       return { contacts, messages, outbox, lifecycle, blobs };
     },
   );
-  // Recheck actual rows/Blob bytes, because writes may have happened after
-  // the lightweight preflight and before the consistent snapshot was taken.
-  assertExportSnapshotSafe({ contacts, messages, outbox, lifecycle, blobs });
+  // A consumed one-time file may still have a stale Blob if the app was
+  // killed between consumption and cleanup. Never put those private bytes
+  // in a NEW portable archive; keep the irreversible tombstone and strip its
+  // old message preview. Inputs come from the same consistent DB snapshot.
+  const safe = sanitizePortableExportPrivacy(messages, lifecycle, blobs);
+  // Recheck real committed Blob lengths and all textual metadata before
+  // creating the extra Base64/JSON copies in the backup envelope.
+  assertExportSnapshotSafe({
+    contacts, messages: safe.messages, outbox, lifecycle, blobs: safe.blobs,
+  });
   // Avoid starting a separate multi-megabyte ArrayBuffer conversion for
   // every attachment at once. Sequential encoding limits peak native and
   // WebView memory while preserving the exact V3 portable archive format.
   const blobsEncoded: DexieDump["blobs"] = [];
-  for (const b of blobs) {
+  for (const b of safe.blobs) {
     blobsEncoded.push({
       fileId: b.fileId,
       mimeType: b.mimeType,
@@ -460,7 +468,7 @@ export async function exportDexieDump(): Promise<DexieDump> {
     schemaVersion: 3,
     createdAt: Date.now(),
     contacts,
-    messages: messages.map(stripSessionMediaUrl),
+    messages: safe.messages,
     outbox,
     lifecycle,
     blobs: blobsEncoded,
