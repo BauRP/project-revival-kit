@@ -15,7 +15,10 @@ export interface BackupSnapshotRows {
     fileId: string;
     size: number;
     data: Blob;
-    [key: string]: unknown;
+    name: string;
+    mimeType: string;
+    storedAt: number;
+    origin?: "local" | "received";
   }[];
 }
 
