@@ -58,10 +58,11 @@ describe("Android local profile AES-GCM confidentiality", () => {
   it("keeps the old profile if storage commit fails and retry can resume", async () => {
     const profile = saved(),ciphertext = await sealLocalProfile(await key(15),profile);
     const erase = vi.fn(async () => undefined);
+    const sameKey = await key(15);
     await expect(commitSealedProfile(profile,ciphertext,{
       write: async () => {throw new Error("disk full");},
       read: async () => ciphertext,
-      decrypt: (x)=>openLocalProfile(await key(15),x),
+      decrypt: (x)=>openLocalProfile(sameKey,x),
       eraseLegacy: erase,
     })).rejects.toThrow("disk full");
     expect(erase).not.toHaveBeenCalled();
