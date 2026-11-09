@@ -4,16 +4,16 @@
 
 ## 0. БЫСТРЫЙ СТАРТ — прочитать за 2 минуты
 
-| Поле | Зафиксированное состояние на 2026-11-07 |
+| Поле | Зафиксированное состояние на 2026-11-10 |
 |---|---|
 | Приложение | **Trivo Chat Elite**, приватный Android/Web мессенджер с Tor v3 onion, локальными данными и E2EE |
 | GitHub | https://github.com/BauRP/project-revival-kit |
 | Рабочая ветка | **chatgpt/trivo-security-compat-20261031**; **main не менять** |
-| Последний подтверждённый КОДОВЫЙ HEAD, на базе которого составлен журнал | **5e3bd75b7b9482c7003a8a26d7f05321e1730728** |
-| Последний полностью успешный workflow | **build-334**, https://github.com/BauRP/project-revival-kit/actions/runs/42594433277; builds 332/333 SUCCESS, 331 test compilation failed then fixed; Vitest, strict TypeScript, Web, Android JVM/APK, SDK/ABI |
-| Проверенная APK | https://github.com/BauRP/project-revival-kit/releases/download/build-334/app-universal-debug.apk — универсальная debug APK, CI SUCCESS, 62621291 bytes |
-| Оценка готовности ПО | **38,5%** (+0,1 п.п. от build-330): собственный Android-профиль шифруется AES-GCM/Keystore; legacy migration проверяет ciphertext и identity до удаления открытого профиля. Полная история Dexie остаётся открытой. |
-| Недавняя работа | **builds 331–334:** в Android собственный профиль из trivo-chat/settings перенесён в AES-256-GCM ciphertext под Keystore-wrapped master key; общий key bootstrap проверяет profile И Tor partial_chunks перед возможным созданием ключа. Миграция старого plaintext удаляет его только после committed read-back, расшифровки и проверки userId; повреждённый/чужой профиль не заменяется новым. build-331 failed test syntax, fixed in 332; 332/333/334 SUCCESS. Contacts/messages/lifecycle всё ещё plaintext. |
+| Последний подтверждённый КОДОВЫЙ HEAD, на базе которого составлен журнал | **6e809d2391668d445372757caa1ee540431c8e6d** |
+| Последний полностью успешный workflow | **build-335**, https://github.com/BauRP/project-revival-kit/actions/runs/42708814516; completed/success на `6e809d23`: Vitest, TypeScript, Web, Android JVM/APK, minSdk/targetSdk и Tor ABI audit |
+| Проверенная APK | https://github.com/BauRP/project-revival-kit/releases/download/build-335/app-universal-debug.apk — универсальная debug APK; Release upload в build-335 успешно завершён |
+| Оценка готовности ПО | **38,6%** (+0,1 п.п. после build-334): проверено атомарное условное удаление legacy-профиля и запрет перезаписи чужого/corrupt ciphertext; полная история Dexie остаётся открытой. |
+| Недавняя работа | **build-335:** `storage.ts` добавил условное удаление старого профиля одной IDB транзакцией (сравнение+delete), `protected-local-profile.ts` не удаляет чужую/испорченную legacy-запись и отказывает в перезаписи чужого encrypted profile. Дополнены Vitest для ошибочного/изменённого профиля. Все CI SUCCESS. **Полное Dexie шифрование НЕ включено**. |
 | **P0, наибольшие пробелы** | Реального PQXDH/ML-KEM **нет**; локальная Dexie-база переписки не шифруется полностью; нет независимого от WebView нативного фонового отправителя; полноценной встроенной офлайн-STT-модели нет |
 | **Ближайшая инженерная задача** | **P0:** полное шифрование Dexie messages/lifecycle/contacts и готовых media с безопасной миграцией всех прямых читателей/писателей, портативной backup и без замены identity; использовать tested local-record-key-store/protected-record-inventory, расширяя inventory перед новым ciphertext. **P1:** Android Keystore/protected profile runtime crash-restart и Dexie migrations integration tests. |
 | Открыть первыми | src/lib/dexie-db.ts, src/lib/storage.ts, src/lib/safe-storage.ts, src/lib/crypto.ts, android/app/src/main/java/com/baurp/trivochat/SecureVaultPlugin.java, src/lib/p2p.ts, src/lib/backup.ts, src/lib/backup-merge-policy.ts |
@@ -24,7 +24,7 @@
 
 ### Что делать при возобновлении (быстро)
 1. Открыть https://github.com/BauRP/project-revival-kit/blob/chatgpt/trivo-security-compat-20261031/PROGRESS.md.
-2. Проверить git ref рабочей ветки; сравнить с последней зафиксированной **кодовой** базой 5e3bd75b…; отдельно учесть документационные коммиты и новые изменения третьих сторон.
+2. Проверить git ref рабочей ветки; сравнить с последней зафиксированной **кодовой** базой 6e809d23…; отдельно учесть документационные коммиты и новые изменения третьих сторон.
 3. Если HEAD изменён другим ChatGPT/Lovable — прочитать diff именно этих коммитов, проверить конфликты и актуализировать записи; не перезаписывать чужую работу.
 4. Перейти к очереди P0/P1 в разделе 9. Сначала реальные исправления, затем unit + TypeScript + Android APK в одном логическом пакете.
 5. Обновить таблицу готовности **только за реально реализованное и автоматически проверенное**. Полный физический runtime на телефоне пользователя — отдельная пользовательская проверка, не «недоделанная программная работа».
@@ -89,12 +89,12 @@
 
 ## 3. Готовность по 20 направлениям — базовая точка
 
-**Зафиксированная после build-334 общая оценка: 38,5%** (+0,1 п.п. от build-330 за реальное Android Keystore/AES-GCM хранение собственного профиля и crash-safe миграцию; сообщения, контакты и lifecycle в Dexie ещё НЕ зашифрованы). Это прежняя согласованная **оценка программной готовности**, не объективное вычисление количества функций. Проценты не суммировать/не усреднять как общий показатель: направления различаются по весу, сложности и рискам. Если методика весов станет фиксированной, описать её явно. **Пауза направления 13 не даёт права объявить его выполненным.**
+**Зафиксированная после build-335 общая оценка: 38,6%** (+0,1 п.п. с build-334 за проверенную атомарную защиту миграции собственного профиля от изменённой legacy записи и чужого ciphertext; сообщения, контакты и lifecycle в Dexie ещё НЕ зашифрованы). Это прежняя согласованная **оценка программной готовности**, не объективное вычисление количества функций. Проценты не суммировать/не усреднять как общий показатель: направления различаются по весу, сложности и рискам. Если методика весов станет фиксированной, описать её явно. **Пауза направления 13 не даёт права объявить его выполненным.**
 
 | № | Направление | Готово | Последний прирост | Что есть / проверено | Остаток и ограничения |
 |---|---|---:|---:|---|---|
 | 1 | Настоящая постквантовая криптография | **0%** | 0 | Отсутствие PQ честно отображается; tests/pqxdh-safety.test.ts | Реальный ML-KEM/гибрид с безопасным handshake, версиями и тестами, не заглушка |
-| 2 | Шифрование локальной БД/ключей | **20,7%** | **+0,3** | Android Keystore AES-GCM теперь защищает собственный профиль в trivo-chat/settings и новые Tor partial_chunks; crash-safe legacy profile ciphertext readback, identity check, lost-key fail-closed; builds 332–334 | CRITICAL: messages/lifecycle/contacts/готовые media остаются plaintext; нет реальной полной Dexie migration |
+| 2 | Шифрование локальной БД/ключей | **20,8%** | **+0,1** | Android Keystore AES-GCM защищает собственный профиль и Tor partial_chunks; build-335 adds identity-checked legacy retirement, conditional compare/delete in one transaction, foreign ciphertext overwrite rejection; CI SUCCESS | CRITICAL: messages/lifecycle/contacts/готовые media остаются plaintext; нет реальной полной Dexie migration |
 | 3 | Резервные копии и восстановление | **63,5%** | 0 | Encrypted portable V2/V3; builds 328–330 consistent read-only Dexie snapshot, true Blob+metadata budget validation, bounded media Base64 chunks, exclusion of consumed one-time media and previews | Real Dexie concurrent-write fault injection, cross-device restore, large archive memory testing |
 | 4 | Отложенная отправка | **43,2%** | 0 | trivo-outbox, Keystore, миграция, dedupe, clock correction, visibility wake; build-295 | Доставка при завершённом WebView/force-stop, строгие жизненные циклы, device-level проверка |
 | 5 | Фоновый Tor | **52,3%** | 0 | Native FGS, durable sealed queue; build-311: legacy AtomicFile backup recovery, verified disk commit before TCP ACK, atomic deletion incl. backup; JUnit tests/Android APK successful | Нативная отправка без WebView, integration power-loss/FGS tests |
@@ -110,7 +110,7 @@
 | 15 | Подлинный Tor статус | **27,0%** | 0 | strict isTorServiceReady; проверка .onion; status chip; build-283 | серверная достижимость, показ ошибок/повторных reconnect |
 | 16 | Маскировка трафика | **8,0%** | 0 | экспериментальный sealed cover; off default | реальная доказуемая защита от анализа трафика, аккумулятор/сеть |
 | 17 | Android permissions | **66,5%** | 0 | manifest, runtime on-demand, native services; CI SDK audit | Android 13+/14+/16+/17 permission and FGS variations |
-| 18 | Автоматизированные испытания | **71,4%** | **+0,2** | Builds 332/333/334 Vitest, strict TS, Web, Java/JUnit, APK SUCCESS; regressions AES-GCM profile, tamper/key loss, migration disk fail, foreign identity, no early erasure; build-331 test syntax failure fixed | Android runtime Keystore/device kill and actual Dexie migration integration |
+| 18 | Автоматизированные испытания | **71,5%** | **+0,1** | Build-335 Vitest, strict TS, Web, Android JVM/APK SUCCESS; added regression tests for foreign legacy/sealed profiles and conditional deletion under changed/aborted IDB state | Android runtime Keystore/device kill and actual Dexie migration integration |
 | 19 | Android 7–17 и экраны | **18,8%** | 0 | min24/target36, WebView inset handling, ABI CI | API/gestures/IME/fold/rotation/runtime/Android17 |
 | 20 | Защита истории переписки | **57,1%** | 0 | Per-chat toggle, signed receiver enforcement, deleted-message tombstone privacy; builds 324–326 prevent deletion reactions/outbox restore | Real two-device UI protection & edit/delete behavior tests |
 
@@ -429,12 +429,21 @@
 - **Границы:** защищён ТОЛЬКО собственный профиль в legacy IndexedDB settings (не все кешированные/чужие contact metadata); `dxdb.messages`, `dxdb.lifecycle`, `dxdb.contacts`, готовые media blobs и legacy chat metadata остаются plaintext. Реальный Android-runtime/Keystore reinstall/kill не тестировались, в CI только unit/Java/Android APK. Нельзя объявлять закрытым направление №2; профиль-синхронизацию №10 не увеличивать за локальное шифрование.
 - **Готовность:** #2 20,4→20,7 (+0,3 п.п.), #18 71,2→71,4 (+0,2 п.п.); общая оценка **38,4→38,5% (+0,1 п.п.)**, независимая от простого среднего.
 
+### 2026-11-10 — build-335: защита от потери данных при миграции собственного профиля
+
+- **Коммит:** `6e809d2391668d445372757caa1ee540431c8e6d`, **GitHub CI build-335 SUCCESS:** https://github.com/BauRP/project-revival-kit/actions/runs/42708814516. Изменены `src/lib/storage.ts`, `src/lib/protected-local-profile.ts`, `src/lib/__tests__/storage.test.ts`, `src/lib/__tests__/protected-local-profile.test.ts`.
+- **Устранённый риск:** раньше подтверждённая зашифрованная копия могла привести к безусловному удалению legacy-профиля, который другой экземпляр приложения изменил между чтением и удалением, либо который принадлежал другой identity. Теперь `dbDeleteIfUnchangedStrict` проверяет ожидаемые данные и удаляет в **одной readwrite IndexedDB транзакции**; несовпадение/abort является ошибкой и ничего не удаляет.
+- **Защита сохранения:** Android перед записью нового зашифрованного профиля проверяет идентичность legacy и существующего ciphertext; повреждённые/чужие записи нельзя тихо перезаписать. При продолжении миграции владелец legacy проверяется перед удалением.
+- **Регрессии и CI:** Vitest тесты на другую identity, повреждённый encrypted profile, изменённый legacy и abort транзакции; GitHub Actions completed/success для unit, strict TS, Web, Android JVM/APK, SDK/ABI audit и Release upload. Runtime на устройстве пользователя не проверялся.
+- **Границы:** **НЕ** реализованы полное шифрование Dexie, устранение гонок между независимыми одновременно записывающими encrypted копиями, Android kill/restart instrumentation. Защита ограничена собственным профилем и подтверждёнными сценариями. #2 **20,7→20,8%** (+0,1), #18 **71,4→71,5%** (+0,1); общая оценка **38,5→38,6%** (+0,1 п.п.).
+
 ## 7. Журнал фактической разработки и GitHub CI
 
 **Все указанные SHA — коммиты в рабочей ветке.** Ниже приоритет недавним пакетам, полезным для следующего запуска, без переписывания переписки.
 
 | Дата (по времени разработки) | Коммит / сборка | Пакет, связанные файлы | Подтверждение |
 |---|---|---|---|
+| 2026-11-10 | **6e809d23** / **build-335** | Atomic conditional legacy-profile deletion, foreign/corrupt profile rejection and regression tests | **SUCCESS** https://github.com/BauRP/project-revival-kit/actions/runs/42708814516 |
 | До 2026-11-04 | **c261383d** / build-275 | Исходная подтверждённая точка нового чата; парные исправления identity/backups/native Tor/file handling, без main | GitHub Actions build-275 успешна |
 | 2026-11-04 | 27f48174, 60659c59, 6977d073, **8cec0067** / build-276–279 | Bounded Tor media retry, security-scan, native inbound; был неудачный build-278, исправлен в последующем build-279 | **279 success**; 278 failure, не объявлять успешным |
 | 2026-11-04 | **83b8690c**, **04d162b2** / build-280–281 | Idle timeout длинной передачи, monotonic performance.now вместо wall clock | 280/281 success |
@@ -462,6 +471,7 @@
 | 2026-11-06 | **31394887** / **build-303** | onion-engine: peer/due индексированные scans и сортировка только metadata, точный createdAt order | **SUCCESS** https://github.com/BauRP/project-revival-kit/actions/runs/42146708932 |
 
 **Последние полные workflow:**
+- **build-335 SUCCESS:** https://github.com/BauRP/project-revival-kit/actions/runs/42708814516 (conditional legacy profile retirement, foreign identity verification, complete APK checks)
 - **build-334 SUCCESS:** https://github.com/BauRP/project-revival-kit/actions/runs/42594433277 (identity verified before retirement)
 - **build-333 SUCCESS:** https://github.com/BauRP/project-revival-kit/actions/runs/42594068919 (malformed/foreign profile rejected)
 - **build-332 SUCCESS:** https://github.com/BauRP/project-revival-kit/actions/runs/42593636860 (encrypted own profile)
@@ -633,7 +643,9 @@ cd android
 
 ## 11. С чего продолжить в следующем чате
 
-**Контрольная точка кода: 5e3bd75b7b9482c7003a8a26d7f05321e1730728, build-334 SUCCESS, общая готовность ПО 38,5% (+0,1 п.п. с build-330).** Создающий запись документационный коммит не изменяет программный код.
+**Контрольная точка кода: 6e809d2391668d445372757caa1ee540431c8e6d, build-335 SUCCESS, общая готовность ПО 38,6% (+0,1 п.п. с build-334).** Создающий запись документационный коммит не изменяет программный код.
+
+**Точка продолжения после build-335:** исправлена атомарная защита удаления legacy-профиля и проверка владельца existing ciphertext; не повторять этот пакет. Дальше P0 — весь путь Dexie messages/lifecycle/contacts: map direct read/write, конверты AES-GCM с публичными индексами, безопасная idempotent migration + backup restore, обновлённый ciphertext inventory; начинать с `src/lib/dexie-db.ts`, `src/lib/p2p.ts`, `src/lib/onion-engine.ts`, `src/lib/protected-record-inventory.ts`, `src/lib/local-record-crypto.ts`. Перед включением шифрования нужны строгие интеграционные тесты совместимости. Отдельно P1 — многовкладочная гонка двух simultaneous encrypted saves и инструментальная проверка Android Keystore kill/restart.
 
 **Главный следующий блок P0: закрыть реальный пробел безопасности локальной истории**. Работать от требований: Android Keystore, offline, без лишнего ручного пароля, без тихой смены identity, без потери существующих сообщений, с безопасным crash-safe восстановлением. Не обещать результат, пока нет реализации и тестов. Первые файлы:
 - src/lib/dexie-db.ts — таблицы и миграция истории, indexes; exportDexieDump/importDexieDump.
