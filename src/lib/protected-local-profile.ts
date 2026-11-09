@@ -8,7 +8,7 @@
  * Browser preview keeps the original legacy key/behavior.
  */
 import type { UserProfile } from "./profile";
-import { dbDelete, dbGetStrict, dbPutStrict } from "./storage";
+import { dbDeleteIfUnchangedStrict, dbGetStrict, dbPutStrict } from "./storage";
 import { platform } from "./platform";
 import {
   LOCAL_PROFILE_ENCRYPTED_ID, LOCAL_PROFILE_LEGACY_ID, acquireLocalDataKey,
@@ -122,12 +122,16 @@ export async function openAndRetireLegacyProfile(
   currentUserId: string,
   key: CryptoKey,
   oldRead: () => Promise<unknown>,
-  oldErase: () => Promise<void>,
+  oldErase: (expected: unknown) => Promise<void>,
 ): Promise<UserProfile> {
   const opened = await openLocalProfile(key, encrypted);
   assertStoredProfileOwner(opened, currentUserId);
   const old = await oldRead();
-  if (old !== undefined) await oldErase();
+  if (old !== undefined) {
+    // Do not destroy a foreign, damaged or concurrently replaced legacy copy.
+    assertStoredProfileOwner(old, currentUserId);
+    await oldErase(old);
+  }
   return opened;
 }
 
@@ -146,12 +150,22 @@ export async function readStoredLocalProfile(currentUserId: string): Promise<{
     const opened = await openAndRetireLegacyProfile(
       ciphertext, currentUserId, key,
       () => dbGetStrict("settings", LOCAL_PROFILE_LEGACY_ID),
-      () => dbDelete("settings", LOCAL_PROFILE_LEGACY_ID),
+      (expected) => dbDeleteIfUnchangedStrict("settings", LOCAL_PROFILE_LEGACY_ID, expected),
     );
     return { value: opened, migrateLegacy: false };
   }
   const old = await dbGetStrict("settings", LOCAL_PROFILE_LEGACY_ID);
   return { value: old, migrateLegacy: old !== undefined };
+}
+
+/** Shared guard for new edits, legacy migrations and crash-resume paths. */
+export async function assertExistingLocalProfileIdentity(
+  userId: string, key: CryptoKey, legacy: unknown, sealed: unknown,
+): Promise<void> {
+  assertStoredProfileOwner(legacy, userId);
+  if (sealed !== undefined) {
+    assertStoredProfileOwner(await openLocalProfile(key, sealed), userId);
+  }
 }
 
 export async function saveStoredLocalProfile(profile: UserProfile): Promise<void> {
@@ -160,11 +174,19 @@ export async function saveStoredLocalProfile(profile: UserProfile): Promise<void
     return;
   }
   const key = await acquireLocalDataKey();
+  // Check BOTH copies before replacement. A foreign or corrupt sealed profile
+  // must never be overwritten; a foreign legacy profile must never be erased.
+  const [legacy, previousSealed] = await Promise.all([
+    dbGetStrict<unknown>("settings", LOCAL_PROFILE_LEGACY_ID),
+    dbGetStrict<unknown>("settings", LOCAL_PROFILE_ENCRYPTED_ID),
+  ]);
+  await assertExistingLocalProfileIdentity(profile.userId, key, legacy, previousSealed);
   const encrypted = await sealLocalProfile(key, profile);
   await commitSealedProfile(profile, encrypted, {
     write: (value) => dbPutStrict("settings", LOCAL_PROFILE_ENCRYPTED_ID, value),
     read: () => dbGetStrict("settings", LOCAL_PROFILE_ENCRYPTED_ID),
     decrypt: (value) => openLocalProfile(key, value),
-    eraseLegacy: () => dbDelete("settings", LOCAL_PROFILE_LEGACY_ID),
+    eraseLegacy: () => legacy === undefined ? Promise.resolve() :
+      dbDeleteIfUnchangedStrict("settings", LOCAL_PROFILE_LEGACY_ID, legacy),
   });
 }

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { dbAddStrict, dbDelete, dbGet, dbGetAll, dbPut } from "../storage";
+import { dbAddStrict, dbDelete, dbDeleteIfUnchangedStrict, dbGet, dbGetAll, dbPut } from "../storage";
 
 type MockOperation = "get" | "getAll" | "put" | "add" | "delete";
 
@@ -83,6 +83,25 @@ describe("legacy IndexedDB operations must never signal success before commit", 
       await expect(run()).rejects.toThrow("transaction aborted");
       expect(state.close).toHaveBeenCalledOnce();
     }
+  });
+  it("conditionally erases a verified legacy value only after the same-transaction read", async () => {
+    const ok = fakeDatabase("get", "commit");
+    await dbDeleteIfUnchangedStrict("settings", "legacy", "saved");
+    expect(ok.objectStore.get).toHaveBeenCalledWith("legacy");
+    expect(ok.objectStore.delete).toHaveBeenCalledWith("legacy");
+    expect(ok.close).toHaveBeenCalledOnce();
+
+    const changed = fakeDatabase("get", "commit");
+    await expect(dbDeleteIfUnchangedStrict("settings", "legacy", "older"))
+      .rejects.toThrow("Legacy profile changed");
+    expect(changed.objectStore.delete).not.toHaveBeenCalled();
+    expect(changed.close).toHaveBeenCalledOnce();
+
+    const aborted = fakeDatabase("get", "abort");
+    await expect(dbDeleteIfUnchangedStrict("settings", "legacy", "saved"))
+      .rejects.toThrow("transaction aborted");
+    expect(aborted.objectStore.delete).not.toHaveBeenCalled();
+    expect(aborted.close).toHaveBeenCalledOnce();
   });
   it("requires an atomic INSERT to succeed without overwriting existing keys", async () => {
     const ok = fakeDatabase("add", "commit");

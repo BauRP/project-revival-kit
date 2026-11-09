@@ -199,6 +199,52 @@ export async function dbDelete(store: string, key: string): Promise<void> {
   });
 }
 
+
+/**
+ * Delete a legacy profile only if it still contains the exact value verified
+ * by the encrypted-profile migration. Compare and delete inside ONE IDB
+ * readwrite transaction so another tab cannot replace it between operations.
+ * A changed/missing value is a conflict, never a successful migration.
+ */
+export async function dbDeleteIfUnchangedStrict(
+  store: string, key: string, expected: unknown,
+): Promise<void> {
+  const expectedJson = JSON.stringify(expected);
+  if (expectedJson === undefined) throw new Error("Invalid legacy record to erase");
+  const db = await openDB();
+  return new Promise<void>((resolve, reject) => {
+    let conflict = false;
+    try {
+      const tx = db.transaction(store, "readwrite");
+      const target = tx.objectStore(store);
+      const request = target.get(key);
+      request.onsuccess = () => {
+        if (JSON.stringify(request.result) !== expectedJson) {
+          conflict = true;
+          return;
+        }
+        target.delete(key);
+      };
+      tx.oncomplete = () => {
+        db.close();
+        if (conflict) reject(new Error("Legacy profile changed during encrypted migration"));
+        else resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        reject(tx.error || new Error("Conditional legacy deletion failed"));
+      };
+      tx.onabort = () => {
+        db.close();
+        reject(tx.error || new Error("Conditional legacy deletion aborted"));
+      };
+    } catch (error) {
+      db.close();
+      reject(error);
+    }
+  });
+}
+
 /** Delete each database after closing active Dexie connections. */
 function deleteIndexedDb(name: string): Promise<void> {
   return new Promise((resolve, reject) => {

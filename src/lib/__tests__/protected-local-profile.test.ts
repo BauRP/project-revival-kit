@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { importLocalRecordKey } from "../local-record-crypto";
 import {
   sealLocalProfile, openLocalProfile, parseSealedLocalProfile, commitSealedProfile,
-  openAndRetireLegacyProfile,
+  openAndRetireLegacyProfile, assertExistingLocalProfileIdentity,
 } from "../protected-local-profile";
 import type { UserProfile } from "../profile";
 
@@ -111,6 +111,42 @@ describe("identity-verified encrypted profile recovery before deleting legacy", 
       async () => original,erase,
     )).rejects.toThrow();
     expect(erase).not.toHaveBeenCalled();
+  });
+  it("does not erase legacy data belonging to a different identity even when sealed copy is valid", async () => {
+    const encrypted = await sealLocalProfile(await key(24), saved());
+    const erase = vi.fn(async () => undefined);
+    await expect(openAndRetireLegacyProfile(
+      encrypted, identity, await key(24),
+      async () => ({ ...saved(), userId: "other.onion" }), erase,
+    )).rejects.toThrow("another identity");
+    expect(erase).not.toHaveBeenCalled();
+  });
+  it("retains the old profile when an atomic compare-and-delete detects a concurrent update", async () => {
+    const encrypted = await sealLocalProfile(await key(25), saved());
+    const erase = vi.fn(async (_expected: unknown) => {
+      throw new Error("Legacy profile changed during encrypted migration");
+    });
+    await expect(openAndRetireLegacyProfile(
+      encrypted, identity, await key(25), async () => saved(), erase,
+    )).rejects.toThrow("changed during encrypted migration");
+    expect(erase).toHaveBeenCalledWith(saved());
+  });
+  it("refuses to overwrite a foreign, tampered or unreadable encrypted profile on save", async () => {
+    const valid = await sealLocalProfile(await key(26), saved());
+    const sameKey = await key(26);
+    await expect(assertExistingLocalProfileIdentity(
+      identity, sameKey, saved(), valid,
+    )).resolves.toBeUndefined();
+    await expect(assertExistingLocalProfileIdentity(
+      identity, sameKey, { ...saved(), userId: "other.onion" }, valid,
+    )).rejects.toThrow("another identity");
+    const foreign = await sealLocalProfile(sameKey, { ...saved(), userId: "other.onion" });
+    await expect(assertExistingLocalProfileIdentity(
+      identity, sameKey, undefined, foreign,
+    )).rejects.toThrow("another identity");
+    await expect(assertExistingLocalProfileIdentity(
+      identity, sameKey, undefined, { ...valid, sealed: { ...valid.sealed, nonce: "bad" } },
+    )).rejects.toThrow();
   });
   it("deletes old plaintext only after decrypting and verifying same identity", async () => {
     const original = saved();
