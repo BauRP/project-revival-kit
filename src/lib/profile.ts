@@ -9,7 +9,7 @@
 //    (ChatMeta.friendAvatar) so every list view renders the latest avatar.
 
 import localPeerCache from "./local-peer-cache";
-import { readStoredLocalProfile, saveStoredLocalProfile } from "./protected-local-profile";
+import { readStoredLocalProfile, saveStoredLocalProfile, assertStoredProfileOwner } from "./protected-local-profile";
 import { validateEditableProfile, nextProfileTimestamp } from "./profile-policy";
 import { getChatMeta, saveChatMeta } from "./p2p";
 import { getAllContacts, dxdb } from "./dexie-db";
@@ -73,6 +73,9 @@ function normalize(raw: unknown, fallbackId: string): UserProfile | null {
 export async function loadMyProfile(userId: string): Promise<UserProfile> {
   if (localLoaded && localProfile && localProfile.userId === userId) return localProfile;
   const { value: stored, migrateLegacy } = await readStoredLocalProfile();
+  // A malformed or foreign existing record is NOT a fresh install.
+  // Never overwrite such a profile with a default state or another identity.
+  assertStoredProfileOwner(stored, userId);
   const normalized = normalize(stored, userId);
   const resolved = normalized
     ? { ...normalized, userId: userId || normalized.userId }

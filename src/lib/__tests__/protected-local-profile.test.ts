@@ -68,3 +68,24 @@ describe("Android local profile AES-GCM confidentiality", () => {
     expect(erase).not.toHaveBeenCalled();
   });
 });
+
+import { assertStoredProfileOwner } from "../protected-local-profile";
+
+describe("profile migration must preserve legacy identity and data on failure", () => {
+  it("accepts only a well-formed profile for the same Tor identity", () => {
+    expect(() => assertStoredProfileOwner(saved(),identity)).not.toThrow();
+    expect(() => assertStoredProfileOwner(undefined,identity)).not.toThrow();
+  });
+  it("rejects a foreign identity before any migration/write occurs", () => {
+    expect(() => assertStoredProfileOwner({...saved(),userId:"foreign.onion"},identity))
+      .toThrow("another identity");
+  });
+  it("rejects corrupt legacy plaintext instead of replacing it with an empty profile", () => {
+    expect(() => assertStoredProfileOwner({name:"old content"},identity))
+      .toThrow("another identity");
+    expect(() => assertStoredProfileOwner({...saved(),name:17},identity))
+      .toThrow("malformed");
+    expect(() => assertStoredProfileOwner({...saved(),updatedAt:NaN},identity))
+      .toThrow("malformed");
+  });
+});

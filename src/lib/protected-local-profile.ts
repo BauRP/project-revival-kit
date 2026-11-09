@@ -42,6 +42,26 @@ export function parseSealedLocalProfile(value: unknown): SealedLocalProfile {
   return value as unknown as SealedLocalProfile;
 }
 
+/**
+ * Never silently replace a malformed or foreign legacy profile with an empty
+ * profile during migration. A saved different onion identity must be resolved
+ * by explicit account recovery, not normalized to the current identity.
+ */
+export function assertStoredProfileOwner(value: unknown, expectedUserId: string): void {
+  if (value === undefined) return;
+  if (!isRecord(value)) throw new Error("Saved local profile is malformed");
+  if (typeof value.userId !== "string" || !value.userId ||
+      value.userId !== expectedUserId)
+    throw new Error("Saved local profile belongs to another identity");
+  if (typeof value.name !== "string" ||
+      typeof value.customStatus !== "string" ||
+      (value.avatar !== null && typeof value.avatar !== "string") ||
+      !Number.isSafeInteger(value.updatedAt) ||
+      (value.updatedAt as number) < 0)
+    throw new Error("Saved local profile is malformed");
+  validateEditableProfile(value as unknown as UserProfile);
+}
+
 export async function sealLocalProfile(
   key: CryptoKey, profile: UserProfile,
 ): Promise<SealedLocalProfile> {
