@@ -14,6 +14,7 @@ import { stripSessionMediaUrl } from "./backup-media-policy";
 import { lifecycleRowsForRestore, lifecycleRowsToPurgeForDeletedMessages } from "./backup-merge-policy";
 import { queuedReactionEventIds } from "./reaction-deletion-policy";
 import { assertPortableBackupFits } from "./backup-budget";
+import { assertExportSnapshotSafe } from "./backup-snapshot-policy";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, unusedBackupMedia, matchesReceivedAttachmentMetadata } from "./message-deletion-policy";
 import { canEvictUnreferencedMedia, isMatchingReceivedCache } from "./media-cache-policy";
 
@@ -425,7 +426,7 @@ async function assertExportPreflight(): Promise<void> {
   let mediaBytes = 0;
   let textCodeUnits = 0;
   await Promise.all([
-    dxdb.blobs.each((r) => { mediaBytes += r.size || 0; }),
+    dxdb.blobs.each((r) => { mediaBytes += r.data.size; }),
     dxdb.messages.each((r) => { textCodeUnits += r.text?.length || 0; }),
   ]);
   assertPortableBackupFits({
@@ -436,13 +437,27 @@ async function assertExportPreflight(): Promise<void> {
 
 export async function exportDexieDump(): Promise<DexieDump> {
   await assertExportPreflight();
-  const [contacts, messages, outbox, lifecycle, blobs] = await Promise.all([
-    dxdb.contacts.toArray(),
-    dxdb.messages.toArray(),
-    dxdb.outbox.toArray(),
-    dxdb.lifecycle.toArray(),
-    dxdb.blobs.toArray(),
-  ]);
+  // A portable archive must represent ONE committed database state. Reading
+  // each table outside a transaction may mix a deleted message with its
+  // previously live attachment, or miss a newly added privacy tombstone.
+  // Capture references to all five tables in one read-only Dexie snapshot.
+  // The expensive Blob->Base64 work remains OUTSIDE the transaction.
+  const { contacts, messages, outbox, lifecycle, blobs } = await dxdb.transaction(
+    "r", [dxdb.contacts, dxdb.messages, dxdb.outbox, dxdb.lifecycle, dxdb.blobs],
+    async () => {
+      const [contacts, messages, outbox, lifecycle, blobs] = await Promise.all([
+        dxdb.contacts.toArray(),
+        dxdb.messages.toArray(),
+        dxdb.outbox.toArray(),
+        dxdb.lifecycle.toArray(),
+        dxdb.blobs.toArray(),
+      ]);
+      return { contacts, messages, outbox, lifecycle, blobs };
+    },
+  );
+  // Recheck actual rows/Blob bytes, because writes may have happened after
+  // the lightweight preflight and before the consistent snapshot was taken.
+  assertExportSnapshotSafe({ contacts, messages, outbox, lifecycle, blobs });
   // Avoid starting a separate multi-megabyte ArrayBuffer conversion for
   // every attachment at once. Sequential encoding limits peak native and
   // WebView memory while preserving the exact V3 portable archive format.
