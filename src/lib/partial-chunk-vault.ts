@@ -8,33 +8,22 @@
  */
 import { dxdb, type PartialBlobChunkRecord } from "./dexie-db";
 import { openLocalRecord, sealLocalRecord, type SealedLocalRecord } from "./local-record-crypto";
-import { acquirePersistedLocalRecordKey } from "./local-record-key-store";
+import { acquireLocalDataKey, ENCRYPTED_CHUNK_MIME } from "./protected-record-inventory";
 import { platform } from "./platform";
 import { matchesChunkDigest } from "./chunk-integrity";
 import { mayUpgradeLegacyChunk } from "./legacy-chunk-migration";
 
 export const MAX_DECRYPTED_CHUNK_BYTES = 48 * 1024;
-const ENCRYPTED_CHUNK_MIME = "application/x-trivo-encrypted-chunk";
 const MAX_ENCRYPTED_CHUNK_BYTES = 100 * 1024;
-let keyTask: Promise<CryptoKey> | null = null;
-
 /** Keystore failures on Android must never silently fall back to plaintext. */
 export function shouldEncryptPartialChunks(): boolean {
   return platform() === "android";
 }
 
 async function obtainAndroidChunkKey(): Promise<CryptoKey> {
-  if (!keyTask) {
-    keyTask = acquirePersistedLocalRecordKey(async () =>
-      (await dxdb.partial_chunks.filter((r) =>
-        r.encrypted === 1 || r.data.type === ENCRYPTED_CHUNK_MIME,
-      ).count()) === 0,
-    ).catch((error: unknown) => {
-      keyTask = null;
-      throw error;
-    });
-  }
-  return keyTask;
+  // Key bootstrap checks encrypted partial media AND the newly protected
+  // profile. Losing the wrapper must not rotate the key for either dataset.
+  return acquireLocalDataKey();
 }
 
 function encodeBytes(bytes: Uint8Array): string {

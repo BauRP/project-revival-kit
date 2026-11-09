@@ -217,6 +217,8 @@ export async function nukeAllData(): Promise<void> {
   await dxdb.delete();
   await deleteIndexedDb(DB_NAME);
   await deleteIndexedDb("trivo-outbox");
+  const { forgetCachedLocalDataKey } = await import("./protected-record-inventory");
+  forgetCachedLocalDataKey();
   localStorage.clear();
   sessionStorage.clear();
 }

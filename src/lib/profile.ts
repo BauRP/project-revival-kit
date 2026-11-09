@@ -9,7 +9,7 @@
 //    (ChatMeta.friendAvatar) so every list view renders the latest avatar.
 
 import localPeerCache from "./local-peer-cache";
-import { dbGetStrict, dbPutStrict } from "./storage";
+import { readStoredLocalProfile, saveStoredLocalProfile } from "./protected-local-profile";
 import { validateEditableProfile, nextProfileTimestamp } from "./profile-policy";
 import { getChatMeta, saveChatMeta } from "./p2p";
 import { getAllContacts, dxdb } from "./dexie-db";
@@ -28,7 +28,6 @@ export interface UserProfile {
   updatedAt: number;
 }
 
-const LOCAL_KEY = "my-profile-v1";
 const CHANNEL = "trivo-profiles";
 
 const remoteCache = new Map<string, UserProfile>();
@@ -73,11 +72,15 @@ function normalize(raw: unknown, fallbackId: string): UserProfile | null {
 /** Loads the local user's persisted profile (creates an empty one on first run). */
 export async function loadMyProfile(userId: string): Promise<UserProfile> {
   if (localLoaded && localProfile && localProfile.userId === userId) return localProfile;
-  const stored = await dbGetStrict<UserProfile>("settings", LOCAL_KEY);
+  const { value: stored, migrateLegacy } = await readStoredLocalProfile();
   const normalized = normalize(stored, userId);
-  localProfile = normalized
+  const resolved = normalized
     ? { ...normalized, userId: userId || normalized.userId }
     : emptyProfile(userId);
+  // On Android, migrate a legacy plaintext profile only after authenticated
+  // ciphertext is durably committed and read back; no silent fallback to raw.
+  if (migrateLegacy) await saveStoredLocalProfile(resolved);
+  localProfile = resolved;
   localLoaded = true;
   return localProfile;
 }
@@ -106,7 +109,7 @@ export function saveMyProfile(
     validateEditableProfile(next);
     // Never inform UI/listeners of success before the database transaction
     // has committed. A storage failure keeps the previous in-memory profile.
-    await dbPutStrict("settings", LOCAL_KEY, next);
+    await saveStoredLocalProfile(next);
     localProfile = next;
     publishProfile(next);
     void publishProfileToContacts(next).catch((error) =>
