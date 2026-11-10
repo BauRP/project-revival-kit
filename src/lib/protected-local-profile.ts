@@ -8,7 +8,7 @@
  * Browser preview keeps the original legacy key/behavior.
  */
 import type { UserProfile } from "./profile";
-import { dbDeleteIfUnchangedStrict, dbGetStrict, dbPutStrict } from "./storage";
+import { dbDeleteIfUnchangedStrict, dbGetStrict, dbPutIfUnchangedStrict, dbPutStrict } from "./storage";
 import { platform } from "./platform";
 import {
   LOCAL_PROFILE_ENCRYPTED_ID, LOCAL_PROFILE_LEGACY_ID, acquireLocalDataKey,
@@ -128,8 +128,11 @@ export async function openAndRetireLegacyProfile(
   assertStoredProfileOwner(opened, currentUserId);
   const old = await oldRead();
   if (old !== undefined) {
-    // Do not destroy a foreign, damaged or concurrently replaced legacy copy.
+    // Never discard a newer legacy edit if encryption was interrupted before
+    // that edit could be saved. Equal timestamps with different fields are
+    // ambiguous and require an explicit recovery, not silent destruction.
     assertStoredProfileOwner(old, currentUserId);
+    assertLegacyProfileNotNewer(old as UserProfile, opened);
     await oldErase(old);
   }
   return opened;
@@ -158,6 +161,39 @@ export async function readStoredLocalProfile(currentUserId: string): Promise<{
   return { value: old, migrateLegacy: old !== undefined };
 }
 
+/** Do not erase an unencrypted profile that holds newer/ambiguous edits. */
+export function assertLegacyProfileNotNewer(
+  legacy: UserProfile, encrypted: UserProfile,
+): void {
+  if (legacy.updatedAt > encrypted.updatedAt ||
+      (legacy.updatedAt === encrypted.updatedAt &&
+        !sameProfileFields(legacy, encrypted)))
+    throw new Error("Legacy profile has newer or conflicting unsaved changes");
+}
+
+function sameProfileFields(a: UserProfile, b: UserProfile): boolean {
+  return a.userId === b.userId && a.name === b.name &&
+    a.avatar === b.avatar && a.status === b.status &&
+    a.customStatus === b.customStatus && a.updatedAt === b.updatedAt;
+}
+
+/**
+ * A second WebView may have edited the profile since this instance last
+ * loaded it. Compare with the caller's in-memory snapshot before saving.
+ * An untouched, never-persisted default profile is the only valid absence.
+ */
+export function assertProfileSnapshotUnchanged(
+  persisted: UserProfile | undefined, expected: UserProfile | undefined,
+): void {
+  if (!expected) return;
+  if (persisted === undefined) {
+    if (expected.updatedAt === 0 && expected.name === "" &&
+        expected.avatar === null && expected.status === "online" &&
+        expected.customStatus === "") return;
+  } else if (sameProfileFields(persisted, expected)) return;
+  throw new Error("Local profile changed in another session");
+}
+
 /** Shared guard for new edits, legacy migrations and crash-resume paths. */
 export async function assertExistingLocalProfileIdentity(
   userId: string, key: CryptoKey, legacy: unknown, sealed: unknown,
@@ -168,7 +204,9 @@ export async function assertExistingLocalProfileIdentity(
   }
 }
 
-export async function saveStoredLocalProfile(profile: UserProfile): Promise<void> {
+export async function saveStoredLocalProfile(
+  profile: UserProfile, expectedPrevious?: UserProfile,
+): Promise<void> {
   if (platform() !== "android") {
     await dbPutStrict("settings", LOCAL_PROFILE_LEGACY_ID, profile);
     return;
@@ -181,9 +219,15 @@ export async function saveStoredLocalProfile(profile: UserProfile): Promise<void
     dbGetStrict<unknown>("settings", LOCAL_PROFILE_ENCRYPTED_ID),
   ]);
   await assertExistingLocalProfileIdentity(profile.userId, key, legacy, previousSealed);
+  const latest = previousSealed === undefined
+    ? legacy as UserProfile | undefined
+    : await openLocalProfile(key, previousSealed);
+  assertProfileSnapshotUnchanged(latest, expectedPrevious);
   const encrypted = await sealLocalProfile(key, profile);
   await commitSealedProfile(profile, encrypted, {
-    write: (value) => dbPutStrict("settings", LOCAL_PROFILE_ENCRYPTED_ID, value),
+    write: (value) => dbPutIfUnchangedStrict(
+      "settings", LOCAL_PROFILE_ENCRYPTED_ID, previousSealed, value,
+    ),
     read: () => dbGetStrict("settings", LOCAL_PROFILE_ENCRYPTED_ID),
     decrypt: (value) => openLocalProfile(key, value),
     eraseLegacy: () => legacy === undefined ? Promise.resolve() :

@@ -201,6 +201,55 @@ export async function dbDelete(store: string, key: string): Promise<void> {
 
 
 /**
+ * Atomically compare and update a settings record. Without this guard two
+ * WebViews/tabs can both read the same ciphertext, encrypt different edits
+ * and silently overwrite the first committed profile.
+ *
+ * The comparison and write run in a single IndexedDB readwrite transaction.
+ * A mismatch is a conflict; it never becomes a successful save.
+ */
+export async function dbPutIfUnchangedStrict(
+  store: string, key: string, expected: unknown, value: unknown,
+): Promise<void> {
+  const expectedJson = JSON.stringify(expected);
+  if (expected !== undefined && expectedJson === undefined)
+    throw new Error("Invalid expected protected record");
+  const db = await openDB();
+  return new Promise<void>((resolve, reject) => {
+    let conflict = false;
+    try {
+      const tx = db.transaction(store, "readwrite");
+      const target = tx.objectStore(store);
+      const req = target.get(key);
+      req.onsuccess = () => {
+        if (JSON.stringify(req.result) !== expectedJson) {
+          conflict = true;
+          return;
+        }
+        if (target.keyPath) target.put(value);
+        else target.put(value, key);
+      };
+      tx.oncomplete = () => {
+        db.close();
+        if (conflict) reject(new Error("Protected profile changed in another session"));
+        else resolve();
+      };
+      tx.onerror = () => {
+        db.close();
+        reject(tx.error || new Error("Conditional protected write failed"));
+      };
+      tx.onabort = () => {
+        db.close();
+        reject(tx.error || new Error("Conditional protected write aborted"));
+      };
+    } catch (error) {
+      db.close();
+      reject(error);
+    }
+  });
+}
+
+/**
  * Delete a legacy profile only if it still contains the exact value verified
  * by the encrypted-profile migration. Compare and delete inside ONE IDB
  * readwrite transaction so another tab cannot replace it between operations.

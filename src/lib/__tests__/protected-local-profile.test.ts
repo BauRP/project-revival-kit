@@ -3,6 +3,7 @@ import { importLocalRecordKey } from "../local-record-crypto";
 import {
   sealLocalProfile, openLocalProfile, parseSealedLocalProfile, commitSealedProfile,
   openAndRetireLegacyProfile, assertExistingLocalProfileIdentity,
+  assertProfileSnapshotUnchanged, assertLegacyProfileNotNewer,
 } from "../protected-local-profile";
 import type { UserProfile } from "../profile";
 
@@ -147,6 +148,35 @@ describe("identity-verified encrypted profile recovery before deleting legacy", 
     await expect(assertExistingLocalProfileIdentity(
       identity, sameKey, undefined, { ...valid, sealed: { ...valid.sealed, nonce: "bad" } },
     )).rejects.toThrow();
+  });
+  it("refuses to erase a newer or equally dated conflicting legacy profile", async () => {
+    const encrypted = await sealLocalProfile(await key(27), saved());
+    const erase = vi.fn(async () => undefined);
+    await expect(openAndRetireLegacyProfile(
+      encrypted, identity, await key(27),
+      async () => ({ ...saved(), updatedAt: saved().updatedAt + 1 }), erase,
+    )).rejects.toThrow("newer or conflicting");
+    await expect(openAndRetireLegacyProfile(
+      encrypted, identity, await key(27),
+      async () => ({ ...saved(), name: "unsaved change" }), erase,
+    )).rejects.toThrow("newer or conflicting");
+    expect(erase).not.toHaveBeenCalled();
+    expect(() => assertLegacyProfileNotNewer(
+      { ...saved(), updatedAt: saved().updatedAt - 1 }, saved(),
+    )).not.toThrow();
+  });
+  it("rejects edits from stale local memory but permits a fresh empty profile", () => {
+    const previous = saved();
+    expect(() => assertProfileSnapshotUnchanged(previous, previous)).not.toThrow();
+    expect(() => assertProfileSnapshotUnchanged(
+      { ...previous, name: "changed elsewhere" }, previous,
+    )).toThrow("changed in another session");
+    expect(() => assertProfileSnapshotUnchanged(
+      undefined, { ...previous, updatedAt: 0, name: "", avatar: null,
+        status: "online", customStatus: "" },
+    )).not.toThrow();
+    expect(() => assertProfileSnapshotUnchanged(undefined, previous))
+      .toThrow("changed in another session");
   });
   it("deletes old plaintext only after decrypting and verifying same identity", async () => {
     const original = saved();

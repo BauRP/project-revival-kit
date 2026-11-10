@@ -82,7 +82,7 @@ export async function loadMyProfile(userId: string): Promise<UserProfile> {
     : emptyProfile(userId);
   // On Android, migrate a legacy plaintext profile only after authenticated
   // ciphertext is durably committed and read back; no silent fallback to raw.
-  if (migrateLegacy) await saveStoredLocalProfile(resolved);
+  if (migrateLegacy) await saveStoredLocalProfile(resolved, resolved);
   localProfile = resolved;
   localLoaded = true;
   return localProfile;
@@ -112,7 +112,7 @@ export function saveMyProfile(
     validateEditableProfile(next);
     // Never inform UI/listeners of success before the database transaction
     // has committed. A storage failure keeps the previous in-memory profile.
-    await saveStoredLocalProfile(next);
+    await saveStoredLocalProfile(next, current);
     localProfile = next;
     publishProfile(next);
     void publishProfileToContacts(next).catch((error) =>

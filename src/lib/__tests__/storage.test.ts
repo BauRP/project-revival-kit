@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { dbAddStrict, dbDelete, dbDeleteIfUnchangedStrict, dbGet, dbGetAll, dbPut } from "../storage";
+import { dbAddStrict, dbDelete, dbDeleteIfUnchangedStrict, dbGet, dbGetAll, dbPut, dbPutIfUnchangedStrict } from "../storage";
 
 type MockOperation = "get" | "getAll" | "put" | "add" | "delete";
 
@@ -101,6 +101,25 @@ describe("legacy IndexedDB operations must never signal success before commit", 
     await expect(dbDeleteIfUnchangedStrict("settings", "legacy", "saved"))
       .rejects.toThrow("transaction aborted");
     expect(aborted.objectStore.delete).not.toHaveBeenCalled();
+    expect(aborted.close).toHaveBeenCalledOnce();
+  });
+  it("uses atomic compare-and-write to prevent two-tab encrypted profile overwrite", async () => {
+    const first = fakeDatabase("get", "commit");
+    await dbPutIfUnchangedStrict("settings", "sealed", "saved", { sealed: "edit" });
+    expect(first.objectStore.get).toHaveBeenCalledWith("sealed");
+    expect(first.objectStore.put).toHaveBeenCalledWith({ sealed: "edit" }, "sealed");
+    expect(first.close).toHaveBeenCalledOnce();
+
+    const competing = fakeDatabase("get", "commit");
+    await expect(dbPutIfUnchangedStrict("settings", "sealed", "stale", { sealed: "lost" }))
+      .rejects.toThrow("Protected profile changed");
+    expect(competing.objectStore.put).not.toHaveBeenCalled();
+    expect(competing.close).toHaveBeenCalledOnce();
+
+    const aborted = fakeDatabase("get", "abort");
+    await expect(dbPutIfUnchangedStrict("settings", "sealed", "saved", { sealed: "edit" }))
+      .rejects.toThrow("transaction aborted");
+    expect(aborted.objectStore.put).not.toHaveBeenCalled();
     expect(aborted.close).toHaveBeenCalledOnce();
   });
   it("requires an atomic INSERT to succeed without overwriting existing keys", async () => {
