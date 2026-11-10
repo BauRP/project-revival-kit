@@ -197,21 +197,15 @@ jobs:
 
       - name: Smoke-test APK installation on Android 15 x86_64
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          TRIVO_APK_PATH: ${{ steps.apk.outputs.path }}
         with:
           api-level: 35
           target: google_apis
           arch: x86_64
           emulator-boot-timeout: 600
-          script: |
-            set -euo pipefail
-            APK="${{ steps.apk.outputs.path }}"
-            adb install "$APK"
-            adb shell pm path com.baurp.trivochat | grep -F "base.apk"
-            adb shell run-as com.baurp.trivochat sh -c 'mkdir -p files; echo keep > files/trivo-ci-upgrade-test'
-            adb install -r "$APK"
-            adb shell run-as com.baurp.trivochat cat files/trivo-ci-upgrade-test | grep -F keep
-            adb shell dumpsys package com.baurp.trivochat | grep -m1 "versionCode=${TRIVO_VERSION_CODE}"
-            echo "Android PackageManager installed and replaced the APK without data loss."
+          # Runner executes each script line in its own shell. ONE command only.
+          script: bash .github/scripts/verify-apk-install.sh
 
       - name: Create Release & Upload Universal APK
         env:
