@@ -76,7 +76,20 @@ function initializeBiometricOnce(): Promise<void> {
 
 async function toggleBiometric(): Promise<void> {
   const enabled = state.getSnapshot().isEnabled;
-  if (!enabled && !await authenticateBiometric()) return;
+  if (!enabled) {
+    // A plain browser has no native BiometricAuth prompt. Claiming the
+    // preference is enabled there would be a false security guarantee.
+    if (!isNative()) {
+      console.warn("[trivo] biometric protection requires the Android application");
+      return;
+    }
+    await initializeBiometricOnce();
+    if (!state.getSnapshot().isAvailable) {
+      console.warn("[trivo] biometric hardware or enrollment unavailable");
+      return;
+    }
+    if (!await authenticateBiometric()) return;
+  }
 
   // The lock preference is security-sensitive: never claim it was enabled
   // if storage is blocked and persistence cannot be verified.
