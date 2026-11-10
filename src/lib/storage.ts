@@ -41,6 +41,7 @@ export function upgradeLegacyContactsStore(
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
+    let blocked = false;
     req.onupgradeneeded = (event) => {
       const db = req.result;
       const oldVersion = event.oldVersion;
@@ -56,13 +57,22 @@ function openDB(): Promise<IDBDatabase> {
       upgradeLegacyContactsStore(db, req.transaction!, oldVersion);
     };
     req.onsuccess = () => {
-      // A stale tab must release old DB connections when a later APK needs
-      // a schema version upgrade. Otherwise IndexedDB.open can hang forever.
-      req.result.onversionchange = () => req.result.close();
-      resolve(req.result);
+      // After an onblocked rejection, IndexedDB can still open the DB when
+      // another tab finally closes. That now-orphaned connection MUST be
+      // closed rather than leaking a permanent blocker of future upgrades.
+      if (blocked) {
+        req.result.close();
+        return;
+      }
+      const database = req.result;
+      database.onversionchange = () => database.close();
+      resolve(database);
     };
     req.onerror = () => reject(req.error || new Error("Cannot open local database"));
-    req.onblocked = () => reject(new Error("Local database is blocked by another open tab"));
+    req.onblocked = () => {
+      blocked = true;
+      reject(new Error("Local database is blocked by another open tab"));
+    };
   });
 }
 

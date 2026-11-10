@@ -52,6 +52,29 @@ function fakeDatabase(operation: MockOperation, outcome: "commit" | "abort" | "p
 
 afterEach(() => vi.unstubAllGlobals());
 
+describe("blocked legacy IndexedDB connection cleanup", () => {
+  it("closes a late successful open after already rejecting an onblocked request", async () => {
+    const close = vi.fn();
+    const db = { close, transaction: vi.fn() };
+    const open = vi.fn(() => {
+      const request: Record<string, unknown> = {};
+      queueMicrotask(() => {
+        (request.onblocked as () => void)();
+        queueMicrotask(() => {
+          request.result = db;
+          (request.onsuccess as () => void)();
+        });
+      });
+      return request;
+    });
+    vi.stubGlobal("indexedDB", { open });
+    await expect(dbGet("settings", "test")).rejects.toThrow("blocked by another open tab");
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(close).toHaveBeenCalledOnce();
+    expect(db.transaction).not.toHaveBeenCalled();
+  });
+});
+
 describe("legacy v1 contacts schema preservation", () => {
   it("keeps an existing compatible store without recreating or clearing it", () => {
     const store = { keyPath: null, openCursor: vi.fn() };
