@@ -4,7 +4,8 @@
 //  the engine owns the sealed outbox and the DELIVERED_ACK lifecycle.
 // ============================================================================
 
-import { dbGet, dbGetAll, dbGetStrict, dbGetAllStrict, dbPut, dbPutStrict, dbClearStrict } from "./storage";
+import { dbGetStrict, dbGetAllStrict, dbPutStrict, dbClearStrict } from "./storage";
+import { saveStoredChatMeta, readStoredChatMeta, readAllStoredChatMetas } from "./protected-chat-meta";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { sanitizeRestoredOneTimeMessage } from "./one-time-policy";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage, deletedLifecycleShell } from "./message-deletion-policy";
@@ -314,16 +315,16 @@ export async function migrateLegacyMessages(): Promise<void> {
 export async function saveChatMeta(meta: ChatMeta): Promise<void> {
   // Chat metadata is user-visible state, not an optional debug cache.
   // A failed IndexedDB transaction must not be reported as a saved contact.
-  await dbPutStrict("contacts", meta.friendId, meta);
+  await saveStoredChatMeta(meta);
   if (isValidOnion(meta.friendId)) await upsertContact(meta.friendId, meta.friendName);
 }
 
 export async function getChatMeta(friendId: string): Promise<ChatMeta | undefined> {
-  return dbGetStrict<ChatMeta>("contacts", friendId);
+  return readStoredChatMeta(friendId);
 }
 
 export async function getAllChatMetas(): Promise<ChatMeta[]> {
-  return dbGetAllStrict<ChatMeta>("contacts");
+  return readAllStoredChatMetas();
 }
 
 // ─── Listener API ────────────────────────────────────────────
