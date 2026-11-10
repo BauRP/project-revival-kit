@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Play, Pause } from "lucide-react";
 import TranscriptionPlate from "./TranscriptionPlate";
+import { canReadWaveformLocally, readBoundedWaveformBytes } from "@/lib/waveform-policy";
 
 interface AudioWaveformPlayerProps {
   src: string;
@@ -20,38 +21,64 @@ const AudioWaveformPlayer = ({ src, name, sent }: AudioWaveformPlayerProps) => {
   const [peaks, setPeaks] = useState<number[]>([]);
   const audioRef = useRef<HTMLAudioElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animRef = useRef<number>(0);
+  // Use the browser's timeupdate event (~4 updates/s) rather than one React
+  // render per animation frame for every visible voice message.
 
-  // Generate waveform peaks from audio data
+  // Decode only local, size-bounded audio. Downloading a remote link here
+  // would disclose a private voice-message URL outside the Tor transport.
   useEffect(() => {
+    let disposed = false;
+    const controller = new AbortController();
+    let context: AudioContext | null = null;
+    const fallback = Array.from({ length: BAR_COUNT },
+      (_, i) => 0.22 + (i % 5) * 0.11);
     const generatePeaks = async () => {
       try {
-        const response = await fetch(src);
-        const arrayBuffer = await response.arrayBuffer();
-        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-        const channelData = audioBuffer.getChannelData(0);
-        const blockSize = Math.floor(channelData.length / BAR_COUNT);
-        const peakValues: number[] = [];
-
-        for (let i = 0; i < BAR_COUNT; i++) {
-          let sum = 0;
-          for (let j = 0; j < blockSize; j++) {
-            sum += Math.abs(channelData[i * blockSize + j]);
-          }
-          peakValues.push(sum / blockSize);
+        if (!canReadWaveformLocally(src, window.location.origin)) {
+          setPeaks(fallback);
+          return;
         }
-
-        // Normalize
-        const max = Math.max(...peakValues, 0.01);
-        setPeaks(peakValues.map((p) => Math.max(0.08, p / max)));
-        audioCtx.close();
+        const response = await fetch(src, { signal: controller.signal });
+        const data = await readBoundedWaveformBytes(response);
+        if (!data || disposed) {
+          if (!disposed) setPeaks(fallback);
+          return;
+        }
+        const AudioContextType = window.AudioContext ||
+          (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioContextType) throw new Error("Audio decoder unavailable");
+        context = new AudioContextType();
+        const buffer = await context.decodeAudioData(data);
+        if (disposed) return;
+        const channel = buffer.getChannelData(0);
+        if (!channel.length) { setPeaks(fallback); return; }
+        const points: number[] = [];
+        for (let i = 0; i < BAR_COUNT; i++) {
+          const from = Math.floor((i * channel.length) / BAR_COUNT);
+          const to = Math.max(from + 1, Math.floor(((i + 1) * channel.length) / BAR_COUNT));
+          // Sampling up to 1024 points per bar avoids O(duration*sampleRate)
+          // work on the WebView renderer for long voice messages.
+          const stride = Math.max(1, Math.floor((to - from) / 1024));
+          let total = 0, count = 0;
+          for (let p = from; p < to; p += stride) {
+            total += Math.abs(channel[p]);
+            count++;
+          }
+          points.push(count ? total / count : 0);
+        }
+        const max = Math.max(...points, 0.01);
+        setPeaks(points.map(p => Math.max(0.08, p / max)));
       } catch {
-        // Fallback: random-ish peaks for visual
-        setPeaks(Array.from({ length: BAR_COUNT }, () => 0.15 + Math.random() * 0.85));
+        if (!disposed) setPeaks(fallback);
+      } finally {
+        if (context) void context.close().catch(() => undefined);
       }
     };
-    generatePeaks();
+    void generatePeaks();
+    return () => {
+      disposed = true;
+      controller.abort();
+    };
   }, [src]);
 
   const drawWaveform = useCallback(() => {
@@ -97,21 +124,13 @@ const AudioWaveformPlayer = ({ src, name, sent }: AudioWaveformPlayerProps) => {
   const handlePlayPause = () => {
     const audio = audioRef.current;
     if (!audio) return;
-    if (playing) {
+    if (!audio.paused) {
       audio.pause();
-      setPlaying(false);
-      cancelAnimationFrame(animRef.current);
-    } else {
-      audio.play();
-      setPlaying(true);
-      const tick = () => {
-        setCurrentTime(audio.currentTime);
-        if (!audio.paused) {
-          animRef.current = requestAnimationFrame(tick);
-        }
-      };
-      animRef.current = requestAnimationFrame(tick);
+      return;
     }
+    // A rejected play() promise (no codec, device audio restriction) is not
+    // a successful playback and must never leave a phantom "playing" state.
+    void audio.play().catch(() => setPlaying(false));
   };
 
   const formatTime = (s: number) => {
@@ -130,10 +149,12 @@ const AudioWaveformPlayer = ({ src, name, sent }: AudioWaveformPlayerProps) => {
           src={src}
           preload="metadata"
           onLoadedMetadata={(e) => setDuration((e.target as HTMLAudioElement).duration)}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onTimeUpdate={(e) => setCurrentTime((e.target as HTMLAudioElement).currentTime)}
           onEnded={() => {
             setPlaying(false);
             setCurrentTime(0);
-            cancelAnimationFrame(animRef.current);
           }}
         />
         <button

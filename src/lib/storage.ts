@@ -3,6 +3,41 @@
 const DB_NAME = "trivo-chat";
 const DB_VERSION = 2;
 
+/**
+ * v1 stored contacts with an inline keyPath; v2 needs an out-of-line key.
+ * Previously the upgrader deleted the whole v1 contacts store, destroying
+ * every contact during the first APK update. Preserve keys and values within
+ * the SAME versionchange transaction. Any failed cursor/write aborts upgrade.
+ */
+export function upgradeLegacyContactsStore(
+  db: IDBDatabase, transaction: IDBTransaction, oldVersion: number,
+): void {
+  if (oldVersion >= 2) return;
+  if (!db.objectStoreNames.contains("contacts")) {
+    db.createObjectStore("contacts");
+    return;
+  }
+  const original = transaction.objectStore("contacts");
+  if (original.keyPath === null) return; // Already compatible. Never delete.
+  const existing: { key: IDBValidKey; value: unknown }[] = [];
+  const cursorRequest = original.openCursor();
+  cursorRequest.onsuccess = () => {
+    const cursor = cursorRequest.result;
+    if (cursor) {
+      existing.push({ key: cursor.primaryKey, value: cursor.value });
+      cursor.continue();
+      return;
+    }
+    // The cursor is exhausted; all original records were read successfully.
+    // The upgrade transaction is still active in this request callback.
+    db.deleteObjectStore("contacts");
+    const upgraded = db.createObjectStore("contacts");
+    for (const row of existing) upgraded.add(row.value, row.key);
+  };
+  // An IDBRequest error aborts the upgrade transaction by default. Do not
+  // swallow it or try to recreate an empty contacts store on corruption.
+}
+
 function openDB(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
@@ -17,13 +52,8 @@ function openDB(): Promise<IDBDatabase> {
         if (!db.objectStoreNames.contains("settings")) db.createObjectStore("settings");
       }
 
-      // v2: fix contacts store — use no inline keyPath so we can use explicit keys
-      if (oldVersion < 2) {
-        if (db.objectStoreNames.contains("contacts")) {
-          db.deleteObjectStore("contacts");
-        }
-        db.createObjectStore("contacts");
-      }
+      // v2: switch contacts to explicit keys WITHOUT erasing old contacts.
+      upgradeLegacyContactsStore(db, req.transaction!, oldVersion);
     };
     req.onsuccess = () => {
       // A stale tab must release old DB connections when a later APK needs

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { dbAddStrict, dbDelete, dbDeleteIfUnchangedStrict, dbGet, dbGetAll, dbPut, dbPutIfUnchangedStrict } from "../storage";
+import { dbAddStrict, dbDelete, dbDeleteIfUnchangedStrict, dbGet, dbGetAll, dbPut, dbPutIfUnchangedStrict, upgradeLegacyContactsStore } from "../storage";
 
 type MockOperation = "get" | "getAll" | "put" | "add" | "delete";
 
@@ -51,6 +51,68 @@ function fakeDatabase(operation: MockOperation, outcome: "commit" | "abort" | "p
 }
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("legacy v1 contacts schema preservation", () => {
+  it("keeps an existing compatible store without recreating or clearing it", () => {
+    const store = { keyPath: null, openCursor: vi.fn() };
+    const db = {
+      objectStoreNames: { contains: vi.fn(() => true) },
+      createObjectStore: vi.fn(), deleteObjectStore: vi.fn(),
+    };
+    const tx = { objectStore: vi.fn(() => store) };
+    upgradeLegacyContactsStore(db as never, tx as never, 1);
+    expect(db.deleteObjectStore).not.toHaveBeenCalled();
+    expect(db.createObjectStore).not.toHaveBeenCalled();
+    expect(store.openCursor).not.toHaveBeenCalled();
+  });
+  it("preserves every v1 inline-key contact in the new out-of-line store", () => {
+    const records = [
+      { key: "friend-1", value: { friendId: "friend-1", name: "Контакт" } },
+      { key: "friend-2", value: { friendId: "friend-2", name: "Friend" } },
+    ];
+    let index = 0;
+    const request: Record<string, unknown> = { result: null };
+    const cursor = {
+      get primaryKey() { return records[index].key; },
+      get value() { return records[index].value; },
+      continue: vi.fn(() => {
+        index += 1;
+        request.result = index < records.length ? cursor : null;
+        (request.onsuccess as () => void)();
+      }),
+    };
+    request.result = cursor;
+    const old = { keyPath: "friendId", openCursor: vi.fn(() => request) };
+    const target = { add: vi.fn() };
+    const db = {
+      objectStoreNames: { contains: vi.fn(() => true) },
+      createObjectStore: vi.fn(() => target),
+      deleteObjectStore: vi.fn(),
+    };
+    const tx = { objectStore: vi.fn(() => old) };
+    upgradeLegacyContactsStore(db as never, tx as never, 1);
+    expect(db.deleteObjectStore).not.toHaveBeenCalled();
+    (request.onsuccess as () => void)();
+    expect(db.deleteObjectStore).toHaveBeenCalledOnce();
+    expect(target.add).toHaveBeenNthCalledWith(1, records[0].value, records[0].key);
+    expect(target.add).toHaveBeenNthCalledWith(2, records[1].value, records[1].key);
+    expect(db.createObjectStore).toHaveBeenCalledWith("contacts");
+  });
+  it("does not replace contacts when reading the legacy cursor fails", () => {
+    const request: Record<string, unknown> = {};
+    const old = { keyPath: "friendId", openCursor: vi.fn(() => request) };
+    const db = {
+      objectStoreNames: { contains: vi.fn(() => true) },
+      createObjectStore: vi.fn(), deleteObjectStore: vi.fn(),
+    };
+    const tx = { objectStore: vi.fn(() => old) };
+    upgradeLegacyContactsStore(db as never, tx as never, 1);
+    // An IndexedDB error aborts the underlying versionchange transaction.
+    // The handler must NOT attempt a destructive fallback.
+    expect(db.deleteObjectStore).not.toHaveBeenCalled();
+    expect(db.createObjectStore).not.toHaveBeenCalled();
+  });
+});
 
 describe("legacy IndexedDB operations must never signal success before commit", () => {
   it("read and collection handles close their connection on complete", async () => {
