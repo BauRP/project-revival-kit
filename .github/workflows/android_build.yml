@@ -8,9 +8,16 @@ on:
 permissions:
   contents: write
 
+# Do not bootstrap two different signing keys from concurrent runs.
+concurrency:
+  group: trivo-debug-apk-signing
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      TRIVO_VERSION_CODE: ${{ github.run_number }}
 
     steps:
       - name: Checkout Source
@@ -22,6 +29,47 @@ jobs:
           distribution: "zulu"
           java-version: "21"
           cache: gradle
+
+      # Test-only key. Never commit a signing private key to this public repo.
+      - name: Restore persistent emulator debug signing key
+        id: trivo-signing-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: trivo-emulator-debug-signing-v1
+
+      - name: Refuse incompatible signing-key rotation
+        env:
+          CACHE_HIT: ${{ steps.trivo-signing-cache.outputs.cache-hit }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          if [ "$CACHE_HIT" != "true" ]; then
+            # First established signer: build-338 only.
+            # Missing cache on later runs is an error, NEVER regenerate it.
+            if [ "$BUILD_NUMBER" != "338" ]; then
+              echo "::error::Stable Trivo debug signing key is missing. Refusing to release an incompatible APK."
+              exit 1
+            fi
+            keytool -genkeypair -noprompt \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 3072 -validity 12000 \
+              -dname "CN=Trivo Emulator QA Debug,O=Trivo,C=KZ"
+          fi
+          test -s "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+          keytool -list -keystore "$HOME/.android/debug.keystore" \
+            -alias androiddebugkey -storepass android >/dev/null
+
+      # A failing test must not cause the next build to rotate the signing key.
+      - name: Save consistent emulator debug signer immediately
+        if: steps.trivo-signing-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: trivo-emulator-debug-signing-v1
 
       - name: Setup Node.js 22
         uses: actions/setup-node@v4
@@ -105,7 +153,23 @@ jobs:
           grep -F "package: name='com.baurp.trivochat'" /tmp/trivo-apk-badging.txt
           grep -F "sdkVersion:'24'" /tmp/trivo-apk-badging.txt
           grep -F "targetSdkVersion:'36'" /tmp/trivo-apk-badging.txt
-          echo "Verified min Android 7 and targeted Android 16 in packaged APK."
+          grep -F "versionCode='${TRIVO_VERSION_CODE}'" /tmp/trivo-apk-badging.txt
+          echo "Verified packaged SDK bounds and increasing versionCode."
+
+      - name: Verify APK integrity and Android signature
+        env:
+          APK_PATH: ${{ steps.apk.outputs.path }}
+        run: |
+          set -euo pipefail
+          unzip -tqq "$APK_PATH"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK_PATH" \
+            | tee /tmp/trivo-apk-signature.txt
+          grep -F "Verified using v2 scheme (APK Signature Scheme v2): true" \
+            /tmp/trivo-apk-signature.txt
+          grep -F "Signer #1 certificate SHA-256 digest:" /tmp/trivo-apk-signature.txt
+          sha256sum "$APK_PATH"
 
       - name: Audit libtor.so per ABI
         run: |
@@ -120,6 +184,34 @@ jobs:
           done
           unzip -l "$APK" | grep "\.so$" || true
           exit $FAIL
+
+      # Verify a real Android PackageManager accepts the complete APK.
+      - name: Enable Android emulator KVM
+        run: |
+          if [ -e /dev/kvm ]; then
+            sudo chmod 666 /dev/kvm
+          else
+            echo "::error::KVM unavailable on GitHub runner"
+            exit 1
+          fi
+
+      - name: Smoke-test APK installation on Android 15 x86_64
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          emulator-boot-timeout: 600
+          script: |
+            set -euo pipefail
+            APK="${{ steps.apk.outputs.path }}"
+            adb install "$APK"
+            adb shell pm path com.baurp.trivochat | grep -F "base.apk"
+            adb shell run-as com.baurp.trivochat sh -c 'mkdir -p files; echo keep > files/trivo-ci-upgrade-test'
+            adb install -r "$APK"
+            adb shell run-as com.baurp.trivochat cat files/trivo-ci-upgrade-test | grep -F keep
+            adb shell dumpsys package com.baurp.trivochat | grep -m1 "versionCode=${TRIVO_VERSION_CODE}"
+            echo "Android PackageManager installed and replaced the APK without data loss."
 
       - name: Create Release & Upload Universal APK
         env:

@@ -14,3 +14,8 @@ app/src/main/assets/public/
 app/src/main/assets/capacitor.config.json
 app/src/main/assets/capacitor.plugins.json
 app/capacitor.build.gradle.bak
+
+# Never commit app signing private keys.
+*.keystore
+*.jks
+*.p12
