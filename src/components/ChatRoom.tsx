@@ -691,7 +691,7 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
       }
     });
     return unsub;
-  }, [chatId, userId, language]);
+  }, [chatId, userId, language, name]);
 
   // Reset stickiness whenever we switch conversations so each chat opens
   // pinned to its newest message.

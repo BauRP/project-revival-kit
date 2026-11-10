@@ -19,6 +19,7 @@ import {
 } from "@/lib/chat-preferences";
 import { subscribeToProfile, onProfileChange, getProfile } from "@/lib/profile";
 import { toast } from "@/hooks/use-toast";
+import { contactSubscriptionKey, subscribeContactIds } from "@/lib/contact-subscriptions";
 
 interface Friend {
   id: string;
@@ -84,10 +85,13 @@ const FriendsList = ({ onOpenChat }: FriendsListProps) => {
     };
   }, []);
 
+  // Two different contacts can have the same count. Re-bind subscriptions
+  // on identity changes, not only when friends.length changes.
+  const subscribedIds = contactSubscriptionKey(friends.map((f) => f.id));
   useEffect(() => {
-    const unsubs = friends.flatMap((f) => [subscribeToPresence(f.id), subscribeToProfile(f.id)]);
-    return () => unsubs.forEach((u) => u());
-  }, [friends.length]);
+    if (!subscribedIds) return;
+    return subscribeContactIds(subscribedIds.split("\u0000"), subscribeToPresence, subscribeToProfile);
+  }, [subscribedIds]);
 
   // Live avatar / custom-status propagation, keyed by the contact's User ID.
   useEffect(() => {
@@ -111,11 +115,9 @@ const FriendsList = ({ onOpenChat }: FriendsListProps) => {
 
   const removeFriend = async (id: string) => {
     await clearMessagesForChat(id);
-    try {
-      await dbDelete("contacts", id);
-    } catch {
-      /* ignore */
-    }
+    // Storage failures must not be reported as a successful deletion.
+    // The user can retry, and the row must not silently reappear on reload.
+    await dbDelete("contacts", id);
     setFriends((prev) => prev.filter((f) => f.id !== id));
     closeMenu();
     toast({ title: t("friendRemoved") });

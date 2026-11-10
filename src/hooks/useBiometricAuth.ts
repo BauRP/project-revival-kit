@@ -1,121 +1,110 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import { App, type AppState } from "@capacitor/app";
 import { whenBridgeReady, runNative } from "@/lib/native-bridge";
-import { safeStorage } from "@/lib/safe-storage";
+import { safeStorage, isStorageAvailable } from "@/lib/safe-storage";
 import { isNative } from "@/lib/platform";
+import { createBiometricStore, initialBiometricLocked } from "@/lib/biometric-state";
 
 const BIOMETRIC_KEY = "trivo-biometric";
+const initiallyEnabled = safeStorage.get(BIOMETRIC_KEY) === "true";
+const state = createBiometricStore({
+  isAvailable: false,
+  isEnabled: initiallyEnabled,
+  // Lock synchronously, before the first React paint or native bridge call.
+  isLocked: initialBiometricLocked(initiallyEnabled, isNative()),
+});
 
-function biometricEnabled(): boolean {
-  return safeStorage.get(BIOMETRIC_KEY) === "true";
+let bootstrap: Promise<void> | null = null;
+
+/** Never unlock after an unavailable plugin, failed prompt, or cancelled scan. */
+async function authenticateBiometric(): Promise<boolean> {
+  if (!isNative()) {
+    state.update({ isLocked: false });
+    return true;
+  }
+  try {
+    await whenBridgeReady();
+    const { BiometricAuth } = await import("@aparajita/capacitor-biometric-auth");
+    await BiometricAuth.authenticate({
+      reason: "Unlock Trivo Chat",
+      cancelTitle: "Cancel",
+    });
+    state.update({ isLocked: false });
+    return true;
+  } catch (error) {
+    console.warn("[trivo] biometric authentication was not completed", error);
+    return false;
+  }
 }
 
-export function useBiometricAuth() {
-  const [isAvailable, setIsAvailable] = useState(false);
-  // Lazy initializer goes through safeStorage: on a WebView with DOM storage
-  // disabled the raw `localStorage` getter throws and would kill the mount.
-  const [isEnabled, setIsEnabled] = useState(() => biometricEnabled());
-  const [isLocked, setIsLocked] = useState(false);
-  const hasCheckedRef = useRef(false);
-
-  useEffect(() => {
-    if (hasCheckedRef.current) return;
-    hasCheckedRef.current = true;
-
-    const init = async () => {
-      // Never probe biometrics before the native bridge exists.
-      await whenBridgeReady();
-      await checkAvailability();
-      // Cold-start lock: when biometrics is enabled the user MUST authenticate
-      // before any messenger UI is visible.
-      if (biometricEnabled() && isNative()) {
-        setIsLocked(true);
-        await authenticate();
-      }
-    };
-    void init().catch((error) => console.warn("[trivo] biometric init failed:", error));
-  }, []);
-
-  // Background-return lock: when the OS reports the app became active again
-  // (Capacitor `appStateChange` with isActive=true), re-arm the lock.
-  useEffect(() => {
-    let handle: { remove: () => Promise<void> } | undefined;
-    let disposed = false;
-
-    void runNative(
-      "App",
-      async () => {
-        const listener = await App.addListener("appStateChange", (state: AppState) => {
-          if (!biometricEnabled()) return;
-          if (state.isActive) setIsLocked(true);
-        });
-        if (disposed) {
-          void listener.remove();
-        } else {
-          handle = listener;
-        }
-        return true;
-      },
-      false,
-      "biometric appStateChange listener",
-    );
-
-    return () => {
-      disposed = true;
-      try {
-        void handle?.remove();
-      } catch {
-        /* removal is best effort */
-      }
-    };
-  }, []);
-
-  const checkAvailability = async () => {
-    if (!isNative()) {
-      setIsAvailable(false);
-      return;
-    }
+function initializeBiometricOnce(): Promise<void> {
+  if (bootstrap) return bootstrap;
+  bootstrap = (async () => {
+    await whenBridgeReady();
+    if (!isNative()) return;
     try {
       const { BiometricAuth } = await import("@aparajita/capacitor-biometric-auth");
       const result = await BiometricAuth.checkBiometry();
-      setIsAvailable(result.isAvailable);
-    } catch {
-      setIsAvailable(false);
+      state.update({ isAvailable: result.isAvailable });
+    } catch (error) {
+      state.update({ isAvailable: false });
+      console.warn("[trivo] cannot check biometric hardware", error);
     }
-  };
 
-  const authenticate = useCallback(async (): Promise<boolean> => {
-    if (!isNative()) {
-      setIsLocked(false);
-      return true;
+    // One native listener for the whole application, not one per Settings
+    // instance. A foreground return re-locks every subscribing screen.
+    await runNative(
+      "App",
+      async () => App.addListener("appStateChange", (event: AppState) => {
+        if (event.isActive && state.getSnapshot().isEnabled)
+          state.update({ isLocked: true });
+      }),
+      null,
+      "biometric appStateChange listener",
+    );
+
+    if (state.getSnapshot().isEnabled) {
+      // A failed or unavailable native prompt keeps isLocked=true.
+      await authenticateBiometric();
     }
-    try {
-      const { BiometricAuth } = await import("@aparajita/capacitor-biometric-auth");
-      await BiometricAuth.authenticate({
-        reason: "Unlock Trivo Chat",
-        cancelTitle: "Cancel",
-      });
-      setIsLocked(false);
-      return true;
-    } catch {
-      // Keep locked on failure so user can retry
-      return false;
-    }
+  })().catch((error) => {
+    // Do not hide the lock overlay when startup fails.
+    console.warn("[trivo] biometric initialization failed", error);
+  });
+  return bootstrap;
+}
+
+async function toggleBiometric(): Promise<void> {
+  const enabled = state.getSnapshot().isEnabled;
+  if (!enabled && !await authenticateBiometric()) return;
+
+  // The lock preference is security-sensitive: never claim it was enabled
+  // if storage is blocked and persistence cannot be verified.
+  if (!isStorageAvailable("localStorage")) {
+    console.warn("[trivo] cannot change biometric protection without persistent storage");
+    return;
+  }
+  safeStorage.set(BIOMETRIC_KEY, String(!enabled));
+  if (safeStorage.get(BIOMETRIC_KEY) !== String(!enabled)) {
+    console.warn("[trivo] biometric preference write did not persist");
+    return;
+  }
+  state.update({ isEnabled: !enabled, isLocked: false });
+}
+
+export function useBiometricAuth() {
+  const snapshot = useSyncExternalStore(
+    state.subscribe,
+    state.getSnapshot,
+    state.getSnapshot,
+  );
+  useEffect(() => {
+    void initializeBiometricOnce();
   }, []);
 
-  const toggle = useCallback(async () => {
-    if (!isEnabled) {
-      const success = await authenticate();
-      if (success) {
-        setIsEnabled(true);
-        safeStorage.set(BIOMETRIC_KEY, "true");
-      }
-    } else {
-      setIsEnabled(false);
-      safeStorage.set(BIOMETRIC_KEY, "false");
-      setIsLocked(false);
-    }
-  }, [isEnabled, authenticate]);
-
-  return { isAvailable, isEnabled, isLocked, toggle, authenticate };
+  return {
+    ...snapshot,
+    authenticate: authenticateBiometric,
+    toggle: toggleBiometric,
+  };
 }
