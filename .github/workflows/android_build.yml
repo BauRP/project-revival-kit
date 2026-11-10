@@ -92,6 +92,18 @@ jobs:
       - name: Install Dependencies (frozen bun.lock)
         run: bun install --frozen-lockfile
 
+      - name: Audit every tracked repository file and text line
+        run: node scripts/audit-repository.mjs
+
+      - name: Upload full repository audit JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivo-repository-audit-${{ github.run_number }}
+          path: ${{ runner.temp }}/trivo-repo-audit/repository-audit.json
+          retention-days: 30
+          if-no-files-found: error
+
       - name: Run unit tests
         run: bunx vitest run
 
