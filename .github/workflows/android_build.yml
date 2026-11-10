@@ -95,12 +95,24 @@ jobs:
       - name: Audit every tracked repository file and text line
         run: node scripts/audit-repository.mjs
 
+      # Supplement the raw line scan with actual TypeScript/React ESLint.
+      # This is report-only for the EXISTING lint baseline, not a false claim
+      # that all findings are fixed; compiler/tests/build continue independently.
+      - name: Collect full ESLint audit for all project sources
+        run: |
+          set +e
+          bunx eslint . --format json > "$RUNNER_TEMP/trivo-repo-audit/eslint.json"
+          RESULT=$?
+          set -e
+          echo "ESLint exit status: $RESULT"
+          node scripts/summarize-eslint-audit.mjs "$RUNNER_TEMP/trivo-repo-audit/eslint.json"
+
       - name: Upload full repository audit JSON
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: trivo-repository-audit-${{ github.run_number }}
-          path: ${{ runner.temp }}/trivo-repo-audit/repository-audit.json
+          path: ${{ runner.temp }}/trivo-repo-audit/
           retention-days: 30
           if-no-files-found: error
 
