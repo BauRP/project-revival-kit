@@ -40,7 +40,7 @@ import {
   type OutboxRecord,
   type StoredMessage,
 } from "./dexie-db";
-import { dbGetStrict, dbPutStrict } from "./storage";
+import { updateLegacySetting } from "./legacy-setting-cas";
 import { isLegacyFriendEvent, isPermanentlyInvalidInboundFrame, canReuseInboundRawId } from "./inbound-durability";
 import { InboundFrameSingleFlight } from "./inbound-frame-single-flight";
 import { KeyedSerialQueue } from "./keyed-serial-queue";
@@ -994,8 +994,8 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
       }
       if (!rejected) fresh = true;
     } else if (type === "friend_request" || type === "friend_request_status") {
-      // These two legacy events are committed to their separate database below.
-      fresh = true;
+      // The second database decides whether the event really changed state.
+      // A signed replay is ACKed but MUST NOT re-notify or un-accept friends.
     } else {
       // Unknown events must not be surfaced as successfully handled features.
       rejected = true;
@@ -1012,15 +1012,22 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
       return "rejected";
     }
     const key = `friend-req-in-${request.from}`;
-    const previous = await dbGetStrict<{status?: string; timestamp?: number}>("settings", key);
-    if (shouldApplyIncomingFriendRequest(previous, request.timestamp))
-      await dbPutStrict("settings", key, request);
+    const change = await updateLegacySetting<typeof request>(key, (previous) =>
+      shouldApplyIncomingFriendRequest(previous, request.timestamp)
+        ? request : undefined);
+    fresh = change.changed;
   }
   if (type === "friend_request_status" && payload.status === "accepted") {
-    const out = await dbGetStrict<Record<string, unknown>>("settings",
-      `friend-req-out-${payload.from}`);
-    if (out) await dbPutStrict("settings", `friend-req-out-${payload.from}`,
-      { ...out, status: "accepted" });
+    const change = await updateLegacySetting<Record<string, unknown>>(
+      `friend-req-out-${payload.from}`, (previous) => {
+        if (!previous || previous.to !== payload.from ||
+            previous.status === "accepted" || previous.status === "declined") return undefined;
+        return { ...previous, status: "accepted" };
+      });
+    fresh = change.changed;
+  } else if (type === "friend_request_status") {
+    // Unrecognized statuses are not acknowledged as supported updates.
+    rejected = true;
   }
   // Only acknowledge the remote peer after BOTH databases have committed.
   // If a power loss happens here, recoverInbox safely repeats the idempotent

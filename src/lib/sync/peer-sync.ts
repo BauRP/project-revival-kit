@@ -3,7 +3,8 @@
 //  Tor outbox (src/lib/onion-engine.ts). Peers are `.onion` addresses only.
 // ============================================================================
 
-import { dbGetStrict, dbPutStrict, dbGetAllStrict } from "../storage";
+import { dbGetStrict, dbGetAllStrict } from "../storage";
+import { updateLegacySetting } from "../legacy-setting-cas";
 import { validateOutgoingFriendRequest } from "../friend-request-policy";
 import { onionRegisterIncomingListener, onionSendDispatch, recoverInbox } from "../onion-engine";
 
@@ -18,11 +19,14 @@ export interface FriendRequest {
 export async function sendFriendRequest(request: Omit<FriendRequest, "status" | "timestamp">) {
   validateOutgoingFriendRequest(request.from, request.to, request.fromName);
   const timestamp = Date.now();
-  await dbPutStrict("settings", `friend-req-out-${request.to}`, {
-    ...request,
-    timestamp,
-    status: "pending",
-  });
+  const saved = await updateLegacySetting<FriendRequest>(
+    `friend-req-out-${request.to}`, (previous) => {
+      // A resend must never turn an accepted friendship back to pending.
+      if (previous?.status === "accepted" || previous?.status === "declined" ||
+          (previous && previous.timestamp >= timestamp)) return undefined;
+      return { ...request, timestamp, status: "pending" };
+    });
+  if (!saved.changed) return;
   await onionSendDispatch(request.to, {
     type: "friend_request",
     id: `fr-${request.to}-${timestamp}`,
@@ -36,13 +40,17 @@ export function listenForFriendRequests(
   self: string,
   onRequest: (req: FriendRequest) => void,
 ): () => void {
+  let active = true;
   void dbGetAllStrict<FriendRequest & { type?: string }>("settings").then((all) => {
+    if (!active) return;
     for (const r of all) {
-      if (r && r.type === "friend_request" && r.to === self && r.status === "pending") onRequest(r);
+      if (!active) break;
+      if (r && r.type === "friend_request" && r.to === self && r.status === "pending")
+        onRequest(r);
     }
-  });
-  return onionRegisterIncomingListener((data) => {
-    if (data.type !== "friend_request") return;
+  }).catch((error) => console.warn("[friends] saved request recovery failed", error));
+  const stop = onionRegisterIncomingListener((data) => {
+    if (!active || data.type !== "friend_request") return;
     onRequest({
       from: String(data.from),
       to: self,
@@ -51,13 +59,19 @@ export function listenForFriendRequests(
       status: "pending",
     });
   });
+  return () => { active = false; stop(); };
 }
 
 export async function acceptFriendRequest(fromOnion: string): Promise<void> {
-  const stored = await dbGetStrict<FriendRequest>("settings", `friend-req-in-${fromOnion}`);
-  if (!stored || stored.status === "declined")
-    throw new Error("No pending friend request for this authenticated peer");
-  await dbPutStrict("settings", `friend-req-in-${fromOnion}`, { ...stored, status: "accepted" });
+  const saved = await updateLegacySetting<FriendRequest>(
+    `friend-req-in-${fromOnion}`, (stored) => {
+      if (!stored || stored.status === "declined")
+        throw new Error("No pending friend request for this authenticated peer");
+      return stored.status === "accepted"
+        ? undefined : { ...stored, status: "accepted" };
+    });
+  if (saved.value?.status !== "accepted")
+    throw new Error("Friend acceptance was not committed");
   await onionSendDispatch(fromOnion, {
     type: "friend_request_status",
     id: `frs-${fromOnion}-${Date.now()}`,
