@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mergeIncomingChatSummary } from "../chat-meta-policy";
+import { mergeIncomingChatSummary, mergeOutgoingChatSummary } from "../chat-meta-policy";
 import type { ChatMeta } from "../p2p";
 
 const friendId = "a".repeat(56) + ".onion";
@@ -42,5 +42,26 @@ describe("atomic chat summary merge", () => {
     expect(() => mergeIncomingChatSummary(undefined, {
       friendId, messageId: "id", text: "x", timestamp: NaN,
     })).toThrow();
+  });
+});
+
+describe("outgoing chat summary preservation", () => {
+  it("keeps newer incoming message, avatar and unread count", () => {
+    const next = mergeOutgoingChatSummary(initial(), {
+      friendId, friendName: "Fallback", text: "sent late", timestamp: 100,
+    });
+    expect(next.lastMessage).toBe("recent");
+    expect(next.unread).toBe(2);
+    expect(next.friendAvatar).toBe("avatar");
+    expect(next.friendName).toBe("Friend");
+  });
+  it("advances preview while retaining unread from other messages", () => {
+    const next = mergeOutgoingChatSummary(initial(), {
+      friendId, friendName: "Fallback", text: "new sent", timestamp: 400,
+      messageId: "outgoing",
+    });
+    expect(next.unread).toBe(2);
+    expect(next.lastMessage).toBe("new sent");
+    expect(next.lastMessageId).toBe("outgoing");
   });
 });

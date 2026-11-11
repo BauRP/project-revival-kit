@@ -31,3 +31,33 @@ export function mergeIncomingChatSummary(
     started: true,
   };
 }
+
+export interface OutgoingChatSummary {
+  friendId: string;
+  friendName: string;
+  text: string;
+  timestamp: number;
+  messageId?: string;
+}
+
+/** Do not reset unread or a newer incoming preview on an outgoing send. */
+export function mergeOutgoingChatSummary(
+  previous: ChatMeta | undefined, input: OutgoingChatSummary,
+): ChatMeta {
+  if (!Number.isSafeInteger(input.timestamp) || input.timestamp < 0)
+    throw new Error("Invalid outgoing summary timestamp");
+  if (input.messageId !== undefined &&
+      (typeof input.messageId !== "string" || !input.messageId || input.messageId.length > 256))
+    throw new Error("Invalid outgoing summary message ID");
+  const newest = !previous || input.timestamp >= previous.lastMessageTime;
+  return {
+    friendId: input.friendId,
+    friendName: previous?.friendName || input.friendName,
+    friendAvatar: previous?.friendAvatar,
+    lastMessage: newest ? input.text : previous!.lastMessage,
+    lastMessageTime: newest ? input.timestamp : previous!.lastMessageTime,
+    lastMessageId: newest ? input.messageId : previous?.lastMessageId,
+    unread: previous?.unread ?? 0,
+    started: true,
+  };
+}

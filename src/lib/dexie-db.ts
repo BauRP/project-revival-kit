@@ -145,12 +145,16 @@ export const dxdb = new TrivoDexie();
 
 export async function upsertContact(onion: string, displayName?: string): Promise<void> {
   if (!onion) return;
-  const existing = await dxdb.contacts.get(onion);
-  await dxdb.contacts.put({
-    onion,
-    displayName: displayName ?? existing?.displayName,
-    lastSeen: existing?.lastSeen,
-    addedAt: existing?.addedAt ?? Date.now(),
+  // Keep displayName and lastSeen consistent when a network event and
+  // a profile update arrive concurrently.
+  await dxdb.transaction("rw", dxdb.contacts, async () => {
+    const existing = await dxdb.contacts.get(onion);
+    await dxdb.contacts.put({
+      onion,
+      displayName: displayName ?? existing?.displayName,
+      lastSeen: existing?.lastSeen,
+      addedAt: existing?.addedAt ?? Date.now(),
+    });
   });
 }
 
@@ -159,7 +163,11 @@ export async function setContactLastSeen(onion: string, ts: number = Date.now())
   // A signed incoming frame proves the sender owns that .onion, NOT that
   // the user accepted them as a contact. Unknown senders must never acquire
   // contact privileges merely by pinging the transport.
-  await dxdb.contacts.where("onion").equals(onion).modify({ lastSeen: ts });
+  if (!Number.isSafeInteger(ts) || ts < 0) throw new Error("Invalid contact timestamp");
+  await dxdb.contacts.where("onion").equals(onion).modify((contact) => {
+    if (contact.lastSeen === undefined || ts > contact.lastSeen)
+      contact.lastSeen = ts;
+  });
 }
 
 export async function getAllContacts(): Promise<ContactRecord[]> {

@@ -62,6 +62,7 @@ import {
   saveLocalMessage,
   saveChatMeta,
   getChatMeta,
+  recordOutgoingChatSummary,
   type P2PMessage,
 } from "@/lib/p2p";
 import { sendReadReceipt, listenForReadReceipts } from "@/lib/sync/peer-sync";
@@ -904,15 +905,12 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     }
 
     // Сохраняем в историю чатов
-    const existing = await getChatMeta(chatId);
-    await saveChatMeta({
+    await recordOutgoingChatSummary({
       friendId: chatId,
-      friendName: isTrivoSupport(chatId) ? SUPPORT_BOT_NAME : existing?.friendName || name,
-      friendAvatar: existing?.friendAvatar,
-      lastMessage: currentInput,
-      lastMessageTime: Date.now(),
-      unread: 0,
-      started: true,
+      friendName: isTrivoSupport(chatId) ? SUPPORT_BOT_NAME : name,
+      text: currentInput,
+      timestamp: Date.now(),
+      messageId: msg.id,
     });
 
     // Trivo Support (Bot): the built-in system assistant answers locally,
@@ -968,15 +966,12 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
     ]);
     try {
       await saveLocalMessage(botMsg as P2PMessage);
-      const meta = await getChatMeta(chatId);
-      await saveChatMeta({
+      await recordOutgoingChatSummary({
         friendId: chatId,
         friendName: SUPPORT_BOT_NAME,
-        friendAvatar: meta?.friendAvatar,
-        lastMessage: reply,
-        lastMessageTime: botMsg.timestamp,
-        unread: 0,
-        started: true,
+        text: reply,
+        timestamp: botMsg.timestamp,
+        messageId: botMsg.id,
       });
     } catch (e) {
       console.warn("[ChatRoom] support bot persistence failed", e);
@@ -2520,13 +2515,12 @@ const ChatRoom = ({ chatId, name: rawName, emoji, onBack }: ChatRoomProps) => {
           const sent = await sendP2PMessage(peerId, payload);
           void sent;
           const lastMessage = forwardingMedia ? caption || forwardingMedia.name : forwardingText;
-          await saveChatMeta({
+          await recordOutgoingChatSummary({
             friendId: targetChatId,
             friendName: targetChatId.substring(0, 8),
-            lastMessage,
-            lastMessageTime: Date.now(),
-            unread: 0,
-            started: true,
+            text: lastMessage,
+            timestamp: Date.now(),
+            messageId: payload.id,
           });
           setForwardSheetOpen(false);
           setForwardingMedia(null);

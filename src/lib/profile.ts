@@ -11,7 +11,7 @@
 import localPeerCache from "./local-peer-cache";
 import { readStoredLocalProfile, saveStoredLocalProfile, assertStoredProfileOwner } from "./protected-local-profile";
 import { validateEditableProfile, nextProfileTimestamp } from "./profile-policy";
-import { getChatMeta, saveChatMeta } from "./p2p";
+import { mutateChatMeta } from "./p2p";
 import { getAllContacts, dxdb } from "./dexie-db";
 import { onionRegisterIncomingListener, onionSendDispatch } from "./onion-engine";
 import { isValidOnion } from "./onion-id";
@@ -188,17 +188,17 @@ async function handleIncoming(userId: string, raw: unknown): Promise<void> {
   // Mirror the avatar/name into the contact record so every chat surface
   // (chat list, chat header, friends list) renders the newest version.
   try {
-    const meta = await getChatMeta(userId);
-    if (
-      meta &&
-      (meta.friendAvatar !== profile.avatar || (profile.name && meta.friendName !== profile.name))
-    ) {
-      await saveChatMeta({
+    await mutateChatMeta(userId, (meta) => {
+      if (!meta ||
+          (meta.friendAvatar === profile.avatar &&
+           (!profile.name || meta.friendName === profile.name)))
+        return undefined;
+      return {
         ...meta,
         friendAvatar: profile.avatar,
         friendName: profile.name || meta.friendName,
-      });
-    }
+      };
+    });
   } catch {
     /* contact mirroring is best effort */
   }

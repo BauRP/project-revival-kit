@@ -6,7 +6,7 @@
 
 import { dbGetStrict, dbGetAllStrict, dbPutStrict, dbClearStrict } from "./storage";
 import { saveStoredChatMeta, readStoredChatMeta, readAllStoredChatMetas, mutateStoredChatMeta } from "./protected-chat-meta";
-import { mergeIncomingChatSummary, type IncomingChatSummary } from "./chat-meta-policy";
+import { mergeIncomingChatSummary, mergeOutgoingChatSummary, type IncomingChatSummary, type OutgoingChatSummary } from "./chat-meta-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { sanitizeRestoredOneTimeMessage } from "./one-time-policy";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage, deletedLifecycleShell } from "./message-deletion-policy";
@@ -337,6 +337,11 @@ export async function mutateChatMeta(
 export async function recordIncomingChatSummary(input: IncomingChatSummary): Promise<void> {
   await mutateChatMeta(input.friendId, (current) =>
     mergeIncomingChatSummary(current, input));
+}
+
+export async function recordOutgoingChatSummary(input: OutgoingChatSummary): Promise<void> {
+  await mutateChatMeta(input.friendId, (current) =>
+    mergeOutgoingChatSummary(current, input));
 }
 
 export async function getChatMeta(friendId: string): Promise<ChatMeta | undefined> {

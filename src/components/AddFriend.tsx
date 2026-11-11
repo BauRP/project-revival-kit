@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { useIdentity } from "@/contexts/IdentityContext";
 import { toast } from "sonner";
-import { saveChatMeta } from "@/lib/p2p";
+import { mutateChatMeta } from "@/lib/p2p";
 import { isValidOnion } from "@/lib/onion-id";
 import { isUserBlocked, unblockUser } from "@/lib/report";
 import { sendFriendRequest, getOutgoingRequestStatus } from "@/lib/sync/peer-sync";
@@ -76,14 +76,14 @@ const AddFriend = () => {
       fromName: "",
     });
 
-    await saveChatMeta({
+    await mutateChatMeta(friendId, (current) => current ?? ({
       friendId,
       friendName: friendId.substring(0, 8),
       lastMessage: "",
       lastMessageTime: Date.now(),
       unread: 0,
       started: false,
-    });
+    }));
 
     if (peerStatus === "online") {
       toast.success(t("friendAdded"));
