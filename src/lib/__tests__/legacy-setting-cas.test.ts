@@ -74,7 +74,7 @@ describe("durable legacy friend-request state mutations", () => {
         disk = next;
       },
     }, (previous) => previous?.status === "pending"
-      ? {...previous, status:"accepted"} : undefined);
+      ? {...previous, status:"accepted" as const} : undefined);
     expect(result.changed).toBe(true);
     expect(disk).toEqual({status:"accepted", timestamp:100});
   });
