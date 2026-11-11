@@ -22,8 +22,10 @@ export async function sendFriendRequest(request: Omit<FriendRequest, "status" | 
   const saved = await updateLegacySetting<FriendRequest>(
     `friend-req-out-${request.to}`, (previous) => {
       // A resend must never turn an accepted friendship back to pending.
-      if (previous?.status === "accepted" || previous?.status === "declined" ||
-          (previous && previous.timestamp >= timestamp)) return undefined;
+      if (previous?.status === "accepted" ||
+          (previous?.status === "pending" && previous.timestamp >= timestamp))
+        return undefined;
+      // A declined *outgoing* request may be explicitly sent again by the user.
       return { ...request, timestamp, status: "pending" };
     });
   if (!saved.changed) return;
