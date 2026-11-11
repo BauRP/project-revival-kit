@@ -5,7 +5,8 @@
 // ============================================================================
 
 import { dbGetStrict, dbGetAllStrict, dbPutStrict, dbClearStrict } from "./storage";
-import { saveStoredChatMeta, readStoredChatMeta, readAllStoredChatMetas } from "./protected-chat-meta";
+import { saveStoredChatMeta, readStoredChatMeta, readAllStoredChatMetas, mutateStoredChatMeta } from "./protected-chat-meta";
+import { mergeIncomingChatSummary, type IncomingChatSummary } from "./chat-meta-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { sanitizeRestoredOneTimeMessage } from "./one-time-policy";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage, deletedLifecycleShell } from "./message-deletion-policy";
@@ -57,9 +58,10 @@ export interface ChatMeta {
   lastMessageTime: number;
   unread: number;
   started: boolean;
+  lastMessageId?: string;
 }
 
-const messageListeners = new Set<(msg: P2PMessage) => void>();
+const messageListeners = new Set<(msg: P2PMessage) => void | Promise<void>>();
 
 // Notify the UI ONLY with the validated record committed by the onion engine.
 // The raw authenticated frame is still untrusted JSON and must not be spread
@@ -73,7 +75,10 @@ onionRegisterIncomingListener((payload) => {
     const msg = { ...stored } as unknown as P2PMessage;
     messageListeners.forEach((cb) => {
       try {
-        cb(msg);
+        const pending = cb(msg);
+        if (pending && typeof (pending as Promise<void>).then === "function")
+          void Promise.resolve(pending).catch((error) =>
+            console.warn("[p2p] async listener failed", error));
       } catch (error) {
         console.warn("[p2p] listener failed", error);
       }
@@ -319,6 +324,21 @@ export async function saveChatMeta(meta: ChatMeta): Promise<void> {
   if (isValidOnion(meta.friendId)) await upsertContact(meta.friendId, meta.friendName);
 }
 
+/** Safe for concurrent chat updates; no stale read/save snapshot. */
+export async function mutateChatMeta(
+  friendId: string, transform: (prior: ChatMeta | undefined) => ChatMeta | undefined,
+): Promise<ChatMeta | undefined> {
+  const updated = await mutateStoredChatMeta(friendId, transform);
+  if (updated && isValidOnion(friendId))
+    await upsertContact(friendId, updated.friendName);
+  return updated;
+}
+
+export async function recordIncomingChatSummary(input: IncomingChatSummary): Promise<void> {
+  await mutateChatMeta(input.friendId, (current) =>
+    mergeIncomingChatSummary(current, input));
+}
+
 export async function getChatMeta(friendId: string): Promise<ChatMeta | undefined> {
   return readStoredChatMeta(friendId);
 }
@@ -329,7 +349,7 @@ export async function getAllChatMetas(): Promise<ChatMeta[]> {
 
 // ─── Listener API ────────────────────────────────────────────
 
-export function onP2PMessage(cb: (msg: P2PMessage) => void): () => void {
+export function onP2PMessage(cb: (msg: P2PMessage) => void | Promise<void>): () => void {
   messageListeners.add(cb);
   return () => void messageListeners.delete(cb);
 }

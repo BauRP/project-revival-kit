@@ -19,8 +19,7 @@ import MuteModal from "./MuteModal";
 import DisappearingMessagesModal from "./DisappearingMessagesModal";
 import {
   getAllChatMetas,
-  getChatMeta,
-  saveChatMeta,
+  mutateChatMeta,
   clearMessagesForChat,
   type ChatMeta,
 } from "@/lib/p2p";
@@ -520,10 +519,8 @@ const ChatList = ({ onOpenChat, activeFolderId, isSystemFolder }: ChatListProps)
                   // in BOTH local state and persistent meta so the badge does
                   // not reappear on the next 3s refresh poll.
                   setChats((prev) => prev.map((c) => (c.id === chat.id ? { ...c, unread: 0 } : c)));
-                  const existing = await getChatMeta(chat.id);
-                  if (existing) {
-                    await saveChatMeta({ ...existing, unread: 0 });
-                  }
+                  await mutateChatMeta(chat.id, (current) =>
+                    current ? { ...current, unread: 0 } : undefined);
                   onOpenChat(chat.id, chat.name, "");
                 }}
                 onArchive={() => archiveChat(chat.id)}

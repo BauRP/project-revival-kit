@@ -18,6 +18,8 @@ import {
   purgeExpiredLocalMessages,
   saveChatMeta,
   getChatMeta,
+  mutateChatMeta,
+  recordIncomingChatSummary,
   type P2PMessage,
 } from "@/lib/p2p";
 import { startMediaCacheMonitor } from "@/lib/dexie-db";
@@ -132,14 +134,14 @@ const Index = () => {
     const unsubFriendReq = listenForFriendRequests(userId, async (req) => {
       const existing = await getChatMeta(req.from);
       if (!existing) {
-        await saveChatMeta({
+        await mutateChatMeta(req.from, (current) => current ?? ({
           friendId: req.from,
           friendName: req.fromName || req.from.substring(0, 8),
           lastMessage: "",
           lastMessageTime: req.timestamp,
           unread: 0,
           started: false,
-        });
+        }));
         await acceptFriendRequest(req.from);
         toast.info(`${req.fromName || "Someone"} added you as a friend`);
       }
@@ -148,15 +150,11 @@ const Index = () => {
     const unsubMsg = onP2PMessage(async (msg: P2PMessage) => {
       // The onion engine deduplicates by committed message ID in Dexie.
       // Never share a 'seen' flag with ChatRoom: both listeners must run.
-      const existing = await getChatMeta(msg.from);
-      await saveChatMeta({
+      await recordIncomingChatSummary({
         friendId: msg.from,
-        friendName: existing?.friendName || msg.from.substring(0, 8),
-        friendAvatar: existing?.friendAvatar,
-        lastMessage: msg.text || "New message",
-        lastMessageTime: msg.timestamp,
-        unread: (existing?.unread || 0) + 1,
-        started: true,
+        messageId: msg.id,
+        text: msg.text || "New message",
+        timestamp: msg.timestamp,
       });
     });
 

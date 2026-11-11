@@ -248,6 +248,13 @@ export async function dbDelete(store: string, key: string): Promise<void> {
  * The comparison and write run in a single IndexedDB readwrite transaction.
  * A mismatch is a conflict; it never becomes a successful save.
  */
+export class ConcurrentProtectedWriteError extends Error {
+  constructor() {
+    super("Protected profile changed in another session");
+    this.name = "ConcurrentProtectedWriteError";
+  }
+}
+
 export async function dbPutIfUnchangedStrict(
   store: string, key: string, expected: unknown, value: unknown,
 ): Promise<void> {
@@ -271,7 +278,7 @@ export async function dbPutIfUnchangedStrict(
       };
       tx.oncomplete = () => {
         db.close();
-        if (conflict) reject(new Error("Protected profile changed in another session"));
+        if (conflict) reject(new ConcurrentProtectedWriteError());
         else resolve();
       };
       tx.onerror = () => {

@@ -10,7 +10,7 @@
  * This protects chat summaries, not the whole message history in Dexie.
  */
 import type { ChatMeta } from "./p2p";
-import { dbGetStrict, dbGetAllStrict, dbPutIfUnchangedStrict } from "./storage";
+import { dbGetStrict, dbGetAllStrict, dbPutIfUnchangedStrict, ConcurrentProtectedWriteError } from "./storage";
 import { sealLocalRecord, openLocalRecord, type SealedLocalRecord } from "./local-record-crypto";
 import { acquireLocalDataKey } from "./protected-record-inventory";
 import { platform } from "./platform";
@@ -57,6 +57,9 @@ export function assertValidChatMeta(value: unknown, friendId: string): asserts v
       (value.lastMessageTime as number) < 0 ||
       !Number.isSafeInteger(value.unread) || (value.unread as number) < 0 ||
       typeof value.started !== "boolean" ||
+      (value.lastMessageId !== undefined &&
+        (typeof value.lastMessageId !== "string" ||
+          value.lastMessageId.length < 1 || value.lastMessageId.length > 256)) ||
       (value.friendAvatar !== undefined && value.friendAvatar !== null &&
         (typeof value.friendAvatar !== "string" ||
           value.friendAvatar.length > 262_144)))
@@ -145,6 +148,46 @@ export async function readAllStoredChatMetas(): Promise<ChatMeta[]> {
     result.push(...group);
   }
   return result;
+}
+
+/**
+ * Atomic read/modify/write across concurrent WebViews.
+ * The callback must be pure: it may be re-run after another writer commits.
+ * Retry only authenticated compare conflicts, not key loss or quota errors.
+ */
+export async function mutateStoredChatMeta(
+  friendId: string,
+  transform: (previous: ChatMeta | undefined) => ChatMeta | undefined,
+): Promise<ChatMeta | undefined> {
+  if (typeof friendId !== "string" || friendId.length < 1 ||
+      friendId.length > 256 || /[\u0000-\u001f\u007f]/.test(friendId))
+    throw new Error("Invalid chat metadata identifier");
+  const key = platform() === "android" ? await acquireLocalDataKey() : null;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const original = await dbGetStrict<unknown>(STORE, friendId);
+    let current: ChatMeta | undefined;
+    if (original !== undefined) {
+      if (key && isPotentialSealedChatMeta(original)) {
+        current = await openChatMeta(key, friendId, original);
+      } else {
+        assertValidChatMeta(original, friendId);
+        current = original;
+      }
+    }
+    const updated = transform(current);
+    if (updated === undefined) return current;
+    assertValidChatMeta(updated, friendId);
+    const stored = key ? await sealChatMeta(key, updated) : updated;
+    if (key) await openChatMeta(key, friendId, stored);
+    try {
+      await dbPutIfUnchangedStrict(STORE, friendId, original, stored);
+      return updated;
+    } catch (error) {
+      if (error instanceof ConcurrentProtectedWriteError && attempt < 5) continue;
+      throw error;
+    }
+  }
+  throw new Error("Chat summary conflict retries exhausted");
 }
 
 /** Persist privately on Android; an aborted or concurrent write never counts as success. */
