@@ -19,6 +19,8 @@ import { sanitizePortableExportPrivacy } from "./backup-export-privacy";
 import { encodePortableMedia, decodePortableMedia } from "./backup-media-codec";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, unusedBackupMedia, matchesReceivedAttachmentMetadata } from "./message-deletion-policy";
 import { canEvictUnreferencedMedia, isMatchingReceivedCache } from "./media-cache-policy";
+import { platform } from "./platform";
+import { sealDexieContact, openDexieContact, hasProtectedDexieContactName, sameStoredContact, type StoredContactRecord } from "./dexie-contact-protection";
 
 export interface ContactRecord {
   onion: string;
@@ -105,7 +107,7 @@ export interface PartialBlobChunkRecord {
 }
 
 class TrivoDexie extends Dexie {
-  contacts!: Table<ContactRecord, string>;
+  contacts!: Table<StoredContactRecord, string>;
   messages!: Table<StoredMessage, string>;
   outbox!: Table<OutboxRecord, string>;
   inbox_raw!: Table<InboxRawRecord, string>;
@@ -143,19 +145,57 @@ export const dxdb = new TrivoDexie();
 
 // ─── Contacts (onion → display name) ──────────────────────────
 
+/** Resolve the Android Keystore data key only after Dexie has initialized.
+ * The inventory imports dxdb to find lost-key ciphertext, so a dynamic import
+ * avoids importing this module cyclically at initialization time.
+ */
+async function dexieContactKey(): Promise<CryptoKey | null> {
+  if (platform() !== "android") return null;
+  const { acquireLocalDataKey } = await import("./protected-record-inventory");
+  return acquireLocalDataKey();
+}
+
+/**
+ * Migrate only the exact legacy version read, or retry with the winning row.
+ * Encrypt outside IndexedDB; compare and put inside ONE Dexie transaction.
+ */
+async function updateContact(
+  onion: string,
+  change: (prior: ContactRecord | undefined) => ContactRecord,
+): Promise<ContactRecord> {
+  const key = await dexieContactKey();
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const original = await dxdb.contacts.get(onion);
+    const opened = original
+      ? (key ? await openDexieContact(key, original) : original as ContactRecord)
+      : undefined;
+    const next = change(opened);
+    if (next.onion !== onion) throw new Error("Contact identity changed during update");
+    const stored = key ? await sealDexieContact(key, next) : next;
+    // Authentication before attempting a permanent ciphertext write.
+    if (key) await openDexieContact(key, stored);
+    let conflict = false;
+    await dxdb.transaction("rw", dxdb.contacts, async () => {
+      const latest = await dxdb.contacts.get(onion);
+      if (!sameStoredContact(latest, original)) {
+        conflict = true;
+        return;
+      }
+      await dxdb.contacts.put(stored);
+    });
+    if (!conflict) return next;
+  }
+  throw new Error("Dexie contact changed during protected migration");
+}
+
 export async function upsertContact(onion: string, displayName?: string): Promise<void> {
   if (!onion) return;
-  // Keep displayName and lastSeen consistent when a network event and
-  // a profile update arrive concurrently.
-  await dxdb.transaction("rw", dxdb.contacts, async () => {
-    const existing = await dxdb.contacts.get(onion);
-    await dxdb.contacts.put({
-      onion,
-      displayName: displayName ?? existing?.displayName,
-      lastSeen: existing?.lastSeen,
-      addedAt: existing?.addedAt ?? Date.now(),
-    });
-  });
+  await updateContact(onion, (prior) => ({
+    onion,
+    displayName: displayName ?? prior?.displayName,
+    lastSeen: prior?.lastSeen,
+    addedAt: prior?.addedAt ?? Date.now(),
+  }));
 }
 
 export async function setContactLastSeen(onion: string, ts: number = Date.now()): Promise<void> {
@@ -170,8 +210,34 @@ export async function setContactLastSeen(onion: string, ts: number = Date.now())
   });
 }
 
+/** Read all contacts and, on Android, migrate legacy cleartext names safely. */
 export async function getAllContacts(): Promise<ContactRecord[]> {
-  return dxdb.contacts.toArray();
+  const stored = await dxdb.contacts.toArray();
+  if (!stored.length) return [];
+  const key = await dexieContactKey();
+  if (!key) {
+    // Do not display ciphertext as a blank friend after importing a store
+    // from Android into an unsupported browser preview.
+    if (stored.some(hasProtectedDexieContactName))
+      throw new Error("Encrypted contacts require the Android Keystore");
+    return stored;
+  }
+  const result: ContactRecord[] = [];
+  // Bounded migration; another WebView can modify lastSeen or name meanwhile.
+  for (let i = 0; i < stored.length; i += 8) {
+    const batch = await Promise.all(stored.slice(i, i + 8).map(async (row) => {
+      if (hasProtectedDexieContactName(row) || row.displayName === undefined)
+        return openDexieContact(key, row);
+      // The row can change after the snapshot. Re-read and only replace the
+      // current value inside the same transaction. Never discard newer data.
+      return updateContact(row.onion, (prior) => {
+        if (!prior) throw new Error("Contact vanished during encrypted migration");
+        return prior;
+      });
+    }));
+    result.push(...batch);
+  }
+  return result;
 }
 
 export async function getContactLastSeen(onion: string): Promise<number | null> {
@@ -435,7 +501,7 @@ export async function exportDexieDump(): Promise<DexieDump> {
   // previously live attachment, or miss a newly added privacy tombstone.
   // Capture references to all five tables in one read-only Dexie snapshot.
   // The expensive Blob->Base64 work remains OUTSIDE the transaction.
-  const { contacts, messages, outbox, lifecycle, blobs } = await dxdb.transaction(
+  const { contacts: storedContacts, messages, outbox, lifecycle, blobs } = await dxdb.transaction(
     "r", [dxdb.contacts, dxdb.messages, dxdb.outbox, dxdb.lifecycle, dxdb.blobs],
     async () => {
       const [contacts, messages, outbox, lifecycle, blobs] = await Promise.all([
@@ -448,6 +514,19 @@ export async function exportDexieDump(): Promise<DexieDump> {
       return { contacts, messages, outbox, lifecycle, blobs };
     },
   );
+  // Backup remains portable: decrypted contact names are exported inside
+  // the existing password-encrypted archive; device-only ciphertext cannot
+  // be restored on a different Android Keystore.
+  const contactKey = storedContacts.some(hasProtectedDexieContactName)
+    ? await dexieContactKey() : null;
+  if (storedContacts.some(hasProtectedDexieContactName) && !contactKey)
+    throw new Error("Cannot export encrypted contacts without Android key");
+  const contacts: ContactRecord[] = [];
+  for (const row of storedContacts) {
+    contacts.push(contactKey
+      ? await openDexieContact(contactKey, row)
+      : row);
+  }
   // A consumed one-time file may still have a stale Blob if the app was
   // killed between consumption and cleanup. Never put those private bytes
   // in a NEW portable archive; keep the irreversible tombstone and strip its
@@ -485,6 +564,19 @@ export async function exportDexieDump(): Promise<DexieDump> {
 
 export async function importDexieDump(dump: DexieDump): Promise<void> {
   validateBackupStructure(dump);
+  // Prepare authenticated ciphertext BEFORE the write transaction; async
+  // WebCrypto inside IndexedDB would allow the transaction to auto-close.
+  // Browser backup/preview retains the original legacy plaintext representation.
+  const contactKey = dump.contacts.length ? await dexieContactKey() : null;
+  const importedContacts: StoredContactRecord[] = [];
+  for (let i = 0; i < dump.contacts.length; i += 8) {
+    const rows = await Promise.all(dump.contacts.slice(i, i + 8).map(async (row) => {
+      const stored = contactKey ? await sealDexieContact(contactKey, row) : row;
+      if (contactKey) await openDexieContact(contactKey, stored);
+      return stored;
+    }));
+    importedContacts.push(...rows);
+  }
   await dxdb.transaction(
     "rw",
     [dxdb.contacts, dxdb.messages, dxdb.outbox, dxdb.lifecycle, dxdb.blobs, dxdb.partial_chunks],
@@ -503,7 +595,7 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       ]);
       // Existing contact names and preferences take priority over older backups.
       const currentContacts = new Set(await dxdb.contacts.toCollection().primaryKeys());
-      await dxdb.contacts.bulkPut((dump.contacts || []).filter((c) => !currentContacts.has(c.onion)));
+      await dxdb.contacts.bulkPut(importedContacts.filter((c) => !currentContacts.has(c.onion)));
       const presentIds = new Set(await dxdb.messages.toCollection().primaryKeys());
       const currentDeleted = await dxdb.lifecycle.where("chatKey").equals(LOCAL_DELETED_CHAT_KEY).toArray();
       const restoredDeleted = (dump.lifecycle || []).filter((row) =>

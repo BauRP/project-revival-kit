@@ -6,6 +6,7 @@
 import { dbGetStrict, dbGetAllStrict } from "./storage";
 import { dxdb } from "./dexie-db";
 import { acquirePersistedLocalRecordKey } from "./local-record-key-store";
+import { hasProtectedDexieContactName } from "./dexie-contact-protection";
 
 export const LOCAL_PROFILE_LEGACY_ID = "my-profile-v1";
 export const LOCAL_PROFILE_ENCRYPTED_ID = "my-profile-sealed-v1";
@@ -24,16 +25,18 @@ export function protectedContactsContainCiphertext(rows: readonly unknown[]): bo
 let current: Promise<CryptoKey> | null = null;
 
 export async function protectedStorageHasNoCiphertext(): Promise<boolean> {
-  const [profile, chunks, chatSummaries] = await Promise.all([
+  const [profile, chunks, chatSummaries, sealedDexieContacts] = await Promise.all([
     dbGetStrict<unknown>("settings", LOCAL_PROFILE_ENCRYPTED_ID),
     dxdb.partial_chunks.filter((row) =>
       row.encrypted === 1 || row.data.type === ENCRYPTED_CHUNK_MIME).count(),
     dbGetAllStrict<unknown>("contacts"),
+    // Also detect damaged/unsupported encrypted names before key bootstrap.
+    dxdb.contacts.filter(hasProtectedDexieContactName).count(),
   ]);
   // Even a corrupt/unknown envelope at this key means a key may be needed.
   // The profile must never be silently reinitialized if its key is lost.
   return profile === undefined && chunks === 0 &&
-    !protectedContactsContainCiphertext(chatSummaries);
+    !protectedContactsContainCiphertext(chatSummaries) && sealedDexieContacts === 0;
 }
 
 /** Reuse the native Keystore unlock inside this running app. */
