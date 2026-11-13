@@ -168,10 +168,12 @@ async function updateContact(
   change: (prior: ContactRecord | undefined) => ContactRecord,
   origin: ContactMembershipOrigin = "explicit",
 ): Promise<ContactRecord | undefined> {
-  const key = await dexieContactKey();
+  let key: CryptoKey | null | undefined;
   for (let attempt = 0; attempt < 6; attempt++) {
     const original = await dxdb.contacts.get(onion);
     if (!mayCreateContact(origin, original !== undefined)) return undefined;
+    // Unknown chat senders must never trigger a Keystore unlock or bootstrap.
+    if (key === undefined) key = await dexieContactKey();
     const opened = original
       ? (key ? await openDexieContact(key, original) : original as ContactRecord)
       : undefined;
