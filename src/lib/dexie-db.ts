@@ -625,9 +625,26 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
         ...currentTombstones.filter((row) => isConsumedMediaRecord(row.data)).map((row) => row.key),
         ...restoredTombstones.map((row) => row.key),
       ]);
-      // Existing contact names and preferences take priority over older backups.
-      const currentContacts = new Set(await dxdb.contacts.toCollection().primaryKeys());
-      await dxdb.contacts.bulkPut(importedContacts.filter((c) => !currentContacts.has(c.onion)));
+      // Preserve local removal decisions; a restored older archive must not
+      // recreate a contact and silently restart sharing our profile.
+      const [currentContactRows, localRemoved] = await Promise.all([
+        dxdb.contacts.toArray(),
+        dxdb.lifecycle.where("chatKey").equals(REMOVED_CONTACT_CHAT_KEY).toArray(),
+      ]);
+      const localIds = new Set(currentContactRows.map((c) => c.onion));
+      const localAddedAt = new Map(currentContactRows.map((c) => [c.onion, c.addedAt]));
+      const revoked = new Set(localRemoved.filter(isRemovedContactMarker).map((m) => m.messageId));
+      const restoredRemovalRows = (dump.lifecycle || []).filter((m) =>
+        m?.chatKey === REMOVED_CONTACT_CHAT_KEY && isRemovedContactMarker(m));
+      const obsoleteRestoredRemovals = new Set(restoredRemovalRows
+        .filter((m) => (localAddedAt.get(m.messageId) ?? 0) > m.updatedAt)
+        .map((m) => m.key));
+      for (const row of restoredRemovalRows) {
+        if (!obsoleteRestoredRemovals.has(row.key)) revoked.add(row.messageId);
+      }
+      await dxdb.contacts.bulkPut(importedContacts.filter((c) =>
+        !localIds.has(c.onion) && !revoked.has(c.onion)));
+      if (revoked.size) await dxdb.contacts.bulkDelete([...revoked]);
       const presentIds = new Set(await dxdb.messages.toCollection().primaryKeys());
       const currentDeleted = await dxdb.lifecycle.where("chatKey").equals(LOCAL_DELETED_CHAT_KEY).toArray();
       const restoredDeleted = (dump.lifecycle || []).filter((row) =>
@@ -649,7 +666,10 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       // Restored irreversible tombstones take precedence over older local
       // lifecycle rows with the same key. Otherwise a consumed file could
       // reappear after restart despite being purged during this restore.
-      await dxdb.lifecycle.bulkPut(lifecycleRowsForRestore(dump.lifecycle || [], lifecycleIds));
+      await dxdb.lifecycle.bulkPut(lifecycleRowsForRestore(
+        (dump.lifecycle || []).filter((row) => !obsoleteRestoredRemovals.has(row.key)),
+        lifecycleIds,
+      ));
 
       // A deleted-message tombstone restored from an older backup is still
       // authoritative against a message already present on this device.

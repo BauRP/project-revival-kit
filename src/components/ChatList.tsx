@@ -36,6 +36,7 @@ import { blockUser, unblockUser, submitReport } from "@/lib/report";
 import { toast } from "@/hooks/use-toast";
 import ContactAssignSheet from "./ContactAssignSheet";
 import ContactActionsMenu from "./ContactActionsMenu";
+import { removePeerContact } from "@/lib/dexie-db";
 
 interface Chat {
   id: string;
@@ -546,14 +547,16 @@ const ChatList = ({ onOpenChat, activeFolderId, isSystemFolder }: ChatListProps)
                   setMenuOpen(null);
                 }}
                 onDeleteFriend={async () => {
-                  await clearMessagesForChat(chat.id);
                   try {
+                    await removePeerContact(chat.id);
+                    await clearMessagesForChat(chat.id);
                     await dbDelete("contacts", chat.id);
-                  } catch {
-                    /* ignore */
+                    deleteChat(chat.id);
+                    toast({ title: "Друг удалён" });
+                  } catch (error) {
+                    console.warn("[chat] deletion could not be completed", error);
+                    toast({ title: "Не удалось удалить контакт", variant: "destructive" });
                   }
-                  deleteChat(chat.id);
-                  toast({ title: "Друг удалён" });
                 }}
                 onAssign={() => {
                   setAssignTarget({ id: chat.id, name: chat.name });

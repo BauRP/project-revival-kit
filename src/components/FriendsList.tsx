@@ -20,6 +20,7 @@ import {
 import { subscribeToProfile, onProfileChange, getProfile } from "@/lib/profile";
 import { toast } from "@/hooks/use-toast";
 import { contactSubscriptionKey, subscribeContactIds } from "@/lib/contact-subscriptions";
+import { removePeerContact } from "@/lib/dexie-db";
 
 interface Friend {
   id: string;
@@ -114,13 +115,18 @@ const FriendsList = ({ onOpenChat }: FriendsListProps) => {
   const closeMenu = () => setMenuOpen(null);
 
   const removeFriend = async (id: string) => {
-    await clearMessagesForChat(id);
-    // Storage failures must not be reported as a successful deletion.
-    // The user can retry, and the row must not silently reappear on reload.
-    await dbDelete("contacts", id);
-    setFriends((prev) => prev.filter((f) => f.id !== id));
-    closeMenu();
-    toast({ title: t("friendRemoved") });
+    try {
+      // Stop profile sharing before cleanup in the separate legacy store.
+      await removePeerContact(id);
+      await clearMessagesForChat(id);
+      await dbDelete("contacts", id);
+      setFriends((prev) => prev.filter((f) => f.id !== id));
+      closeMenu();
+      toast({ title: t("friendRemoved") });
+    } catch (error) {
+      console.warn("[friends] deletion could not be completed", error);
+      toast({ title: "Не удалось удалить контакт", variant: "destructive" });
+    }
   };
 
   const clearChat = async (id: string) => {

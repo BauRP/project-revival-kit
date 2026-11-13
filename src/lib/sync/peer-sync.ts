@@ -7,6 +7,7 @@ import { dbGetStrict, dbGetAllStrict } from "../storage";
 import { updateLegacySetting } from "../legacy-setting-cas";
 import { validateOutgoingFriendRequest } from "../friend-request-policy";
 import { onionRegisterIncomingListener, onionSendDispatch, recoverInbox } from "../onion-engine";
+import { allowPeerContactAfterUserAction } from "../dexie-db";
 
 export interface FriendRequest {
   from: string;
@@ -74,6 +75,7 @@ export async function acceptFriendRequest(fromOnion: string): Promise<void> {
     });
   if (saved.value?.status !== "accepted")
     throw new Error("Friend acceptance was not committed");
+  await allowPeerContactAfterUserAction(fromOnion);
   await onionSendDispatch(fromOnion, {
     type: "friend_request_status",
     id: `frs-${fromOnion}-${Date.now()}`,
