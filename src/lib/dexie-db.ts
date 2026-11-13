@@ -21,6 +21,8 @@ import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, find
 import { canEvictUnreferencedMedia, isMatchingReceivedCache } from "./media-cache-policy";
 import { platform } from "./platform";
 import { sealDexieContact, openDexieContact, hasProtectedDexieContactName, sameStoredContact, type StoredContactRecord } from "./dexie-contact-protection";
+import { removedContactKey, isRemovedContactMarker, createRemovedContactMarker, REMOVED_CONTACT_CHAT_KEY } from "./contact-removal-policy";
+import { isValidOnion } from "./onion-id";
 
 export interface ContactRecord {
   onion: string;
@@ -175,7 +177,12 @@ async function updateContact(
     // Authentication before attempting a permanent ciphertext write.
     if (key) await openDexieContact(key, stored);
     let conflict = false;
-    await dxdb.transaction("rw", dxdb.contacts, async () => {
+    let revoked = false;
+    await dxdb.transaction("rw", [dxdb.contacts, dxdb.lifecycle], async () => {
+      if (isValidOnion(onion) && isRemovedContactMarker(await dxdb.lifecycle.get(removedContactKey(onion)))) {
+        revoked = true;
+        return;
+      }
       const latest = await dxdb.contacts.get(onion);
       if (!sameStoredContact(latest, original)) {
         conflict = true;
@@ -183,6 +190,7 @@ async function updateContact(
       }
       await dxdb.contacts.put(stored);
     });
+    if (revoked) return next;
     if (!conflict) return next;
   }
   throw new Error("Dexie contact changed during protected migration");
@@ -196,6 +204,23 @@ export async function upsertContact(onion: string, displayName?: string): Promis
     lastSeen: prior?.lastSeen,
     addedAt: prior?.addedAt ?? Date.now(),
   }));
+}
+
+/** Durable privacy boundary: mark friend removed BEFORE legacy UI cleanup. */
+export async function removePeerContact(onion: string): Promise<void> {
+  if (!isValidOnion(onion)) return;
+  await dxdb.transaction("rw", [dxdb.contacts, dxdb.lifecycle], async () => {
+    await dxdb.lifecycle.put(createRemovedContactMarker(onion, Date.now()));
+    await dxdb.contacts.delete(onion);
+  });
+}
+
+/** Re-sharing a profile requires an explicit new add/accept action. */
+export async function allowPeerContactAfterUserAction(onion: string): Promise<void> {
+  if (!isValidOnion(onion)) return;
+  await dxdb.transaction("rw", [dxdb.lifecycle], async () => {
+    await dxdb.lifecycle.delete(removedContactKey(onion));
+  });
 }
 
 export async function setContactLastSeen(onion: string, ts: number = Date.now()): Promise<void> {
@@ -212,7 +237,14 @@ export async function setContactLastSeen(onion: string, ts: number = Date.now())
 
 /** Read all contacts and, on Android, migrate legacy cleartext names safely. */
 export async function getAllContacts(): Promise<ContactRecord[]> {
-  const stored = await dxdb.contacts.toArray();
+  const stored = await dxdb.transaction("r", [dxdb.contacts, dxdb.lifecycle], async () => {
+    const [contacts, removed] = await Promise.all([
+      dxdb.contacts.toArray(),
+      dxdb.lifecycle.where("chatKey").equals(REMOVED_CONTACT_CHAT_KEY).toArray(),
+    ]);
+    const revoked = new Set(removed.filter(isRemovedContactMarker).map((row) => row.messageId));
+    return contacts.filter((row) => !revoked.has(row.onion));
+  });
   if (!stored.length) return [];
   const key = await dexieContactKey();
   if (!key) {
