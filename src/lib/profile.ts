@@ -16,6 +16,8 @@ import { getAllContacts, dxdb } from "./dexie-db";
 import { onionRegisterIncomingListener, onionSendDispatch } from "./onion-engine";
 import { isValidOnion } from "./onion-id";
 import { makeSharedProfile, validateSharedProfile } from "./profile-wire";
+import { remoteProfileDataKey, openRemoteProfile, sealRemoteProfile,
+  looksLikeSealedRemoteProfile, sameRemoteProfileRow } from "./protected-remote-profile";
 
 export type ProfileStatus = "online" | "away" | "dnd" | "offline" | "custom";
 
@@ -166,9 +168,30 @@ export function getProfile(userId: string): UserProfile | null {
 }
 
 export async function hydrateRemoteProfile(userId: string): Promise<void> {
-  const row = await dxdb.lifecycle.get(`profile::${userId}`);
-  if (!row) return;
-  await handleIncoming(userId, row.data);
+  const id = `profile::${userId}`;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const row = await dxdb.lifecycle.get(id);
+    if (!row) return;
+    if (row.chatKey !== "remote-profile" || row.messageId !== userId)
+      throw new Error("Remote profile identity mismatch");
+    const key = await remoteProfileDataKey();
+    const decoded = await openRemoteProfile(key, userId, row.data);
+    if (key && !looksLikeSealedRemoteProfile(row.data)) {
+      // Commit authenticated ciphertext only if another writer did not win.
+      const next = await sealRemoteProfile(key, decoded);
+      await openRemoteProfile(key, userId, next);
+      const committed = await dxdb.transaction("rw", dxdb.lifecycle, async () => {
+        const latest = await dxdb.lifecycle.get(id);
+        if (!sameRemoteProfileRow(latest, row)) return false;
+        await dxdb.lifecycle.put({ ...row, data: { ...next } });
+        return true;
+      });
+      if (!committed) continue;
+    }
+    await handleIncoming(userId, decoded);
+    return;
+  }
+  throw new Error("Remote profile changed during encrypted migration");
 }
 
 export function onProfileChange(cb: (profile: UserProfile) => void): () => void {

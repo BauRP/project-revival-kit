@@ -51,6 +51,7 @@ import { inspectAttachmentBlob } from "./security-scan";
 import { orderedCompleteChunkSet } from "./media-chunks";
 import { sealIncomingChunk, readIncomingChunk, persistedChunkPlainSize, upgradeVerifiedLegacyChunk } from "./partial-chunk-vault";
 import { validateSharedProfile } from "./profile-wire";
+import { remoteProfileDataKey, sealRemoteProfile } from "./protected-remote-profile";
 import { deniedByHistoryProtection } from "./history-protection-policy";
 import { validateDispatchBody, boundedAcknowledgements, boundedDispatchString } from "./inbound-frame-policy";
 import { boundedChunkIndexes, boundedMediaTransferWindow, validBlobFileId } from "./blob-request-policy";
@@ -795,6 +796,14 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
     await dxdb.inbox_raw.delete(rawId);
     return "rejected";
   }
+  // Crypto must finish before opening an IndexedDB write transaction.
+  const incomingRemoteProfile = type === "profile_update" &&
+    typeof payload.from === "string"
+    ? validateSharedProfile(payload.profile, payload.from) : null;
+  const profileKey = incomingRemoteProfile ? await remoteProfileDataKey() : null;
+  const preparedProfile = incomingRemoteProfile
+    ? (profileKey ? { ...await sealRemoteProfile(profileKey, incomingRemoteProfile) }
+      : { ...incomingRemoteProfile }) : null;
   await dxdb.transaction("rw", [
     dxdb.messages, dxdb.inbox_raw, dxdb.lifecycle, dxdb.contacts,
     dxdb.blobs, dxdb.partial_chunks, dxdb.outbox,
@@ -868,17 +877,19 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
       const sender = String(payload.from || "");
       const profile = validateSharedProfile(payload.profile, sender);
       const contact = profile ? await dxdb.contacts.get(sender) : undefined;
-      if (!profile || !contact) {
+      if (!profile || !contact || !preparedProfile ||
+          hasStoredContactRevocation(await dxdb.lifecycle.get(removedContactKey(sender)))) {
         rejected = true;
         await dxdb.inbox_raw.delete(rawId);
         return;
       }
       const key = `profile::${sender}`;
       const previous = await dxdb.lifecycle.get(key);
-      if (!previous || Number(previous.data.updatedAt || 0) < profile.updatedAt) {
+      // The encrypted row retains its indexed timestamp, not plaintext data.
+      if (!previous || previous.updatedAt < profile.updatedAt) {
         await dxdb.lifecycle.put({
           key, chatKey: "remote-profile", messageId: sender,
-          data: { ...profile }, updatedAt: profile.updatedAt,
+          data: preparedProfile, updatedAt: profile.updatedAt,
         });
         fresh = true;
       }
