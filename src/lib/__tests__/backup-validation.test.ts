@@ -103,3 +103,26 @@ describe("untrusted duplicate identifiers in backup archives", () => {
     }
   });
 });
+
+describe("portable remote-profile structure", () => {
+  const sender = "a".repeat(56) + ".onion";
+  const profile = {
+    userId: sender, name: "Имя", avatar:null, status:"custom",
+    customStatus:"Статус", updatedAt:1777777777,
+  };
+  const row = {
+    key:"profile::"+sender, chatKey:"remote-profile", messageId:sender,
+    updatedAt:profile.updatedAt, data:profile,
+  };
+  it("accepts portable profiles of the authenticated sender", () => {
+    expect(() => validateBackupStructure({...dump(),lifecycle:[row]})).not.toThrow();
+  });
+  it("rejects foreign-key ciphertext, wrong owner or unsafe avatars", () => {
+    for (const bad of [
+      {...row,data:{kind:"trivo-remote-profile-sealed-v1",sealed:{}}},
+      {...row,key:"profile::other"},
+      {...row,data:{...profile,userId:"other"}},
+      {...row,data:{...profile,avatar:"https://evil.example"}},
+    ]) expect(() => validateBackupStructure({...dump(),lifecycle:[bad]})).toThrow();
+  });
+});

@@ -6,6 +6,7 @@ import { isIrreversiblePrivacyMarker } from "./backup-merge-policy";
 import { isConsumedMediaRecord } from "./one-time-policy";
 import { isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY } from "./message-deletion-policy";
 import { REMOVED_CONTACT_CHAT_KEY, isRemovedContactMarker } from "./contact-removal-policy";
+import { validateSharedProfile } from "./profile-wire";
 
 const MAX_RECORDS_PER_TABLE = 250_000;
 const MAX_TOTAL_RECORDS = 300_000;
@@ -111,6 +112,11 @@ export function validateBackupStructure(dump: unknown): void {
     lifecycleKeys.add(x.key);
     if (x.chatKey === REMOVED_CONTACT_CHAT_KEY && !isRemovedContactMarker(x))
       throw new Error("Invalid backup friend-removal marker");
+    // No unportable Android Keystore ciphertext in password backups.
+    if (x.chatKey === "remote-profile" &&
+        (x.key !== `profile::${x.messageId}` ||
+         !validateSharedProfile(x.data, x.messageId)))
+      throw new Error("Invalid portable remote profile");
     // Never accept privacy deletion flags under a forged/mismatched key.
     // A valid exported record always uses the canonical key for its ID.
     const irreversible = (x.chatKey === "consumed-media" &&
