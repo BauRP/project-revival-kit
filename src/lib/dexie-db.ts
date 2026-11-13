@@ -24,6 +24,8 @@ import { sealDexieContact, openDexieContact, hasProtectedDexieContactName, sameS
 import { removedContactKey, isRemovedContactMarker, hasStoredContactRevocation, createRemovedContactMarker, REMOVED_CONTACT_CHAT_KEY } from "./contact-removal-policy";
 import { isValidOnion } from "./onion-id";
 import { mayCreateContact, type ContactMembershipOrigin } from "./contact-membership-policy";
+import { remoteProfileDataKey, openRemoteProfile, sealRemoteProfile, looksLikeSealedRemoteProfile } from "./protected-remote-profile";
+import { validateSharedProfile } from "./profile-wire";
 
 export interface ContactRecord {
   onion: string;
@@ -573,15 +575,33 @@ export async function exportDexieDump(): Promise<DexieDump> {
       ? await openDexieContact(contactKey, row)
       : row);
   }
+  // Remove Android device-bound encryption from the password-encrypted,
+  // portable V3 backup; a new phone has a different Keystore key.
+  const protectedProfilesExist = lifecycle.some((row) =>
+    row.chatKey === "remote-profile" && looksLikeSealedRemoteProfile(row.data));
+  const remoteKey = protectedProfilesExist ? (contactKey ?? await remoteProfileDataKey()) : null;
+  if (protectedProfilesExist && !remoteKey)
+    throw new Error("Cannot export encrypted remote profiles without Keystore");
+  const portableLifecycle: LifecycleRecord[] = [];
+  for (const row of lifecycle) {
+    if (row.chatKey !== "remote-profile") {
+      portableLifecycle.push(row);
+      continue;
+    }
+    if (row.key !== `profile::${row.messageId}`)
+      throw new Error("Remote profile backup identity mismatch");
+    const profile = await openRemoteProfile(remoteKey, row.messageId, row.data);
+    portableLifecycle.push({ ...row, data: { ...profile } });
+  }
   // A consumed one-time file may still have a stale Blob if the app was
   // killed between consumption and cleanup. Never put those private bytes
   // in a NEW portable archive; keep the irreversible tombstone and strip its
   // old message preview. Inputs come from the same consistent DB snapshot.
-  const safe = sanitizePortableExportPrivacy(messages, lifecycle, blobs);
+  const safe = sanitizePortableExportPrivacy(messages, portableLifecycle, blobs);
   // Recheck real committed Blob lengths and all textual metadata before
   // creating the extra Base64/JSON copies in the backup envelope.
   assertExportSnapshotSafe({
-    contacts, messages: safe.messages, outbox, lifecycle, blobs: safe.blobs,
+    contacts, messages: safe.messages, outbox, lifecycle: portableLifecycle, blobs: safe.blobs,
   });
   // Avoid starting a separate multi-megabyte ArrayBuffer conversion for
   // every attachment at once. Sequential encoding limits peak native and
@@ -603,7 +623,7 @@ export async function exportDexieDump(): Promise<DexieDump> {
     contacts,
     messages: safe.messages,
     outbox,
-    lifecycle,
+    lifecycle: portableLifecycle,
     blobs: blobsEncoded,
   };
 }
@@ -622,6 +642,25 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       return stored;
     }));
     importedContacts.push(...rows);
+  }
+  // Encrypt portable remote profiles under THIS Android device before
+  // starting the Dexie write transaction. No WebCrypto inside Dexie.
+  const needsRemoteKey = dump.lifecycle.some((row) => row.chatKey === "remote-profile");
+  const remoteKey = needsRemoteKey ? (contactKey ?? await remoteProfileDataKey()) : null;
+  const importedLifecycle: LifecycleRecord[] = [];
+  for (let i = 0; i < dump.lifecycle.length; i += 8) {
+    const batch = await Promise.all(dump.lifecycle.slice(i, i + 8).map(async (row) => {
+      if (row.chatKey !== "remote-profile") return row;
+      if (row.key !== `profile::${row.messageId}`)
+        throw new Error("Restored remote profile identity mismatch");
+      const profile = validateSharedProfile(row.data, row.messageId);
+      if (!profile) throw new Error("Invalid restored remote profile");
+      if (!remoteKey) return { ...row, data: { ...profile } };
+      const sealed = await sealRemoteProfile(remoteKey, profile);
+      await openRemoteProfile(remoteKey, row.messageId, sealed);
+      return { ...row, data: { ...sealed } };
+    }));
+    importedLifecycle.push(...batch);
   }
   await dxdb.transaction(
     "rw",
@@ -697,7 +736,7 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       // lifecycle rows with the same key. Otherwise a consumed file could
       // reappear after restart despite being purged during this restore.
       await dxdb.lifecycle.bulkPut(lifecycleRowsForRestore(
-        (dump.lifecycle || []).filter((row) => !obsoleteRestoredRemovals.has(row.key)),
+        importedLifecycle.filter((row) => !obsoleteRestoredRemovals.has(row.key)),
         lifecycleIds,
       ));
 
