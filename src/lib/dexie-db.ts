@@ -279,7 +279,7 @@ export async function getAllContacts(): Promise<ContactRecord[]> {
         return prior;
       });
     }));
-    result.push(...batch);
+    for (const contact of batch) if (contact) result.push(contact);
   }
   return result;
 }
