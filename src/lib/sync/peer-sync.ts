@@ -30,6 +30,9 @@ export async function sendFriendRequest(request: Omit<FriendRequest, "status" | 
       return { ...request, timestamp, status: "pending" };
     });
   if (!saved.changed) return;
+  // Only an explicit outgoing invitation grants profile-sharing membership.
+  await allowPeerContactAfterUserAction(request.to);
+  await upsertContact(request.to, undefined, "explicit");
   await onionSendDispatch(request.to, {
     type: "friend_request",
     id: `fr-${request.to}-${timestamp}`,
@@ -78,7 +81,7 @@ export async function acceptFriendRequest(fromOnion: string): Promise<void> {
   await allowPeerContactAfterUserAction(fromOnion);
   // The initial signed request may have arrived while this peer was revoked.
   // Explicit acceptance creates a current, shareable membership again.
-  await upsertContact(fromOnion);
+  await upsertContact(fromOnion, undefined, "explicit");
   await onionSendDispatch(fromOnion, {
     type: "friend_request_status",
     id: `frs-${fromOnion}-${Date.now()}`,

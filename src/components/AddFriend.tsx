@@ -9,7 +9,6 @@ import { isValidOnion } from "@/lib/onion-id";
 import { isUserBlocked, unblockUser } from "@/lib/report";
 import { sendFriendRequest, getOutgoingRequestStatus } from "@/lib/sync/peer-sync";
 import { getPresenceStatus } from "@/lib/presence";
-import { allowPeerContactAfterUserAction } from "@/lib/dexie-db";
 
 const AddFriend = () => {
   const [peerId, setPeerId] = useState("");
@@ -76,8 +75,6 @@ const AddFriend = () => {
       to: friendId,
       fromName: "",
     });
-    await allowPeerContactAfterUserAction(friendId);
-
     await mutateChatMeta(friendId, (current) => current ?? ({
       friendId,
       friendName: friendId.substring(0, 8),

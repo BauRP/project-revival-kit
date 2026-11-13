@@ -23,6 +23,7 @@ import { platform } from "./platform";
 import { sealDexieContact, openDexieContact, hasProtectedDexieContactName, sameStoredContact, type StoredContactRecord } from "./dexie-contact-protection";
 import { removedContactKey, isRemovedContactMarker, createRemovedContactMarker, REMOVED_CONTACT_CHAT_KEY } from "./contact-removal-policy";
 import { isValidOnion } from "./onion-id";
+import { mayCreateContact, type ContactMembershipOrigin } from "./contact-membership-policy";
 
 export interface ContactRecord {
   onion: string;
@@ -165,10 +166,12 @@ async function dexieContactKey(): Promise<CryptoKey | null> {
 async function updateContact(
   onion: string,
   change: (prior: ContactRecord | undefined) => ContactRecord,
-): Promise<ContactRecord> {
+  origin: ContactMembershipOrigin = "explicit",
+): Promise<ContactRecord | undefined> {
   const key = await dexieContactKey();
   for (let attempt = 0; attempt < 6; attempt++) {
     const original = await dxdb.contacts.get(onion);
+    if (!mayCreateContact(origin, original !== undefined)) return undefined;
     const opened = original
       ? (key ? await openDexieContact(key, original) : original as ContactRecord)
       : undefined;
@@ -191,20 +194,23 @@ async function updateContact(
       }
       await dxdb.contacts.put(stored);
     });
-    if (revoked) return next;
+    if (revoked) return undefined;
     if (!conflict) return next;
   }
   throw new Error("Dexie contact changed during protected migration");
 }
 
-export async function upsertContact(onion: string, displayName?: string): Promise<void> {
+export async function upsertContact(
+  onion: string, displayName?: string,
+  origin: ContactMembershipOrigin = "chat-summary",
+): Promise<void> {
   if (!onion) return;
   await updateContact(onion, (prior) => ({
     onion,
     displayName: displayName ?? prior?.displayName,
     lastSeen: prior?.lastSeen,
     addedAt: prior?.addedAt ?? Date.now(),
-  }));
+  }), origin);
 }
 
 /** Durable privacy boundary: mark friend removed BEFORE legacy UI cleanup. */

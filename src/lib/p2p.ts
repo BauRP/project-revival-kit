@@ -321,7 +321,8 @@ export async function saveChatMeta(meta: ChatMeta): Promise<void> {
   // Chat metadata is user-visible state, not an optional debug cache.
   // A failed IndexedDB transaction must not be reported as a saved contact.
   await saveStoredChatMeta(meta);
-  if (isValidOnion(meta.friendId)) await upsertContact(meta.friendId, meta.friendName);
+  if (isValidOnion(meta.friendId))
+    await upsertContact(meta.friendId, meta.friendName, "chat-summary");
 }
 
 /** Safe for concurrent chat updates; no stale read/save snapshot. */
@@ -330,7 +331,7 @@ export async function mutateChatMeta(
 ): Promise<ChatMeta | undefined> {
   const updated = await mutateStoredChatMeta(friendId, transform);
   if (updated && isValidOnion(friendId))
-    await upsertContact(friendId, updated.friendName);
+    await upsertContact(friendId, updated.friendName, "chat-summary");
   return updated;
 }
 
