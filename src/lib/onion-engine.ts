@@ -41,7 +41,7 @@ import {
   type StoredMessage,
 } from "./dexie-db";
 import { updateLegacySetting } from "./legacy-setting-cas";
-import { removedContactKey, isRemovedContactMarker } from "./contact-removal-policy";
+import { removedContactKey, hasStoredContactRevocation } from "./contact-removal-policy";
 import { isLegacyFriendEvent, isPermanentlyInvalidInboundFrame, canReuseInboundRawId } from "./inbound-durability";
 import { InboundFrameSingleFlight } from "./inbound-frame-single-flight";
 import { KeyedSerialQueue } from "./keyed-serial-queue";
@@ -441,7 +441,7 @@ export async function onionSendDispatch(
     // the sealed frame can enter the outbound queue.
     await dxdb.transaction("rw", [dxdb.outbox, dxdb.lifecycle], async () => {
       if (kind === "profile_update" &&
-          isRemovedContactMarker(await dxdb.lifecycle.get(removedContactKey(to))))
+          hasStoredContactRevocation(await dxdb.lifecycle.get(removedContactKey(to))))
         throw new Error("Profile update recipient has been removed");
       if (kind === "text_message" &&
           !mayQueueOriginalText((await dxdb.lifecycle.get(deletedMessageKey(id)))?.data))
@@ -488,7 +488,7 @@ async function sendOutboxOnce(id: string): Promise<boolean> {
     const queued = await dxdb.outbox.get(id);
     if (!queued) return undefined;
     if (queued.kind === "profile_update" &&
-        isRemovedContactMarker(await dxdb.lifecycle.get(removedContactKey(queued.peer)))) {
+        hasStoredContactRevocation(await dxdb.lifecycle.get(removedContactKey(queued.peer)))) {
       await dxdb.outbox.delete(id);
       return undefined;
     }

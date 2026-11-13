@@ -21,7 +21,7 @@ import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, find
 import { canEvictUnreferencedMedia, isMatchingReceivedCache } from "./media-cache-policy";
 import { platform } from "./platform";
 import { sealDexieContact, openDexieContact, hasProtectedDexieContactName, sameStoredContact, type StoredContactRecord } from "./dexie-contact-protection";
-import { removedContactKey, isRemovedContactMarker, createRemovedContactMarker, REMOVED_CONTACT_CHAT_KEY } from "./contact-removal-policy";
+import { removedContactKey, isRemovedContactMarker, hasStoredContactRevocation, createRemovedContactMarker, REMOVED_CONTACT_CHAT_KEY } from "./contact-removal-policy";
 import { isValidOnion } from "./onion-id";
 import { mayCreateContact, type ContactMembershipOrigin } from "./contact-membership-policy";
 
@@ -185,7 +185,7 @@ async function updateContact(
     let conflict = false;
     let revoked = false;
     await dxdb.transaction("rw", [dxdb.contacts, dxdb.lifecycle], async () => {
-      if (isValidOnion(onion) && isRemovedContactMarker(await dxdb.lifecycle.get(removedContactKey(onion)))) {
+      if (isValidOnion(onion) && hasStoredContactRevocation(await dxdb.lifecycle.get(removedContactKey(onion)))) {
         revoked = true;
         return;
       }
@@ -250,11 +250,13 @@ export async function setContactLastSeen(onion: string, ts: number = Date.now())
 /** Read all contacts and, on Android, migrate legacy cleartext names safely. */
 export async function getAllContacts(): Promise<ContactRecord[]> {
   const stored = await dxdb.transaction("r", [dxdb.contacts, dxdb.lifecycle], async () => {
-    const [contacts, removed] = await Promise.all([
-      dxdb.contacts.toArray(),
-      dxdb.lifecycle.where("chatKey").equals(REMOVED_CONTACT_CHAT_KEY).toArray(),
-    ]);
-    const revoked = new Set(removed.filter(isRemovedContactMarker).map((row) => row.messageId));
+    const contacts = await dxdb.contacts.toArray();
+    const candidates = contacts.filter((row) => isValidOnion(row.onion));
+    const tombstones = candidates.length
+      ? await dxdb.lifecycle.bulkGet(candidates.map((row) => removedContactKey(row.onion)))
+      : [];
+    const revoked = new Set(candidates.filter((_, i) =>
+      hasStoredContactRevocation(tombstones[i])).map((row) => row.onion));
     return contacts.filter((row) => !revoked.has(row.onion));
   });
   if (!stored.length) return [];
@@ -645,7 +647,17 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       ]);
       const localIds = new Set(currentContactRows.map((c) => c.onion));
       const localAddedAt = new Map(currentContactRows.map((c) => [c.onion, c.addedAt]));
-      const revokedContacts = new Set(localRemoved.filter(isRemovedContactMarker).map((m) => m.messageId));
+      // Check canonical primary keys as well as the index: an interrupted or
+      // corrupted tombstone must never silently re-enable profile sharing.
+      const candidateOnions = [...new Set([...currentContactRows, ...importedContacts]
+        .map((row) => row.onion).filter(isValidOnion))];
+      const possibleMarkers = candidateOnions.length
+        ? await dxdb.lifecycle.bulkGet(candidateOnions.map(removedContactKey))
+        : [];
+      const revokedContacts = new Set([
+        ...localRemoved.filter(isRemovedContactMarker).map((m) => m.messageId),
+        ...candidateOnions.filter((_, i) => hasStoredContactRevocation(possibleMarkers[i])),
+      ]);
       const restoredRemovalRows = (dump.lifecycle || []).filter((m) =>
         m?.chatKey === REMOVED_CONTACT_CHAT_KEY && isRemovedContactMarker(m));
       const obsoleteRestoredRemovals = new Set(restoredRemovalRows
@@ -656,7 +668,13 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       }
       await dxdb.contacts.bulkPut(importedContacts.filter((c) =>
         !localIds.has(c.onion) && !revokedContacts.has(c.onion)));
-      if (revokedContacts.size) await dxdb.contacts.bulkDelete([...revokedContacts]);
+      if (revokedContacts.size) {
+        await dxdb.contacts.bulkDelete([...revokedContacts]);
+        // A restored deletion also cancels sealed profile updates that were
+        // already queued before the restore, in this very same transaction.
+        await dxdb.outbox.filter((row) => revokedContacts.has(row.peer) &&
+          row.kind === "profile_update").delete();
+      }
       const presentIds = new Set(await dxdb.messages.toCollection().primaryKeys());
       const currentDeleted = await dxdb.lifecycle.where("chatKey").equals(LOCAL_DELETED_CHAT_KEY).toArray();
       const restoredDeleted = (dump.lifecycle || []).filter((row) =>

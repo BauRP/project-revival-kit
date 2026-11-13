@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { onionFromPublicKey } from "../onion-id";
-import { createRemovedContactMarker, removedContactKey, isRemovedContactMarker } from "../contact-removal-policy";
+import { createRemovedContactMarker, removedContactKey, isRemovedContactMarker, hasStoredContactRevocation } from "../contact-removal-policy";
 const peer=onionFromPublicKey(new Uint8Array(32).fill(7));
 describe("durable friend removal", () => {
   it("uses only the real Tor identity and never stores a name", () => {
@@ -18,5 +18,18 @@ describe("durable friend removal", () => {
   it("rejects invalid timestamps", () => {
     for(const bad of [-1,0,NaN,Infinity,1.5])
       expect(() => createRemovedContactMarker(peer,bad)).toThrow();
+  });
+});
+
+describe("fail-closed profile sharing revocation", () => {
+  it("treats corrupt or unsupported on-disk revocations as blocked", () => {
+    const valid = createRemovedContactMarker(peer, 100);
+    for (const value of [valid, null, {}, "corrupt",
+      { ...valid, data: { removed: false } }, { ...valid, version: 999 }]) {
+      expect(hasStoredContactRevocation(value)).toBe(true);
+    }
+  });
+  it("permits only a truly absent revocation key", () => {
+    expect(hasStoredContactRevocation(undefined)).toBe(false);
   });
 });

@@ -28,3 +28,8 @@ export function isRemovedContactMarker(row: unknown): row is ReturnType<typeof c
   try { return v.key === removedContactKey(v.messageId); }
   catch { return false; }
 }
+
+/** Fail closed when a revoked peer's canonical key exists but its data is corrupt. */
+export function hasStoredContactRevocation(row: unknown): boolean {
+  return row !== undefined;
+}
