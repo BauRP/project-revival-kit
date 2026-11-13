@@ -7,7 +7,7 @@ import { dbGetStrict, dbGetAllStrict } from "../storage";
 import { updateLegacySetting } from "../legacy-setting-cas";
 import { validateOutgoingFriendRequest } from "../friend-request-policy";
 import { onionRegisterIncomingListener, onionSendDispatch, recoverInbox } from "../onion-engine";
-import { allowPeerContactAfterUserAction } from "../dexie-db";
+import { allowPeerContactAfterUserAction, upsertContact } from "../dexie-db";
 
 export interface FriendRequest {
   from: string;
@@ -76,6 +76,9 @@ export async function acceptFriendRequest(fromOnion: string): Promise<void> {
   if (saved.value?.status !== "accepted")
     throw new Error("Friend acceptance was not committed");
   await allowPeerContactAfterUserAction(fromOnion);
+  // The initial signed request may have arrived while this peer was revoked.
+  // Explicit acceptance creates a current, shareable membership again.
+  await upsertContact(fromOnion);
   await onionSendDispatch(fromOnion, {
     type: "friend_request_status",
     id: `frs-${fromOnion}-${Date.now()}`,
