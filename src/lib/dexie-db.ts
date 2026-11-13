@@ -36,7 +36,8 @@ export type OutboxKind =
   | "friend_request"
   | "friend_request_status"
   | "message_status"
-  | "message_lifecycle";
+  | "message_lifecycle"
+  | "profile_update";
 
 export interface OutboxRecord {
   /** Payload id — identical to the message id for text messages. */
@@ -209,9 +210,12 @@ export async function upsertContact(onion: string, displayName?: string): Promis
 /** Durable privacy boundary: mark friend removed BEFORE legacy UI cleanup. */
 export async function removePeerContact(onion: string): Promise<void> {
   if (!isValidOnion(onion)) return;
-  await dxdb.transaction("rw", [dxdb.contacts, dxdb.lifecycle], async () => {
+  await dxdb.transaction("rw", [dxdb.contacts, dxdb.lifecycle, dxdb.outbox], async () => {
     await dxdb.lifecycle.put(createRemovedContactMarker(onion, Date.now()));
     await dxdb.contacts.delete(onion);
+    // No old sealed avatar/name updates may be delivered after revocation.
+    await dxdb.outbox.where("peer").equals(onion)
+      .filter((row) => row.kind === "profile_update").delete();
   });
 }
 
