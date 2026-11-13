@@ -633,18 +633,18 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       ]);
       const localIds = new Set(currentContactRows.map((c) => c.onion));
       const localAddedAt = new Map(currentContactRows.map((c) => [c.onion, c.addedAt]));
-      const revoked = new Set(localRemoved.filter(isRemovedContactMarker).map((m) => m.messageId));
+      const revokedContacts = new Set(localRemoved.filter(isRemovedContactMarker).map((m) => m.messageId));
       const restoredRemovalRows = (dump.lifecycle || []).filter((m) =>
         m?.chatKey === REMOVED_CONTACT_CHAT_KEY && isRemovedContactMarker(m));
       const obsoleteRestoredRemovals = new Set(restoredRemovalRows
         .filter((m) => (localAddedAt.get(m.messageId) ?? 0) > m.updatedAt)
         .map((m) => m.key));
       for (const row of restoredRemovalRows) {
-        if (!obsoleteRestoredRemovals.has(row.key)) revoked.add(row.messageId);
+        if (!obsoleteRestoredRemovals.has(row.key)) revokedContacts.add(row.messageId);
       }
       await dxdb.contacts.bulkPut(importedContacts.filter((c) =>
-        !localIds.has(c.onion) && !revoked.has(c.onion)));
-      if (revoked.size) await dxdb.contacts.bulkDelete([...revoked]);
+        !localIds.has(c.onion) && !revokedContacts.has(c.onion)));
+      if (revokedContacts.size) await dxdb.contacts.bulkDelete([...revokedContacts]);
       const presentIds = new Set(await dxdb.messages.toCollection().primaryKeys());
       const currentDeleted = await dxdb.lifecycle.where("chatKey").equals(LOCAL_DELETED_CHAT_KEY).toArray();
       const restoredDeleted = (dump.lifecycle || []).filter((row) =>
