@@ -29,6 +29,8 @@ describe("hostile authenticated attachment JSON", () => {
       expect(validateIncomingTextMessage({...base,media:{...media,name}},2000)).toBeNull();
     }
     expect(validateIncomingTextMessage({...base,media:{...media,fileId:"../bad"}},2000)).toBeNull();
+    expect(validateIncomingTextMessage({...base,media:{...media,id:""}},2000)).toBeNull();
+    expect(validateIncomingTextMessage({...base,media:{...media,id:"bad\\nmedia"}},2000)).toBeNull();
     expect(validateIncomingTextMessage({...base,id:"bad\nmessage"},2000)).toBeNull();
   });
 });

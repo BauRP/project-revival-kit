@@ -32,6 +32,17 @@ describe("consistent backup snapshot and actual disk-size preflight", () => {
       ...empty(), lifecycle: [{ key:"long",data:{ editedText:large } }],
     })).toThrow(/too large/);
   });
+  it("rejects oversized record counts before serializing any individual row", () => {
+    const malicious = { get id(): never { throw new Error("Should not read row"); } };
+    expect(() => assertExportSnapshotSafe({
+      ...empty(), messages: new Array(300001).fill(malicious),
+    })).toThrow(/too large/);
+  });
+  it("rejects a malformed Blob table with a controlled error", () => {
+    expect(() => assertExportSnapshotSafe({
+      ...empty(), blobs: {} as BackupSnapshotRows["blobs"],
+    })).toThrow(/snapshot rows/);
+  });
   it("rejects nonserializable and malformed records instead of creating invalid JSON", () => {
     const cycle: Record<string, unknown> = {};
     cycle.self = cycle;

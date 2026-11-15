@@ -7,6 +7,7 @@ import { isConsumedMediaRecord } from "./one-time-policy";
 import { isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY } from "./message-deletion-policy";
 import { REMOVED_CONTACT_CHAT_KEY, isRemovedContactMarker } from "./contact-removal-policy";
 import { validateSharedProfile } from "./profile-wire";
+import { validBlobFileId } from "./blob-request-policy";
 
 const MAX_RECORDS_PER_TABLE = 250_000;
 const MAX_TOTAL_RECORDS = 300_000;
@@ -37,7 +38,16 @@ function validMediaBase64(value: unknown, expectedBytes: number): value is strin
   if (value.length !== 4 * Math.ceil(expectedBytes / 3)) return false;
   if (!/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return false;
   const padding = (value.endsWith("==") ? 2 : value.endsWith("=") ? 1 : 0);
-  return padding === (3 - (expectedBytes % 3)) % 3;
+  if (padding !== (3 - (expectedBytes % 3)) % 3) return false;
+  // atob tolerates non-zero unused pad bits (e.g. AR== for 0x01).
+  // Accept only the one canonical encoding that the exporter writes.
+  if (padding > 0) {
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const last = alphabet.indexOf(value[value.length - padding - 1]);
+    if (last < 0 || (padding === 2 ? (last & 15) : (last & 3)) !== 0)
+      return false;
+  }
+  return true;
 }
 
 export function validateBackupStructure(dump: unknown): void {
@@ -73,10 +83,11 @@ export function validateBackupStructure(dump: unknown): void {
     if (messageIds.has(x.id)) throw new Error("Duplicate backup message");
     messageIds.add(x.id);
     if (x.media !== undefined) {
-      if (!record(x.media) || !id(x.media.fileId, 128) ||
+      if (!record(x.media) || !validBlobFileId(x.media.fileId) ||
           !["image", "audio", "file", "video"].includes(String(x.media.type)) ||
-          !id(x.media.name, 255) ||
+          !id(x.media.name, 255) || /[\\/]/.test(x.media.name as string) ||
           typeof x.media.mimeType !== "string" || x.media.mimeType.length > 128 ||
+          /[\u0000-\u001f\u007f]/.test(x.media.mimeType) ||
           !Number.isSafeInteger(x.media.size) ||
           (x.media.size as number) < 0 || (x.media.size as number) > MAX_BLOB_SIZE)
         throw new Error("Invalid backup message attachment");
@@ -130,8 +141,10 @@ export function validateBackupStructure(dump: unknown): void {
   let encodedMediaBytes = 0;
   const blobIds = new Set<string>();
   for (const x of blobs) {
-    if (!record(x) || !id(x.fileId, 128) || !id(x.name, 255) ||
+    if (!record(x) || !validBlobFileId(x.fileId) || !id(x.name, 255) ||
+        /[\\/]/.test(x.name as string) ||
         typeof x.mimeType !== "string" || x.mimeType.length > 128 ||
+        /[\u0000-\u001f\u007f]/.test(x.mimeType) ||
         !Number.isSafeInteger(x.size) || (x.size as number) < 0 ||
         (x.size as number) > MAX_BLOB_SIZE ||
         !validMediaBase64(x.dataB64, x.size as number))

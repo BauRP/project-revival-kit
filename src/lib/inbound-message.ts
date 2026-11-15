@@ -53,7 +53,8 @@ export function validateIncomingTextMessage(
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
     const m = raw as Record<string, unknown>;
     if (!validBlobFileId(m.fileId) ||
-        typeof m.id !== "string" || m.id.length > 128 ||
+        typeof m.id !== "string" || m.id.length === 0 || m.id.length > 128 ||
+        /[\u0000-\u001f\u007f]/.test(m.id) ||
         typeof m.type !== "string" ||
         !["image", "audio", "file", "video"].includes(m.type) ||
         typeof m.name !== "string" || m.name.length > 255 ||

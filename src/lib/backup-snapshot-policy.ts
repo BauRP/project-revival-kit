@@ -36,9 +36,17 @@ export function assertExportSnapshotSafe(snapshot: BackupSnapshotRows): void {
   let mediaBytes = 0;
   let metadataCodeUnits = 0;
   const tables = [snapshot.contacts,snapshot.messages,snapshot.outbox,snapshot.lifecycle];
+  if ([...tables, snapshot.blobs].some((rows) => !Array.isArray(rows)))
+    throw new Error("Invalid backup snapshot rows");
+  const records = tables.reduce((sum, rows) => sum + rows.length, 0) + snapshot.blobs.length;
+  // Reject pathological record counts BEFORE JSON.stringify can lock the UI.
+  assertPortableBackupFits({ mediaBytes: 0, textCodeUnits: 0, records });
   for (const rows of tables) {
-    if (!Array.isArray(rows)) throw new Error("Invalid backup snapshot rows");
-    for (const row of rows) metadataCodeUnits += measuredCodeUnits(row);
+    for (const row of rows) {
+      metadataCodeUnits += measuredCodeUnits(row);
+      // Stop at the first overflowing row instead of serializing the entire history.
+      assertPortableBackupFits({ mediaBytes, textCodeUnits: metadataCodeUnits, records });
+    }
   }
   for (const row of snapshot.blobs) {
     if (!(row.data instanceof Blob) || !Number.isSafeInteger(row.size) ||
@@ -50,11 +58,8 @@ export function assertExportSnapshotSafe(snapshot: BackupSnapshotRows): void {
     const { data: ignored, ...metadata } = row;
     void ignored;
     metadataCodeUnits += measuredCodeUnits(metadata);
+    assertPortableBackupFits({ mediaBytes, textCodeUnits: metadataCodeUnits, records });
   }
   if (!Number.isSafeInteger(metadataCodeUnits) || !Number.isSafeInteger(mediaBytes))
     throw new Error("Backup size exceeds safe numeric range");
-  assertPortableBackupFits({
-    mediaBytes, textCodeUnits: metadataCodeUnits,
-    records: tables.reduce((sum, rows) => sum + rows.length, 0) + snapshot.blobs.length,
-  });
 }

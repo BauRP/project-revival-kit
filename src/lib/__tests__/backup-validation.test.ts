@@ -39,7 +39,23 @@ describe("backup preflight validation", () => {
       blob(1, "AQID"), // larger than the advertised attachment
       blob(1, "AAAA"), // missing the required padding
       blob(3, "malformed_"), blob(0, "AA=="),
+      blob(1, "AR=="), // non-zero unused padding bits: decodes to 0x01
+      blob(2, "AQJ="), // non-zero unused padding bits: decodes to 0x0102
     ]) expect(() => validateBackupStructure({ ...dump(), blobs: [invalid] })).toThrow();
+  });
+
+  it("rejects unsafe restored file paths, opaque IDs and MIME controls", () => {
+    for (const invalid of [
+      { ...blob(0, ""), name: "../escape.png" },
+      { ...blob(0, ""), name: "folder\\\\escape.png" },
+      { ...blob(0, ""), fileId: "../escape" },
+      { ...blob(0, ""), mimeType: "image/png\\n" },
+    ]) expect(() => validateBackupStructure({ ...dump(), blobs: [invalid] })).toThrow();
+    const message = {
+      id:"m", from:"sender", to:"recipient", text:"file", timestamp:1,
+      media:{ fileId:"file", type:"image", name:"../escape.png", mimeType:"image/png", size:1 },
+    };
+    expect(() => validateBackupStructure({ ...dump(), messages:[message] })).toThrow();
   });
 
   it("rejects huge record counts before a restore transaction", () => {
