@@ -49,7 +49,7 @@ describe("backup preflight validation", () => {
       { ...blob(0, ""), name: "../escape.png" },
       { ...blob(0, ""), name: "folder\\\\escape.png" },
       { ...blob(0, ""), fileId: "../escape" },
-      { ...blob(0, ""), mimeType: "image/png\\n" },
+      { ...blob(0, ""), mimeType: "image/png\n" },
     ]) expect(() => validateBackupStructure({ ...dump(), blobs: [invalid] })).toThrow();
     const message = {
       id:"m", from:"sender", to:"recipient", text:"file", timestamp:1,
