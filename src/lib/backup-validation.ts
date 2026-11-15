@@ -31,6 +31,13 @@ function id(value: unknown, max = 256): value is string {
     !/[\u0000-\u001f\u007f]/.test(value);
 }
 
+/** Legacy V3 rows may omit optional metadata, but corrupt values must not
+ * become IndexedDB index keys or affect restoration decisions. */
+function optionalNonnegativeTimestamp(value: unknown): boolean {
+  return value === undefined ||
+    (typeof value === "number" && Number.isSafeInteger(value) && value >= 0);
+}
+
 /** Check the decoded size without allocating or decoding untrusted base64. */
 function validMediaBase64(value: unknown, expectedBytes: number): value is string {
   if (typeof value !== "string") return false;
@@ -67,7 +74,11 @@ export function validateBackupStructure(dump: unknown): void {
 
   const contactIds = new Set<string>();
   for (const x of contacts) {
-    if (!record(x) || !id(x.onion, 128))
+    if (!record(x) || !id(x.onion, 128) ||
+        !optionalNonnegativeTimestamp(x.addedAt) ||
+        !optionalNonnegativeTimestamp(x.lastSeen) ||
+        (x.displayName !== undefined &&
+          (typeof x.displayName !== "string" || x.displayName.length > 4096)))
       throw new Error("Invalid backup contact");
     if (contactIds.has(x.onion)) throw new Error("Duplicate backup contact");
     contactIds.add(x.onion);
@@ -78,13 +89,19 @@ export function validateBackupStructure(dump: unknown): void {
     if (!record(x) || !id(x.id, 128) || !id(x.from, 128) ||
         !id(x.to, 128) || typeof x.text !== "string" ||
         x.text.length > 200_000 || !Number.isSafeInteger(x.timestamp) ||
-        (x.timestamp as number) < 0)
+        (x.timestamp as number) < 0 ||
+        (x.status !== undefined &&
+          !["pending", "sent", "delivered", "read"].includes(x.status as string)) ||
+        (x.caption !== undefined &&
+          (typeof x.caption !== "string" || x.caption.length > 10_000)))
       throw new Error("Invalid backup message");
     if (messageIds.has(x.id)) throw new Error("Duplicate backup message");
     messageIds.add(x.id);
     if (x.media !== undefined) {
       if (!record(x.media) || !validBlobFileId(x.media.fileId) ||
-          !["image", "audio", "file", "video"].includes(String(x.media.type)) ||
+          typeof x.media.type !== "string" ||
+          !["image", "audio", "file", "video"].includes(x.media.type) ||
+          (x.media.id !== undefined && !id(x.media.id, 128)) ||
           !id(x.media.name, 255) || /[\\/]/.test(x.media.name as string) ||
           typeof x.media.mimeType !== "string" || x.media.mimeType.length > 128 ||
           /[\u0000-\u001f\u007f]/.test(x.media.mimeType) ||
@@ -117,7 +134,8 @@ export function validateBackupStructure(dump: unknown): void {
   const lifecycleKeys = new Set<string>();
   for (const x of lifecycle) {
     if (!record(x) || !id(x.key, 1024) || !id(x.chatKey, 256) ||
-        !id(x.messageId, 256) || !record(x.data))
+        !id(x.messageId, 256) || !record(x.data) ||
+        !optionalNonnegativeTimestamp(x.updatedAt))
       throw new Error("Invalid backup lifecycle");
     if (lifecycleKeys.has(x.key)) throw new Error("Duplicate backup lifecycle key");
     lifecycleKeys.add(x.key);
@@ -126,7 +144,8 @@ export function validateBackupStructure(dump: unknown): void {
     // No unportable Android Keystore ciphertext in password backups.
     if (x.chatKey === "remote-profile" &&
         (x.key !== `profile::${x.messageId}` ||
-         !validateSharedProfile(x.data, x.messageId)))
+         !validateSharedProfile(x.data, x.messageId) ||
+         x.updatedAt !== x.data.updatedAt))
       throw new Error("Invalid portable remote profile");
     // Never accept privacy deletion flags under a forged/mismatched key.
     // A valid exported record always uses the canonical key for its ID.
@@ -147,6 +166,7 @@ export function validateBackupStructure(dump: unknown): void {
         /[\u0000-\u001f\u007f]/.test(x.mimeType) ||
         !Number.isSafeInteger(x.size) || (x.size as number) < 0 ||
         (x.size as number) > MAX_BLOB_SIZE ||
+        !optionalNonnegativeTimestamp(x.storedAt) ||
         !validMediaBase64(x.dataB64, x.size as number))
       throw new Error("Invalid backup attachment");
     if (blobIds.has(x.fileId)) throw new Error("Duplicate backup attachment");

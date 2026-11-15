@@ -219,10 +219,38 @@ jobs:
             exit 1
           fi
 
+      # Reuse the same signed APK to check install, in-place upgrade and app
+      # startup on older supported Android APIs, not just the API-35 baseline.
+      # Keep these before release publication so a regression blocks the APK.
+      - name: Smoke-test APK on Android 10 x86_64
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          TRIVO_APK_PATH: ${{ steps.apk.outputs.path }}
+          TRIVO_EXPECTED_SDK: "29"
+        with:
+          api-level: 29
+          target: google_apis
+          arch: x86_64
+          emulator-boot-timeout: 600
+          script: bash .github/scripts/verify-apk-install.sh
+
+      - name: Smoke-test APK on Android 13 x86_64
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          TRIVO_APK_PATH: ${{ steps.apk.outputs.path }}
+          TRIVO_EXPECTED_SDK: "33"
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          emulator-boot-timeout: 600
+          script: bash .github/scripts/verify-apk-install.sh
+
       - name: Smoke-test APK installation on Android 15 x86_64
         uses: reactivecircus/android-emulator-runner@v2
         env:
           TRIVO_APK_PATH: ${{ steps.apk.outputs.path }}
+          TRIVO_EXPECTED_SDK: "35"
         with:
           api-level: 35
           target: google_apis

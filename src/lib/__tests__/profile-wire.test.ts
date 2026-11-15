@@ -12,6 +12,11 @@ describe("Tor profile synchronization privacy", () => {
     expect(validateSharedProfile({...p,avatar:"https://example.com/track"},id,2000)).toBeNull();
     expect(validateSharedProfile({...p,updatedAt:9000000},id,2000)).toBeNull();
   });
+  it("rejects JSON values masquerading as a valid status", () => {
+    for (const invalid of [["online"], { toString: "online" }, 0, null]) {
+      expect(validateSharedProfile({ ...p, status: invalid }, id, 2000)).toBeNull();
+    }
+  });
   it("never shares an external avatar URL", () => {
     expect(makeSharedProfile({...p,avatar:"https://tracking.test/avatar"}).avatar).toBeNull();
   });

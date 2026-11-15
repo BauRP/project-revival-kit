@@ -5,6 +5,12 @@ APK="${TRIVO_APK_PATH:?Missing APK path}"
 test -f "$APK"
 [[ "$APK" == *.apk ]]
 test -n "${TRIVO_VERSION_CODE:?Missing build version}"
+if [[ -n "${TRIVO_EXPECTED_SDK:-}" ]]; then
+  ACTUAL_SDK="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
+  [[ "$ACTUAL_SDK" == "$TRIVO_EXPECTED_SDK" ]] || {
+    echo "Wrong Android API level: $ACTUAL_SDK, expected $TRIVO_EXPECTED_SDK"; exit 1;
+  }
+fi
 
 adb install "$APK"
 adb shell pm path com.baurp.trivochat | grep -F "base.apk"
@@ -19,4 +25,10 @@ adb shell run-as com.baurp.trivochat ls "$APP_FILES/trivo-ci-upgrade-test" | gre
 adb install -r "$APK"
 adb shell run-as com.baurp.trivochat ls "$APP_FILES/trivo-ci-upgrade-test" | grep -F trivo-ci-upgrade-test
 adb shell dumpsys package com.baurp.trivochat | grep -m1 "versionCode=${TRIVO_VERSION_CODE:?Missing build version}"
-echo "Verified Android emulator APK install/reinstall and private data retention."
+# Also verify the APK can enter its native MainActivity on this API level.
+# This is only a startup smoke test, not proof of all WebView/Tor functions.
+adb logcat -c
+adb shell am start -W -n com.baurp.trivochat/.MainActivity
+sleep 5
+adb shell pidof com.baurp.trivochat | grep -E '^[0-9]+'
+echo "Verified Android API ${ACTUAL_SDK:-unspecified}: APK install/reinstall, private data retention, and live app process after launch."

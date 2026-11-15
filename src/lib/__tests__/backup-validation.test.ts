@@ -33,6 +33,29 @@ describe("backup preflight validation", () => {
     })) })).toThrow();
   });
 
+  it("rejects malformed optional metadata without breaking older V3 records", () => {
+    const contact = { onion:"peer.onion", addedAt:1, lastSeen:2, displayName:"Peer" };
+    const message = { id:"m", from:"from", to:"to", text:"hello", timestamp:1,
+      status:"delivered", caption:"good",
+      media:{ fileId:"f", id:"media-id", name:"photo.png", type:"image",
+        mimeType:"image/png", size:1 } };
+    const lifecycle = { key:"k", chatKey:"chat", messageId:"m",
+      updatedAt:1, data:{} };
+    expect(() => validateBackupStructure({...dump(),contacts:[contact],
+      messages:[message],lifecycle:[lifecycle],blobs:[blob(1,"AQ==")]})).not.toThrow();
+    for (const bad of [
+      {contacts:[{...contact, addedAt:"yesterday"}]},
+      {contacts:[{...contact, lastSeen:-1}]},
+      {contacts:[{...contact, displayName:{bad:true}}]},
+      {messages:[{...message, status:["delivered"]}]},
+      {messages:[{...message, caption:"a".repeat(10001)}]},
+      {messages:[{...message, media:{...message.media,type:["image"]}}]},
+      {messages:[{...message, media:{...message.media,id:""}}]},
+      {lifecycle:[{...lifecycle,updatedAt:"soon"}]},
+      {blobs:[{...blob(1,"AQ=="),storedAt:NaN}]},
+    ]) expect(() => validateBackupStructure({...dump(),...bad})).toThrow();
+  });
+
   it("checks exact decoded attachment size and canonical padding", () => {
     for (const invalid of [
       blob(3, "AQ=="), // much shorter than the advertised attachment
@@ -132,6 +155,11 @@ describe("portable remote-profile structure", () => {
   };
   it("accepts portable profiles of the authenticated sender", () => {
     expect(() => validateBackupStructure({...dump(),lifecycle:[row]})).not.toThrow();
+  });
+  it("rejects remote profile index timestamps that disagree with the signed content", () => {
+    expect(() => validateBackupStructure({...dump(), lifecycle:[
+      {...row,updatedAt:profile.updatedAt+1},
+    ]})).toThrow("Invalid portable remote profile");
   });
   it("rejects foreign-key ciphertext, wrong owner or unsafe avatars", () => {
     for (const bad of [

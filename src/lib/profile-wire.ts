@@ -22,7 +22,8 @@ export function validateSharedProfile(raw: unknown, authenticatedSender: string,
   if (p.userId !== authenticatedSender ||
       typeof p.name !== "string" || p.name.length > 80 ||
       typeof p.customStatus !== "string" || p.customStatus.length > 280 ||
-      !["online", "away", "dnd", "offline", "custom"].includes(String(p.status)) ||
+      typeof p.status !== "string" ||
+      !["online", "away", "dnd", "offline", "custom"].includes(p.status) ||
       !isSafeAvatar(p.avatar) ||
       typeof p.updatedAt !== "number" || !Number.isSafeInteger(p.updatedAt) ||
       p.updatedAt < 1 || p.updatedAt > now + 600_000) return null;
