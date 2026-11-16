@@ -601,7 +601,7 @@ export async function exportDexieDump(): Promise<DexieDump> {
   // Recheck real committed Blob lengths and all textual metadata before
   // creating the extra Base64/JSON copies in the backup envelope.
   assertExportSnapshotSafe({
-    contacts, messages: safe.messages, outbox, lifecycle: portableLifecycle, blobs: safe.blobs,
+    contacts, messages: safe.messages, outbox, lifecycle: safe.lifecycle, blobs: safe.blobs,
   });
   // Avoid starting a separate multi-megabyte ArrayBuffer conversion for
   // every attachment at once. Sequential encoding limits peak native and
@@ -623,7 +623,7 @@ export async function exportDexieDump(): Promise<DexieDump> {
     contacts,
     messages: safe.messages,
     outbox,
-    lifecycle: portableLifecycle,
+    lifecycle: safe.lifecycle,
     blobs: blobsEncoded,
   };
 }

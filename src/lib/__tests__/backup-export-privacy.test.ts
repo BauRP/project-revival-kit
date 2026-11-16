@@ -28,6 +28,61 @@ describe("portable backup must not retain consumed media bytes", () => {
     expect(messages[0].oneTimeConsumed).toBe(true);
     expect((messages[1].media as {url:string}).url).toBe("");
   });
+  it("does not archive deleted message plaintext, stale edits or orphaned media", () => {
+    const erased = {
+      ...baseMessage("erased", "old-secret"),
+      text: "private deleted text", caption: "private caption",
+      hiddenTranslation: "private translation",
+    };
+    const deleted: LifecycleRecord = {
+      key:'["deleted-message","erased"]', chatKey:"deleted-message-local",
+      messageId:"erased", data:{ deleted:true }, updatedAt:10,
+    };
+    const staleEdit: LifecycleRecord = {
+      key:"peer::erased", chatKey:"peer", messageId:"erased",
+      data:{ editedText:"private old edit" }, updatedAt:9,
+    };
+    const surviving = baseMessage("alive", "keep-file");
+    const result = sanitizePortableExportPrivacy(
+      [erased,surviving],[deleted,staleEdit],[blob("old-secret"),blob("keep-file")],
+    );
+    expect(result.messages.map((row) => row.id)).toEqual(["alive"]);
+    expect(result.lifecycle).toEqual([deleted]);
+    expect(result.blobs.map((row) => row.fileId)).toEqual(["keep-file"]);
+    expect(JSON.stringify({ messages: result.messages, lifecycle: result.lifecycle }))
+      .not.toContain("private");
+    // Export must not mutate live IndexedDB snapshot objects.
+    expect(erased.text).toBe("private deleted text");
+  });
+  it("retains media still referenced by another surviving message", () => {
+    const deleted: LifecycleRecord = {
+      key:'["deleted-message","erased"]', chatKey:"deleted-message-local",
+      messageId:"erased", data:{ deleted:true }, updatedAt:10,
+    };
+    const result = sanitizePortableExportPrivacy(
+      [baseMessage("erased","shared"),baseMessage("alive","shared")],
+      [deleted], [blob("shared")],
+    );
+    expect(result.messages.map((row) => row.id)).toEqual(["alive"]);
+    expect(result.blobs.map((row) => row.fileId)).toEqual(["shared"]);
+  });
+  it("does not trust forged or unconfirmed deletion flags", () => {
+    const edited: LifecycleRecord = {
+      key:"peer::m", chatKey:"peer", messageId:"m",
+      data:{editedText:"legitimate"},updatedAt:1,
+    };
+    for (const bad of [
+      {key:"wrong",chatKey:"deleted-message-local",messageId:"m",data:{deleted:true},updatedAt:2},
+      {key:'["deleted-message","m"]',chatKey:"deleted-message-local",messageId:"m",data:{deleted:false},updatedAt:2},
+    ] as LifecycleRecord[]) {
+      const result = sanitizePortableExportPrivacy(
+        [baseMessage("m","media")], [bad,edited], [blob("media")],
+      );
+      expect(result.messages).toHaveLength(1);
+      expect(result.lifecycle).toHaveLength(2);
+      expect(result.blobs).toHaveLength(1);
+    }
+  });
   it("does not trust a mismatched or forged consumed marker", () => {
     const result = sanitizePortableExportPrivacy(
       [baseMessage("m",deletedFile)], [marker(deletedFile,false)],

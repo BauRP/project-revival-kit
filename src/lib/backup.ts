@@ -18,6 +18,7 @@ import { purgeExpiredLocalMessages } from "./p2p";
 import { makePortableBackupPackage, readPortableBackupPayload, assertMatchingBackupIdentity } from "./backup-package";
 import { createDatedBackupFilename, isSafeBackupFilename, newestBackupFilename, pendingBackupFilename } from "./backup-files";
 import { validateLegacyBackupEnvelope } from "./legacy-backup-policy";
+import { assertBackupFileSize, MAX_BACKUP_FILE_BYTES } from "./backup-input-policy";
 
 
 const MAGIC = "TRIVO-BACKUP-V1";
@@ -156,7 +157,7 @@ export async function importBackup(
 
   // Reject abnormally large plaintext JSON BEFORE parsing; the V2 decryptor
   // has independent encrypted-field limits.
-  if (json.length > 360 * 1024 * 1024)
+  if (json.length > MAX_BACKUP_FILE_BYTES)
     throw new Error("Backup file exceeds supported size");
   const envelope = JSON.parse(json) as EncryptedEnvelope | BackupEnvelopeV2;
   const parsed = envelope.magic === "TRIVO-BACKUP-V2"
@@ -193,6 +194,8 @@ function pickFileAsText(): Promise<string> {
         return;
       }
       try {
+        // Reject oversized files BEFORE File.text() duplicates them in WebView memory.
+        assertBackupFileSize(file.size);
         const text = await file.text();
         resolve(text);
       } catch (e) {

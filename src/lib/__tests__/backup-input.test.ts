@@ -1,5 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { decryptBackupV2 } from "../backup-crypto";
+import { assertBackupFileSize, MAX_BACKUP_FILE_BYTES } from "../backup-input-policy";
+describe("untrusted web backup memory preflight", () => {
+  it("accepts the existing archive size limit including its boundary", () => {
+    expect(() => assertBackupFileSize(0)).not.toThrow();
+    expect(() => assertBackupFileSize(MAX_BACKUP_FILE_BYTES)).not.toThrow();
+  });
+  it("rejects oversized, fractional and invalid file sizes before reading", () => {
+    for (const size of [MAX_BACKUP_FILE_BYTES + 1, -1, NaN, Infinity, 1.5]) {
+      expect(() => assertBackupFileSize(size)).toThrow(/Backup file/);
+    }
+  });
+});
 describe("encrypted backup input validation", () => {
   it("rejects invalid encodings before key derivation", async () => {
     const bad = {magic:"TRIVO-BACKUP-V2",kdf:"PBKDF2-SHA256",iterations:600000,
