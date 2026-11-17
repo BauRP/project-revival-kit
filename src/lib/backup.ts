@@ -172,6 +172,11 @@ export async function importBackup(
     } catch (error) {
       if (!options.allowEmptyDeviceIdentityTransfer) throw error;
       await restoreIdentityOnFreshDevice(validated, dump);
+      // The fresh-device transfer must enforce the SAME disappearing-message
+      // retention policy as an ordinary backup restore. Do not put this into
+      // restoreIdentityOnFreshDevice's rollback catch: once Dexie commits, a
+      // failed cleanup must never roll the identity back over recovered data.
+      await purgeExpiredLocalMessages();
       return { identityChanged: true };
     }
   }
