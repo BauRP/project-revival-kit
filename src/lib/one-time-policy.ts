@@ -8,6 +8,33 @@ export function isConsumedMediaRecord(data: unknown): boolean {
     (data as { consumed?: unknown }).consumed === true;
 }
 
+/**
+ * Produce a set of revoked file IDs once, instead of scanning every message
+ * for every individual tombstone during a large restore. Ignore unfinished
+ * or unrelated keys; they are not valid consumed-media identities.
+ */
+export function consumedMediaFileIds(revoked: ReadonlySet<string>): Set<string> {
+  const prefix = "consumed-media::";
+  const result = new Set<string>();
+  for (const key of revoked) {
+    if (key.startsWith(prefix) && key.length > prefix.length) {
+      result.add(key.slice(prefix.length));
+    }
+  }
+  return result;
+}
+
+/** Test a message against the precomputed IDs without constructing keys. */
+export function hasConsumedMediaReference(
+  message: { media?: unknown },
+  consumedIds: ReadonlySet<string>,
+): boolean {
+  const media = message.media;
+  if (!media || typeof media !== "object" || Array.isArray(media)) return false;
+  const fileId = (media as { fileId?: unknown }).fileId;
+  return typeof fileId === "string" && consumedIds.has(fileId);
+}
+
 /** Never resurrect a viewed attachment from an older encrypted backup. */
 export function isProtectedByConsumedTombstone(fileId: string, revoked: ReadonlySet<string>): boolean {
   return revoked.has(consumedMediaKey(fileId));

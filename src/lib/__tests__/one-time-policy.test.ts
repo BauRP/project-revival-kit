@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { consumedMediaKey, isConsumedMediaRecord, isProtectedByConsumedTombstone, sanitizeRestoredOneTimeMessage } from "../one-time-policy";
+import { consumedMediaKey, consumedMediaFileIds, hasConsumedMediaReference, isConsumedMediaRecord, isProtectedByConsumedTombstone, sanitizeRestoredOneTimeMessage } from "../one-time-policy";
 describe("persistent one-time media replay prevention", () => {
   it("isolates a tombstone for each attachment", () => {
     expect(consumedMediaKey("f_a")).not.toBe(consumedMediaKey("f_b"));
@@ -11,6 +11,26 @@ describe("persistent one-time media replay prevention", () => {
     expect(isConsumedMediaRecord({ consumed: false })).toBe(false);
     expect(isConsumedMediaRecord(null)).toBe(false);
     expect(isConsumedMediaRecord({})).toBe(false);
+  });
+  it("builds one deduplicated revocation set and ignores unrelated keys", () => {
+    const revoked = new Set([
+      consumedMediaKey("a"), consumedMediaKey("b"),
+      "unrelated::c", "consumed-media::",
+    ]);
+    expect(consumedMediaFileIds(revoked)).toEqual(new Set(["a", "b"]));
+  });
+  it("identifies only live message references to consumed attachments", () => {
+    const revoked = consumedMediaFileIds(new Set([consumedMediaKey("a")]));
+    expect(hasConsumedMediaReference({ media: { fileId: "a" } }, revoked)).toBe(true);
+    for (const message of [
+      { media: { fileId: "b" } },
+      { media: { fileId: ["a"] } },
+      { media: "a" },
+      { media: null },
+      {},
+    ]) {
+      expect(hasConsumedMediaReference(message, revoked)).toBe(false);
+    }
   });
   it("never restores consumed media, even from an older backup", () => {
     const revoked = new Set([consumedMediaKey("f_a")]);

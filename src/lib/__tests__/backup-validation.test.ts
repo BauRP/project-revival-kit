@@ -103,6 +103,12 @@ describe("encrypted outgoing records in portable backups", () => {
     expect(() => validateBackupStructure({ ...dump(), outbox: [{ ...old, frame: "" }] })).toThrow();
     expect(() => validateBackupStructure({ ...dump(), outbox: [{ ...old, nextAttemptAt: "soon" }] })).toThrow();
     expect(() => validateBackupStructure({ ...dump(), outbox: [{ ...old, status: "delivered" }] })).toThrow();
+    // A forged status object must not pass because String(value) is "sent".
+    for (const status of [["sent"], { toString: "sent" }, null, 0]) {
+      expect(() => validateBackupStructure({ ...dump(), outbox: [{
+        ...old, status,
+      }] })).toThrow();
+    }
   });
 });
 

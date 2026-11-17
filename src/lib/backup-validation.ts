@@ -120,7 +120,7 @@ export function validateBackupStructure(dump: unknown): void {
         typeof x.kind !== "string" || !id(x.kind, 64) ||
         typeof x.frame !== "string" || x.frame.length < 1 ||
         x.frame.length > 12 * 1024 * 1024 ||
-        !["pending", "sent", "failed"].includes(String(x.status)) ||
+        !(typeof x.status === "string" && ["pending", "sent", "failed"].includes(x.status)) ||
         !Number.isSafeInteger(x.attempts) || (x.attempts as number) < 0 ||
         (x.attempts as number) > 1_000_000 ||
         !Number.isSafeInteger(x.createdAt) || (x.createdAt as number) <= 0 ||

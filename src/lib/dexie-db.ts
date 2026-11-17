@@ -8,7 +8,7 @@
 //   - lifecycle : per-chat edit/delete/pin mirror
 
 import Dexie, { type Table } from "dexie";
-import { consumedMediaKey, isConsumedMediaRecord, isProtectedByConsumedTombstone, sanitizeRestoredOneTimeMessage } from "./one-time-policy";
+import { consumedMediaKey, consumedMediaFileIds, hasConsumedMediaReference, isConsumedMediaRecord, isProtectedByConsumedTombstone, sanitizeRestoredOneTimeMessage } from "./one-time-policy";
 import { validateBackupStructure } from "./backup-validation";
 import { stripSessionMediaUrl } from "./backup-media-policy";
 import { lifecycleRowsForRestore, lifecycleRowsToPurgeForDeletedMessages } from "./backup-merge-policy";
@@ -774,7 +774,9 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
         await dxdb.partial_chunks.where("fileId").anyOf(orphaned).delete();
       }
 
-      const surviving = await dxdb.messages.toArray();
+      // No full-history scan is needed if neither device nor backup has
+      // a deleted-message marker. This is the common restore path.
+      const surviving = deletedIds.size ? await dxdb.messages.toArray() : [];
       const deniedBackupMedia = new Set([
         ...orphaned,
         ...unusedBackupMedia(
@@ -799,18 +801,24 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
           data: decodePortableMedia(b.dataB64, b.mimeType),
         });
       }
-      // Reconcile already-present messages too: the restored tombstone is
-      // authoritative even when an older local message still references media.
-      for (const key of revoked) {
-        const fileId = key.slice("consumed-media::".length);
-        await dxdb.blobs.delete(fileId);
-        await dxdb.partial_chunks.where("fileId").equals(fileId).delete();
-        const affected = await dxdb.messages.filter((m) => {
-          const media = m.media as { fileId?: string } | undefined;
-          return media?.fileId === fileId;
-        }).toArray();
-        for (const msg of affected)
-          await dxdb.messages.put(sanitizeRestoredOneTimeMessage(msg, revoked));
+      // One-time tombstones win over any previously restored local records.
+      // Formerly we scanned every message once PER tombstone, which could
+      // stall WebView while restoring many previously consumed attachments.
+      // Delete revoked media in bounded batches, then scan messages just once.
+      const consumedIds = consumedMediaFileIds(revoked);
+      const revokedFiles = [...consumedIds];
+      for (let offset = 0; offset < revokedFiles.length; offset += 256) {
+        const batch = revokedFiles.slice(offset, offset + 256);
+        await dxdb.blobs.bulkDelete(batch);
+        await dxdb.partial_chunks.where("fileId").anyOf(batch).delete();
+      }
+      if (consumedIds.size) {
+        await dxdb.messages.filter((message) =>
+          hasConsumedMediaReference(message, consumedIds)
+        ).modify((message) => {
+          message.media = undefined;
+          message.oneTimeConsumed = true;
+        });
       }
     },
   );
