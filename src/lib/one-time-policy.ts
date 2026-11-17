@@ -26,7 +26,7 @@ export function consumedMediaFileIds(revoked: ReadonlySet<string>): Set<string> 
 
 /** Test a message against the precomputed IDs without constructing keys. */
 export function hasConsumedMediaReference(
-  message: { media?: unknown },
+  message: Record<string, unknown>,
   consumedIds: ReadonlySet<string>,
 ): boolean {
   const media = message.media;
