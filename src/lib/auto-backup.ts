@@ -105,7 +105,17 @@ export function runAutomaticBackupIfDue(): Promise<void> {
           beforeExport.sealed !== state.sealed ||
           beforeExport.lastSavedAt !== state.lastSavedAt) return;
       await exportBackup(plaintext, createDatedBackupFilename(new Date(), "auto"));
-      // A failed retention cleanup must never invalidate a successful export.
+      // Persist the successful export first. If settings were disabled while
+      // the export ran, never touch old archives in this stale cleanup pass.
+      try {
+        await dbPutIfUnchangedStrict(
+          "settings", KEY, state, { ...state, lastSavedAt: Date.now() },
+        );
+      } catch (error) {
+        if (error instanceof ConcurrentProtectedWriteError) return;
+        throw error;
+      }
+      lastFailedAt = 0;
       try {
         const names = (await Filesystem.readdir({
           path: "", directory: Directory.Documents,
@@ -116,17 +126,6 @@ export function runAutomaticBackupIfDue(): Promise<void> {
       } catch (error) {
         console.warn("[backup] unable to prune older automatic snapshots", error);
       }
-      // Atomic compare-and-swap: disabling or changing the backup password
-      // during the write must NEVER silently re-enable the old credentials.
-      // A conflict means the user's newer setting wins, not a failed backup.
-      try {
-        await dbPutIfUnchangedStrict(
-          "settings", KEY, state, { ...state, lastSavedAt: Date.now() },
-        );
-      } catch (error) {
-        if (!(error instanceof ConcurrentProtectedWriteError)) throw error;
-      }
-      lastFailedAt = 0;
     } catch (error) {
       lastFailedAt = Date.now();
       console.warn("[backup] automatic encrypted snapshot unavailable:", error);

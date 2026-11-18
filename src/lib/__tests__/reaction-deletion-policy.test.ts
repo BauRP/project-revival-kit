@@ -58,3 +58,17 @@ describe("deletion cancels queued reactions under their actual event IDs", () =>
     ])).toEqual([]);
   });
 });
+
+import { normalizeLegacyReactions } from "../reaction-policy";
+describe("safe legacy reaction recovery", () => {
+  it("keeps valid reactions and discards malformed actors", () => {
+    const map = normalizeLegacyReactions({
+      message: { alice: "👍", wrong: 42 },
+      invalid: "bad",
+    });
+    expect(map.message.alice).toBe("👍");
+    expect(Object.hasOwn(map.message, "wrong")).toBe(false);
+    expect(Object.hasOwn(map, "invalid")).toBe(false);
+    expect(Object.getPrototypeOf(map)).toBeNull();
+  });
+});

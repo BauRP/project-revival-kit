@@ -148,8 +148,12 @@ export function downloadFromTrivo(fileId: string, peer?: string): Promise<string
     // Check BEFORE returning even a cached URL: consumed media is never replayable.
     await assertNotConsumed(fileId);
     const cached = blobUrlCache.get(fileId);
-    if (cached) return cached;
     const local = await getBlob(fileId);
+    if (cached && local) {
+      await assertNotConsumed(fileId);
+      return cached;
+    }
+    if (cached) revokeStoredMediaUrls([fileId]);
     if (local) {
       await assertSafeToOpen(local);
       // The file can be consumed in another async task while its header is
@@ -208,7 +212,13 @@ export async function ensureMediaUrl<T extends { fileId?: string; url?: string }
     }
   }
   // Only fetch when we don't already have a usable local URL.
-  if (!needsResolve && media.url) return media;
+  if (!needsResolve && media.url) {
+    if (media.fileId && blobUrlCache.get(media.fileId) === media.url &&
+        !(await getBlob(media.fileId))) {
+      revokeStoredMediaUrls([media.fileId]);
+      (media as { url?: string }).url = undefined;
+    } else return media;
+  }
   if (!media.fileId) return media;
   try {
     const url = await downloadFromTrivo(media.fileId, peer);

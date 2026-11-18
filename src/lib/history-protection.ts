@@ -55,16 +55,21 @@ export function nextProtectionUpdateAt(previous: number, now: number): number {
     throw new Error("Invalid protection timestamp");
   return Math.max(now, previous + 1);
 }
-function stateOf(data?: Record<string, unknown>): HistoryProtectionState {
-  return { enabled: data?.enabled === true, updatedAt: Number(data?.updatedAt || 0) };
+export function parseHistoryProtectionState(data?: Record<string, unknown>): HistoryProtectionState {
+  if (data === undefined) return { enabled: false, updatedAt: 0 };
+  if (typeof data.enabled !== "boolean" ||
+      typeof data.updatedAt !== "number" ||
+      !Number.isSafeInteger(data.updatedAt) || data.updatedAt <= 0)
+    throw new Error("History protection record is corrupted");
+  return { enabled: data.enabled, updatedAt: data.updatedAt };
 }
 export async function getLocalHistoryProtection(peer: string): Promise<HistoryProtectionState> {
   const record = await dxdb.lifecycle.get(localProtectionKey(peer));
-  return stateOf(record?.data);
+  return parseHistoryProtectionState(record?.data);
 }
 export async function getRemoteHistoryProtection(peer: string): Promise<HistoryProtectionState> {
   const record = await dxdb.lifecycle.get(remoteProtectionKey(peer));
-  return stateOf(record?.data);
+  return parseHistoryProtectionState(record?.data);
 }
 export async function assertRemoteHistoryAllowsChanges(peer: string): Promise<void> {
   const state = await getRemoteHistoryProtection(peer);
@@ -80,7 +85,7 @@ export async function setLocalHistoryProtection(
   const state = await dxdb.transaction("rw", dxdb.lifecycle, async () => {
     const prev = await dxdb.lifecycle.get(localProtectionKey(peer));
     const updatedAt = nextProtectionUpdateAt(
-      Number(prev?.data.updatedAt || 0), Date.now(),
+      parseHistoryProtectionState(prev?.data).updatedAt, Date.now(),
     );
     const record: LifecycleRecord = {
       key: localProtectionKey(peer),

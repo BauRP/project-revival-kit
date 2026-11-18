@@ -4,6 +4,7 @@ import { onionRegisterIncomingListener, onionSendDispatch, ensureLocalIdentity }
 import { isValidOnion } from "./onion-id";
 import { deletedMessageKey, isDeletedMessageRecord } from "./message-deletion-policy";
 import { canReactToVisibleMessage, pruneDeletedReactionMap } from "./reaction-deletion-policy";
+import { normalizeLegacyReactions } from "./reaction-policy";
 
 /** Reactions are durable Dexie records, with tombstones for removals. */
 export type ReactionMap = Record<string, Record<string, string>>;
@@ -14,18 +15,21 @@ export const reactionRecordKey = (peer: string, message: string, reactor: string
 
 /** Rebuild the visible map from durable records (including older local data). */
 export async function getReactions(chatId: string): Promise<ReactionMap> {
-  const old = (await dbGet<ReactionMap>("settings", legacyKey(chatId))) || {};
-  const map: ReactionMap = Object.fromEntries(
-    Object.entries(old).map(([messageId, actors]) => [messageId, { ...actors }]),
-  );
+  const old = await dbGet<unknown>("settings", legacyKey(chatId));
+  const map = normalizeLegacyReactions(old);
   const rows = await dxdb.lifecycle.where("chatKey").equals(reactionChatKey(chatId)).toArray();
   for (const row of rows) {
-    const actor = String(row.data.reactorId || "");
-    const emoji = row.data.emoji;
-    if (!actor || !row.messageId) continue;
-    const actors = { ...(map[row.messageId] || {}) };
-    if (typeof emoji === "string" && emoji.length > 0) actors[actor] = emoji;
-    else delete actors[actor]; // durable removal overrides legacy value
+    const actor = row.data?.reactorId;
+    const emoji = row.data?.emoji;
+    if (typeof actor !== "string" || !actor || actor.length > 128 ||
+        /[\u0000-\u001f\u007f]/.test(actor) || !row.messageId ||
+        row.key !== reactionRecordKey(chatId, row.messageId, actor)) continue;
+    const actors = map[row.messageId] ?? Object.create(null) as Record<string, string>;
+    if (typeof emoji === "string" && emoji.length > 0 && emoji.length <= 24) {
+      actors[actor] = emoji;
+    } else if (emoji === null) {
+      delete actors[actor];
+    } else continue;
     map[row.messageId] = actors;
   }
   const ids = Object.keys(map);
@@ -45,9 +49,11 @@ export function nextReactionUpdatedAt(previous: number, now: number): number {
 export async function toggleReaction(
   chatId: string, messageId: string, reactorId: string, emoji: string,
 ): Promise<ReactionMap> {
-  if (!messageId || !reactorId || !emoji || emoji.length > 24)
+  if (typeof messageId !== "string" || !messageId ||
+      typeof reactorId !== "string" || !reactorId ||
+      typeof emoji !== "string" || !emoji || emoji.length > 24)
     throw new Error("Invalid reaction");
-  const legacy = await dbGet<ReactionMap>("settings", legacyKey(chatId));
+  const legacy = normalizeLegacyReactions(await dbGet<unknown>("settings", legacyKey(chatId)));
   await dxdb.transaction("rw", [dxdb.messages, dxdb.lifecycle], async () => {
     // A deleted message stays deleted even when the UI still displays its
     // redacted placeholder or an event races the user's Delete action.
@@ -138,7 +144,9 @@ export function broadcastReaction(peer: string, messageId: string, _emoji: strin
 /** Recover reactions committed immediately before WebView death or a crash. */
 export async function recoverPendingReactionSync(): Promise<number> {
   const self = await ensureLocalIdentity();
-  const rows = await dxdb.lifecycle.where("chatKey").startsWith("reaction::").toArray();
+  const rows = await dxdb.lifecycle.where("chatKey").startsWith("reaction::")
+    .filter((row) => row.data?.reactorId === self && row.data?.outboundPending === true)
+    .toArray();
   let recovered = 0;
   for (const row of rows) {
     if (row.data.reactorId !== self || row.data.outboundPending !== true ||
@@ -159,9 +167,12 @@ export function aggregate(
   forMsg: Record<string, string> | undefined,
 ): Array<{ emoji: string; count: number }> {
   if (!forMsg) return [];
-  const counts: Record<string, number> = {};
-  for (const emoji of Object.values(forMsg)) counts[emoji] = (counts[emoji] || 0) + 1;
-  return Object.entries(counts).map(([emoji, count]) => ({ emoji, count }));
+  const counts = new Map<string, number>();
+  for (const emoji of Object.values(forMsg)) {
+    if (typeof emoji !== "string" || !emoji || emoji.length > 24) continue;
+    counts.set(emoji, (counts.get(emoji) ?? 0) + 1);
+  }
+  return [...counts].map(([emoji, count]) => ({ emoji, count }));
 }
 
 export { shouldApplyRemoteReaction } from "./reaction-policy";
