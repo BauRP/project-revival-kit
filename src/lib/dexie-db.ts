@@ -40,6 +40,8 @@ export type OutboxKind =
   | "friend_request_status"
   | "message_status"
   | "message_lifecycle"
+  | "message_reaction"
+  | "history_protection"
   | "profile_update";
 
 export interface OutboxRecord {
