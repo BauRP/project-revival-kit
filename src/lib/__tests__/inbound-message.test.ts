@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { validateIncomingTextMessage } from "../inbound-message";
-const a = "a".repeat(56)+".onion", b = "b".repeat(56)+".onion";
+import { onionFromPublicKey } from "../onion-id";
+const a = onionFromPublicKey(new Uint8Array(32));
+const b = onionFromPublicKey(new Uint8Array(32).fill(1));
 const base = {id:"msg-1", from:a, to:b, text:"hello", timestamp:1000};
 describe("untrusted inbound message boundary", () => {
   it("accepts expected fields and discards foreign fields", () => {
@@ -8,6 +10,8 @@ describe("untrusted inbound message boundary", () => {
   });
   it("rejects bogus senders, large messages and future time", () => {
     expect(validateIncomingTextMessage({...base,from:"fake"},2000)).toBeNull();
+    expect(validateIncomingTextMessage({...base,from:"a".repeat(56)+".onion"},2000))
+      .toBeNull(); // Valid length but invalid Tor checksum
     expect(validateIncomingTextMessage({...base,text:"x".repeat(200001)},2000)).toBeNull();
     expect(validateIncomingTextMessage({...base,timestamp:999999999},2000)).toBeNull();
   });

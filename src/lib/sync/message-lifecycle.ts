@@ -32,19 +32,46 @@ export function chatKey(a: string, b: string): string {
 
 // ─── Local mirror ───────────────────────────────────────────
 
+/**
+ * Only the indexed lifecycle message ID is authoritative. An old/corrupt
+ * payload must not override it or mutate the prototype of the UI map.
+ */
+export function safeLifecycleMap(
+  stored: Record<string, Record<string, unknown>>,
+): Record<string, MessageLifecycle> {
+  const out: Record<string, MessageLifecycle> = Object.create(null);
+  for (const [id, raw] of Object.entries(stored)) {
+    if (!id || id.length > 128 || /[\u0000-\u001f\u007f]/.test(id) ||
+        !raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const entry: MessageLifecycle = { messageId: id };
+    if (typeof raw.isEdited === "boolean") entry.isEdited = raw.isEdited;
+    if (typeof raw.editedText === "string" && raw.editedText.length <= 200_000)
+      entry.editedText = raw.editedText;
+    if (typeof raw.deletedForEveryone === "boolean")
+      entry.deletedForEveryone = raw.deletedForEveryone;
+    if (Array.isArray(raw.deletedFor) &&
+        raw.deletedFor.length <= 128 && raw.deletedFor.every(
+          (v) => typeof v === "string" && v.length <= 128))
+      entry.deletedFor = raw.deletedFor;
+    if (Number.isSafeInteger(raw.pinnedAt) && (raw.pinnedAt as number) >= 0)
+      entry.pinnedAt = raw.pinnedAt as number;
+    if (typeof raw.pinnedBy === "string" && raw.pinnedBy.length <= 128)
+      entry.pinnedBy = raw.pinnedBy;
+    if (Number.isSafeInteger(raw.updatedAt) && (raw.updatedAt as number) > 0)
+      entry.updatedAt = raw.updatedAt as number;
+    Object.defineProperty(out, id, {
+      value: entry, enumerable: true, configurable: true, writable: true,
+    });
+  }
+  return out;
+}
+
 async function readLocalMap(
   chatA: string,
   chatB: string,
 ): Promise<Record<string, MessageLifecycle>> {
   const stored = await getLifecycleMap(chatKey(chatA, chatB));
-  const out: Record<string, MessageLifecycle> = {};
-  for (const [mid, raw] of Object.entries(stored)) {
-    out[mid] = {
-      messageId: mid,
-      ...(raw as object),
-    } as MessageLifecycle;
-  }
-  return out;
+  return safeLifecycleMap(stored);
 }
 
 async function writeLocalEntry(
@@ -173,21 +200,25 @@ export function subscribeLifecycle(
 ): () => void {
   const key = chatKey(selfId, peerId);
   let cancelled = false;
+  let revision = 0;
+  const refresh = () => {
+    const request = ++revision;
+    void readLocalMap(selfId, peerId)
+      .then((map) => {
+        // A slower, older read must not overwrite a later Tor update.
+        if (!cancelled && request === revision) onUpdate(map);
+      })
+      .catch((error) => {
+        if (!cancelled && request === revision)
+          console.warn("[lifecycle] unable to refresh chat history", error);
+      });
+  };
 
-  readLocalMap(selfId, peerId)
-    .then((m) => {
-      if (!cancelled) onUpdate(m);
-    })
-    .catch(() => {});
-
+  refresh();
   // The engine commits inbound lifecycle patches to Dexie before notifying.
   const off = onionRegisterIncomingListener((data) => {
     if (cancelled || data.type !== "message_lifecycle" || data.chatKey !== key) return;
-    readLocalMap(selfId, peerId)
-      .then((m) => {
-        if (!cancelled) onUpdate(m);
-      })
-      .catch(() => {});
+    refresh();
   });
 
   return () => {

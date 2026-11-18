@@ -409,8 +409,19 @@ export async function getLifecycleMap(
   chatKey: string,
 ): Promise<Record<string, Record<string, unknown>>> {
   const rows = await dxdb.lifecycle.where("chatKey").equals(chatKey).toArray();
-  const out: Record<string, Record<string, unknown>> = {};
-  for (const r of rows) out[r.messageId] = r.data;
+  // Null-prototype dictionary: a legacy/corrupt messageId such as
+  // "__proto__" must not mutate the object's prototype during hydration.
+  const out: Record<string, Record<string, unknown>> = Object.create(null);
+  for (const row of rows) {
+    if (typeof row.messageId !== "string" || !row.messageId ||
+        row.messageId.length > 128 ||
+        /[\u0000-\u001f\u007f]/.test(row.messageId) ||
+        !row.data || typeof row.data !== "object" || Array.isArray(row.data) ||
+        row.key !== `${chatKey}::${row.messageId}`) continue;
+    Object.defineProperty(out, row.messageId, {
+      value: row.data, enumerable: true, configurable: true, writable: true,
+    });
+  }
   return out;
 }
 

@@ -1,4 +1,5 @@
 import { validBlobFileId } from "./blob-request-policy";
+import { isValidOnion } from "./onion-id";
 
 /**
  * Strict boundary between authenticated remote JSON and our local Dexie schema.
@@ -38,8 +39,8 @@ export function validateIncomingTextMessage(
   const timestamp = payload.timestamp;
   if (typeof id !== "string" || !id || id.length > 128 ||
       /[\u0000-\u001f\u007f]/.test(id) ||
-      typeof from !== "string" || !from.endsWith(".onion") || from.length !== 62 ||
-      typeof to !== "string" || !to.endsWith(".onion") || to.length !== 62 ||
+      typeof from !== "string" || !isValidOnion(from) ||
+      typeof to !== "string" || !isValidOnion(to) ||
       from === to || typeof text !== "string" || text.length > 200_000 ||
       typeof timestamp !== "number" || !Number.isSafeInteger(timestamp) ||
       timestamp <= 0 || timestamp > now + 10 * 60_000) return null;
