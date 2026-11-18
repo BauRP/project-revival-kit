@@ -27,9 +27,9 @@ function preference(key: string, fallback: boolean): boolean {
 /** Respect privacy preferences BEFORE constructing any notification payload. */
 export async function notifyIncomingMessage(title: string, body: string, policy: Omit<NotificationPolicyInput, "enabled"> = {}): Promise<void> {
   if (!shouldNotifyChat({ ...policy, enabled: preference("trivo-notifications", true) })) return;
-  const { title: safeTitle, body: safeBody } = safeNotificationText(title, body, preference("trivo-hide-content", true));
-
   if (!isNative()) {
+    const { title: safeTitle, body: safeBody } =
+      safeNotificationText(title, body, preference("trivo-hide-content", true));
     if ("Notification" in window && Notification.permission === "granted") {
       new Notification(safeTitle, { body: safeBody });
     }
@@ -39,6 +39,13 @@ export async function notifyIncomingMessage(title: string, body: string, policy:
   try {
     const permission = await LocalNotifications.checkPermissions();
     if (permission.display !== "granted") return; // Permission requested in Settings, not per message.
+    // Native permission checks yield to Settings/UI. The user may have
+    // disabled alerts or hidden previews while the permission call ran.
+    // Recheck both preferences immediately before scheduling private content.
+    if (!shouldNotifyChat({ ...policy, enabled: preference("trivo-notifications", true) }))
+      return;
+    const { title: safeTitle, body: safeBody } =
+      safeNotificationText(title, body, preference("trivo-hide-content", true));
     await LocalNotifications.schedule({
       notifications: [
         {

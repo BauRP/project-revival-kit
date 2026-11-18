@@ -50,7 +50,11 @@ function openDB(): Promise<IDBDatabase> {
   if (typeof indexedDB === "undefined") {
     return Promise.reject(new Error("IndexedDB unavailable"));
   }
-  dbPromise = new Promise((resolve, reject) => {
+  // IndexedDB may remain blocked while another WebView has an older schema.
+  // Fail visibly instead of leaving Scheduled Send stuck on a never-settling
+  // promise, and invalidate a connection closed by an external upgrade.
+  const pending = new Promise<IDBDatabase>((resolve, reject) => {
+    let blocked = false;
     const req = indexedDB.open(DB_NAME, VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
@@ -59,10 +63,27 @@ function openDB(): Promise<IDBDatabase> {
         store.createIndex("byScheduledAt", "scheduledAt");
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => { dbPromise = null; reject(req.error); };
+    req.onsuccess = () => {
+      if (blocked) { req.result.close(); return; }
+      const db = req.result;
+      db.onversionchange = () => {
+        db.close();
+        if (dbPromise === pending) dbPromise = null;
+      };
+      resolve(db);
+    };
+    req.onerror = () => {
+      if (dbPromise === pending) dbPromise = null;
+      reject(req.error || new Error("Cannot open scheduled outbox"));
+    };
+    req.onblocked = () => {
+      blocked = true;
+      if (dbPromise === pending) dbPromise = null;
+      reject(new Error("Scheduled outbox is blocked by another app window"));
+    };
   });
-  return dbPromise;
+  dbPromise = pending;
+  return pending;
 }
 
 async function tx<T>(
@@ -94,6 +115,18 @@ export async function listOutbox(): Promise<ScheduledItem[]> {
     "readonly",
     (store) => store.getAll() as IDBRequest<ScheduledItem[]>,
   );
+  // Corrupt old retry metadata must never turn into NaN → setTimeout(0)
+  // and a continuous background wake loop. Keep invalid rows on disk so
+  // they can be recovered rather than treating them as sent/deleted.
+  for (const item of all) {
+    validateScheduledItem(item);
+    if (!Number.isSafeInteger(item.createdAt) || item.createdAt <= 0 ||
+        (item.attempts !== undefined &&
+          (!Number.isSafeInteger(item.attempts) || item.attempts < 0 || item.attempts > 1000)) ||
+        (item.nextAttemptAt !== undefined &&
+          (!Number.isSafeInteger(item.nextAttemptAt) || item.nextAttemptAt < 0)))
+      throw new Error("Corrupted scheduled message retry metadata");
+  }
   return all.sort((a, b) => scheduledWakeAt(a) - scheduledWakeAt(b));
 }
 

@@ -152,6 +152,9 @@ export function downloadFromTrivo(fileId: string, peer?: string): Promise<string
     const local = await getBlob(fileId);
     if (local) {
       await assertSafeToOpen(local);
+      // The file can be consumed in another async task while its header is
+      // being inspected. Do not reopen/cache that one-time media afterwards.
+      await assertNotConsumed(fileId);
       const url = URL.createObjectURL(local.data);
       blobUrlCache.set(fileId, url);
       inFlight.delete(fileId);

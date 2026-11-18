@@ -32,7 +32,7 @@ export function nextScheduledRetry<T extends ScheduledRetryState>(
 
 /** A durable schedule cannot be changed while its sealed Tor frame exists. */
 export function validateScheduledItem(item: { id: string; chatId: string; text: string; scheduledAt: number; silent: boolean }): void {
-  if (!item.id || item.id.length > 128 || /[\u0000-\u001f\u007f]/.test(item.id)) throw new Error("Invalid scheduled message ID");
+  if (typeof item.id !== "string" || !item.id || item.id.length > 128 || /[\u0000-\u001f\u007f]/.test(item.id)) throw new Error("Invalid scheduled message ID");
   if (typeof item.chatId !== "string" || !item.chatId || item.chatId.length > 128) throw new Error("Invalid scheduled destination");
   if (typeof item.text !== "string" || !item.text.trim() || item.text.length > 200000) throw new Error("Invalid scheduled text");
   if (!Number.isSafeInteger(item.scheduledAt) || item.scheduledAt <= 0) throw new Error("Invalid scheduled time");

@@ -102,7 +102,7 @@ export function simulateSecurityScan(
  */
 /** UTF-8 BOM and leading whitespace cannot disguise an executable document. */
 export function isActiveContentHeader(header: Uint8Array): boolean {
-  const head = new TextDecoder("utf-8").decode(header.subarray(0, 128))
+  const head = new TextDecoder("utf-8").decode(header.subarray(0, 2048))
     .replace(/^\uFEFF/, "").trimStart();
   return /^(?:#!|<\s*(?:!doctype\s+html|html|script|svg|iframe|object|embed)\b|<\?php\b)/i.test(head);
 }
@@ -135,7 +135,7 @@ export function inspectAttachmentHeader(
   // Treat scripts, path spoofing and double executable extensions as unsafe
   // even when the declared final suffix looks like a supported image.
   if (!name || name.length > 255 ||
-      /[\u0000-\u001f\u007f\\/]/.test(name) ||
+      /[\u0000-\u001f\u007f\\/\u202a-\u202e\u2066-\u2069]/.test(name) ||
       /\.(exe|bat|cmd|scr|pif|vbs|js|mjs|cjs|wsf|com|ps1|hta|apk|jar|dex|so|dll|msi|lnk|desktop)\./i.test(name))
     return blocked();
   const starts = (...bytes: number[]) => bytes.every((b, i) => header[i] === b);
@@ -182,7 +182,9 @@ export async function inspectAttachmentBlob(
 ): Promise<ScanResult> {
   // Verify the real bytes on both upload and received-file paths.
   // Only read a fixed-size signature, not the full file.
-  const header = new Uint8Array(await blob.slice(0, 64).arrayBuffer());
+  // Read a fixed 2 KiB prefix. Previously 64 bytes let an active HTML/SVG
+  // header hide after a harmless-looking run of leading whitespace.
+  const header = new Uint8Array(await blob.slice(0, 2048).arrayBuffer());
   return inspectAttachmentHeader(name, mimeType, header);
 }
 

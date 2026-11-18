@@ -6,7 +6,7 @@
  * reopening the application. Android WorkManager is NOT implemented here.
  */
 import { registerPlugin } from "@capacitor/core";
-import { dbGetStrict, dbPutStrict } from "./storage";
+import { dbGetStrict, dbPutStrict, dbPutIfUnchangedStrict, ConcurrentProtectedWriteError } from "./storage";
 import { isNative } from "./platform";
 import { getTotalBlobBytes } from "./dexie-db";
 import { exportBackup } from "./backup";
@@ -97,6 +97,13 @@ export function runAutomaticBackupIfDue(): Promise<void> {
       if (await getTotalBlobBytes() > AUTO_MEDIA_LIMIT)
         throw new Error("Automatic backup skipped: media exceeds safe memory limit");
       if (wiping) return;
+      // A user can disable or replace the automatic-backup configuration
+      // while this large snapshot is being prepared. Do not begin a new
+      // export using a revoked configuration.
+      const beforeExport = await dbGetStrict<unknown>("settings", KEY);
+      if (!isAutoBackupState(beforeExport) ||
+          beforeExport.sealed !== state.sealed ||
+          beforeExport.lastSavedAt !== state.lastSavedAt) return;
       await exportBackup(plaintext, createDatedBackupFilename(new Date(), "auto"));
       // A failed retention cleanup must never invalidate a successful export.
       try {
@@ -109,8 +116,16 @@ export function runAutomaticBackupIfDue(): Promise<void> {
       } catch (error) {
         console.warn("[backup] unable to prune older automatic snapshots", error);
       }
-      // Update only after the encrypted file has been written successfully.
-      await dbPutStrict("settings", KEY, { ...state, lastSavedAt: Date.now() });
+      // Atomic compare-and-swap: disabling or changing the backup password
+      // during the write must NEVER silently re-enable the old credentials.
+      // A conflict means the user's newer setting wins, not a failed backup.
+      try {
+        await dbPutIfUnchangedStrict(
+          "settings", KEY, state, { ...state, lastSavedAt: Date.now() },
+        );
+      } catch (error) {
+        if (!(error instanceof ConcurrentProtectedWriteError)) throw error;
+      }
       lastFailedAt = 0;
     } catch (error) {
       lastFailedAt = Date.now();
