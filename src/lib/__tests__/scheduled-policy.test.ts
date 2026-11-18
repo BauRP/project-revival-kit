@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem, type ScheduledRetryState, sameScheduledIdentity } from "../scheduled-policy";
+import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem, validateStoredScheduledItem, type ScheduledRetryState, sameScheduledIdentity } from "../scheduled-policy";
 describe("durable scheduled message identity", () => {
   const original: ScheduledRetryState & {id:string;text:string}={id:"msg",text:"hi",scheduledAt:1000,attempts:0};
   it("never rewrites scheduledAt when Tor is unavailable",()=>{
@@ -56,5 +56,26 @@ describe("scheduled Tor retry after system clock correction", () => {
     const pending={scheduledAt:now-1000,nextAttemptAt:now+30_000,attempts:1};
     expect(scheduledWakeAt(pending,now)).toBe(now+30_000);
     expect(pending.scheduledAt).toBe(now-1000);
+  });
+});
+
+
+describe("persisted scheduled ciphertext and retry validation", () => {
+  const original = {
+    id: "s-1", chatId: "peer", text: "plain", silent: false,
+    scheduledAt: 1000, createdAt: 500, attempts: 0,
+  };
+  it("accepts large ciphertext without relaxing the outgoing plaintext ceiling", () => {
+    const sealed = { ...original, text: "TRIVO-SCHEDULED-V1:" + "A".repeat(270_000) };
+    expect(() => validateStoredScheduledItem(sealed, true)).not.toThrow();
+    expect(() => validateScheduledItem(sealed)).toThrow();
+    expect(() => validateStoredScheduledItem({...sealed,text:"A".repeat(512_001)},true)).toThrow();
+  });
+  it("refuses corrupt retry metadata before an async delivery", () => {
+    for (const wrong of [
+      {...original,attempts:-1}, {...original,attempts:NaN},
+      {...original,nextAttemptAt:-5}, {...original,createdAt:0},
+      {...original,text:""},
+    ]) expect(() => validateStoredScheduledItem(wrong, false)).toThrow();
   });
 });

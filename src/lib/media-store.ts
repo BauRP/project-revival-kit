@@ -199,7 +199,10 @@ export async function ensureMediaUrl<T extends { fileId?: string; url?: string }
   if (media.fileId) {
     try { await assertNotConsumed(media.fileId); }
     catch {
-      // Remove a stale cached object URL without throwing from a UI renderer.
+      // A background task may have consumed the file. Forget both the stale
+      // UI reference and its WebView object URL to avoid retaining a private
+      // Blob in memory after the durable tombstone was committed elsewhere.
+      revokeStoredMediaUrls([media.fileId]);
       (media as { url?: string }).url = undefined;
       return media;
     }

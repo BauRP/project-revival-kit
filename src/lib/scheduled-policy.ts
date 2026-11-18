@@ -39,6 +39,31 @@ export function validateScheduledItem(item: { id: string; chatId: string; text: 
   if (typeof item.silent !== "boolean") throw new Error("Invalid scheduled notification mode");
 }
 
+/**
+ * On Android the queued text is an authenticated Keystore ciphertext, whose
+ * encoded size can exceed the original 200k-character plaintext limit.
+ * Validate its persisted metadata without misclassifying valid encrypted
+ * schedules as corrupt and blocking the entire outbox. The decrypted text
+ * still passes validateScheduledItem() before actual delivery.
+ */
+export function validateStoredScheduledItem(
+  item: {
+    id: string; chatId: string; text: string; silent: boolean;
+    scheduledAt: number; createdAt: number; attempts?: number; nextAttemptAt?: number;
+  },
+  encrypted: boolean,
+): void {
+  validateScheduledItem(encrypted ? { ...item, text: "keystore-protected" } : item);
+  if (encrypted && (typeof item.text !== "string" || item.text.length > 512_000))
+    throw new Error("Corrupted encrypted scheduled message");
+  if (!Number.isSafeInteger(item.createdAt) || item.createdAt <= 0 ||
+      (item.attempts !== undefined &&
+        (!Number.isSafeInteger(item.attempts) || item.attempts < 0 || item.attempts > 1000)) ||
+      (item.nextAttemptAt !== undefined &&
+        (!Number.isSafeInteger(item.nextAttemptAt) || item.nextAttemptAt < 0)))
+    throw new Error("Corrupted scheduled message retry metadata");
+}
+
 /** Only the exact same queued item may be retried after an attempted send.
  * In particular a cancellation/recreation must never be overwritten by an
  * older callback rescheduling its obsolete data.

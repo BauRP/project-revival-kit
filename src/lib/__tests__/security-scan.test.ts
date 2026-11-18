@@ -104,3 +104,16 @@ describe("active document content sniffing", () => {
     expect(inspectAttachmentHeader("notes.txt","text/plain",shell).safe).toBe(false);
   });
 });
+
+
+describe("bounded header sniff and unsafe Unicode filenames", () => {
+  it("rejects active HTML beyond the old 64-byte prefix", async () => {
+    const text = " ".repeat(120) + "<script>alert('x')</script>";
+    const raw = new Blob([text], { type: "text/plain" });
+    expect((await inspectAttachmentBlob("note.txt","text/plain",raw)).safe).toBe(false);
+  });
+  it("rejects right-to-left filename tricks", () => {
+    expect(check("photo\‮gpj.exe","image/jpeg",[0xff,0xd8,0xff]).safe).toBe(false);
+    expect(check("photo\⁦.png","image/png",[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]).safe).toBe(false);
+  });
+});

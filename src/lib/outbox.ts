@@ -1,4 +1,4 @@
-import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem, sameScheduledIdentity, canScheduleRecipient } from "./scheduled-policy";
+import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem, validateStoredScheduledItem, sameScheduledIdentity, canScheduleRecipient } from "./scheduled-policy";
 import { protectScheduledText, revealScheduledText, isSealedScheduledText } from "./scheduled-encryption";
 import { isNative } from "./platform";
 // Local outbox for Scheduled Send (Turn 2).
@@ -119,13 +119,7 @@ export async function listOutbox(): Promise<ScheduledItem[]> {
   // and a continuous background wake loop. Keep invalid rows on disk so
   // they can be recovered rather than treating them as sent/deleted.
   for (const item of all) {
-    validateScheduledItem(item);
-    if (!Number.isSafeInteger(item.createdAt) || item.createdAt <= 0 ||
-        (item.attempts !== undefined &&
-          (!Number.isSafeInteger(item.attempts) || item.attempts < 0 || item.attempts > 1000)) ||
-        (item.nextAttemptAt !== undefined &&
-          (!Number.isSafeInteger(item.nextAttemptAt) || item.nextAttemptAt < 0)))
-      throw new Error("Corrupted scheduled message retry metadata");
+    validateStoredScheduledItem(item, isSealedScheduledText(item.text));
   }
   return all.sort((a, b) => scheduledWakeAt(a) - scheduledWakeAt(b));
 }

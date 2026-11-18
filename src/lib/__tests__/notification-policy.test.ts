@@ -36,3 +36,13 @@ describe("notification preference storage failures", () => {
     expect(notificationPreferenceUnavailable("trivo-hide-content",false)).toBe(true);
   });
 });
+
+
+describe("private notifications remain opaque when preview is disabled", () => {
+  it("never embeds an arbitrary sender or long body in hidden mode", () => {
+    const incoming = "private ".repeat(80);
+    const payload = safeNotificationText("confidential contact", incoming, true);
+    expect(JSON.stringify(payload)).not.toContain("confidential");
+    expect(JSON.stringify(payload)).not.toContain("private");
+  });
+});
