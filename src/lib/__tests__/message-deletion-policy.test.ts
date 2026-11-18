@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { unreferencedFileIds } from "../message-deletion-policy";
 import {
   deletedMessageKey, findUnreferencedMedia, isDeletedMessageRecord, messageMediaFileId,
 } from "../message-deletion-policy";
@@ -189,5 +190,17 @@ describe("incoming shared attachments after independent message deletion", () =>
     await expect(hasAuthorizedAttachmentParent(parents, async () => {
       throw new Error("IndexedDB transaction failed");
     })).rejects.toThrow("IndexedDB transaction failed");
+  });
+});
+
+
+describe("memory bounded deletion and shared media preservation", () => {
+  it("does not delete a Blob still shared with any surviving message", () => {
+    expect(unreferencedFileIds(["shared","unique","unique",null],
+      new Set(["shared"]))).toEqual(["unique"]);
+    expect(unreferencedFileIds(["shared"], new Set(["shared"]))).toEqual([]);
+  });
+  it("handles deleted messages with no file without allocating other history", () => {
+    expect(unreferencedFileIds([null,null], new Set())).toEqual([]);
   });
 });

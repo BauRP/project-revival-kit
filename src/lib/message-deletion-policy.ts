@@ -28,6 +28,18 @@ export function findUnreferencedMedia(
     .filter((x): x is string => x !== null && !preserved.has(x)))];
 }
 
+/** Determine orphaned media IDs without copying every surviving message.
+ * Takes just the removed file IDs and a set of still-referenced file IDs;
+ * use it inside the same Dexie transaction as the message and Blob deletion.
+ */
+export function unreferencedFileIds(
+  removed: readonly (string | null)[],
+  retained: ReadonlySet<string>,
+): string[] {
+  return [...new Set(removed.filter((id): id is string =>
+    typeof id === "string" && id.length > 0 && !retained.has(id)))];
+}
+
 /** Pure merge policy shared by backup replay checks and regression tests. */
 export function mergedDeletionIds(
   current: ReadonlyArray<{messageId:string;data:unknown}>,

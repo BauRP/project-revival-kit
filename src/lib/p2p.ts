@@ -9,7 +9,7 @@ import { saveStoredChatMeta, readStoredChatMeta, readAllStoredChatMetas, mutateS
 import { mergeIncomingChatSummary, mergeOutgoingChatSummary, type IncomingChatSummary, type OutgoingChatSummary } from "./chat-meta-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { sanitizeRestoredOneTimeMessage } from "./one-time-policy";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage, deletedLifecycleShell } from "./message-deletion-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, messageMediaFileId, unreferencedFileIds, redactLocalMessage, deletedLifecycleShell } from "./message-deletion-policy";
 import { hasExpiredMessage } from "./message-retention";
 import { dxdb, upsertContact, type StoredMessage } from "./dexie-db";
 import { advanceDeliveryStatus } from "./delivery-status-policy";
@@ -161,16 +161,25 @@ async function eraseLocalMessages(
   const orphaned = await dxdb.transaction("rw", [
     dxdb.messages, dxdb.outbox, dxdb.lifecycle, dxdb.blobs, dxdb.partial_chunks,
   ], async () => {
-    const all = await dxdb.messages.toArray();
-    const removed = all.filter(shouldRemove);
-    const ids = [...new Set([...removed.map((m) => m.id), ...forceTombstoneIds])];
+    // Read with a cursor rather than loading the entire message history,
+    // including plaintext and large media metadata, into WebView memory.
+    // Tombstoned IDs remain authoritative even if the row is absent.
+    const forceIds = new Set(forceTombstoneIds);
+    const removedIds: string[] = [];
+    const removedFiles: (string | null)[] = [];
+    const retainedFiles = new Set<string>();
+    await dxdb.messages.each((message) => {
+      const fileId = messageMediaFileId(message);
+      if (forceIds.has(message.id) || shouldRemove(message)) {
+        removedIds.push(message.id);
+        removedFiles.push(fileId);
+      } else if (fileId) {
+        retainedFiles.add(fileId);
+      }
+    });
+    const ids = [...new Set([...removedIds, ...forceTombstoneIds])];
     if (!ids.length) return { count: 0, fileIds: [] as string[] };
-    const idSet = new Set(ids);
-    const retained = all.filter((m) => !idSet.has(m.id));
-    const orphanedFiles = findUnreferencedMedia(
-      removed.map((m) => ({ media: m.media })),
-      retained.map((m) => ({ media: m.media })),
-    );
+    const orphanedFiles = unreferencedFileIds(removedFiles, retainedFiles);
     const now = Date.now();
     for (const id of ids) {
       await dxdb.lifecycle.put({
@@ -194,7 +203,7 @@ async function eraseLocalMessages(
       await dxdb.blobs.bulkDelete(orphanedFiles);
       await dxdb.partial_chunks.where("fileId").anyOf(orphanedFiles).delete();
     }
-    return { count: removed.length, fileIds: orphanedFiles };
+    return { count: removedIds.length, fileIds: orphanedFiles };
   });
   if (orphaned.fileIds.length) {
     // Import lazily outside the Dexie transaction; revoke previews already
@@ -222,10 +231,13 @@ export async function redactMessageForMe(
   ], async () => {
     const message = await dxdb.messages.get(messageId);
     const previous = await dxdb.lifecycle.get(key);
-    const others = message ? await dxdb.messages.filter((m) => m.id !== messageId).toArray() : [];
-    const unused = message ? findUnreferencedMedia(
-      [{ media: message.media }], others.map((m) => ({ media: m.media })),
-    ) : [];
+    // Count references in the cursor; do not allocate every other chat row
+    // when deleting one message from a long conversation.
+    const fileId = message ? messageMediaFileId(message) : null;
+    const shared = fileId ? await dxdb.messages.filter((row) =>
+      row.id !== messageId && messageMediaFileId(row) === fileId
+    ).count() > 0 : false;
+    const unused = fileId && !shared ? [fileId] : [];
     const now = Date.now();
     if (message) await dxdb.messages.put(redactLocalMessage(message));
     await dxdb.lifecycle.put({

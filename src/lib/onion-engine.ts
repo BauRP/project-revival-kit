@@ -63,7 +63,7 @@ import { mayQueueOriginalText } from "./outbox-delivery-policy";
 import { shouldApplyRemoteReaction } from "./reaction-policy";
 import { canReactToVisibleMessage, queuedReactionEventIds } from "./reaction-deletion-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, redactLocalMessage, matchesIncomingChunkManifest, mayPersistIncomingChunk, hasAuthorizedAttachmentParent } from "./message-deletion-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, messageMediaFileId, redactLocalMessage, matchesIncomingChunkManifest, mayPersistIncomingChunk, hasAuthorizedAttachmentParent } from "./message-deletion-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, sameOutgoingDispatchRoute, type DispatchCommitResult } from "./dispatch-commit";
@@ -970,11 +970,14 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
           // retaining recoverable plaintext and media in IndexedDB.
           const originalStored = await dxdb.messages.get(mid);
           if (originalStored) {
-            const remaining = await dxdb.messages.filter((row) => row.id !== mid).toArray();
-            const orphaned = findUnreferencedMedia(
-              [{ media: originalStored.media }],
-              remaining.map((row) => ({ media: row.media })),
-            );
+            // An old chat can contain thousands of rows. Count shared
+            // attachment references by cursor without cloning every message
+            // into JS memory during an authenticated remote deletion.
+            const mediaId = messageMediaFileId(originalStored);
+            const stillReferenced = mediaId ? await dxdb.messages.filter((row) =>
+              row.id !== mid && messageMediaFileId(row) === mediaId
+            ).count() > 0 : false;
+            const orphaned = mediaId && !stillReferenced ? [mediaId] : [];
             await dxdb.messages.put(redactLocalMessage(originalStored));
             if (orphaned.length) {
               await dxdb.blobs.bulkDelete(orphaned);
