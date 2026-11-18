@@ -204,3 +204,18 @@ describe("memory bounded deletion and shared media preservation", () => {
     expect(unreferencedFileIds([null,null], new Set())).toEqual([]);
   });
 });
+
+// Chunking is a pure operation; the database write itself is still atomic.
+import { boundedRecordBatches } from "../message-deletion-policy";
+describe("large chat deletion batches", () => {
+  it("covers each ID exactly once without unbounded query lists", () => {
+    const ids = Array.from({ length: 701 }, (_, i) => "m" + i);
+    const batches = [...boundedRecordBatches(ids)];
+    expect(batches.map((x) => x.length)).toEqual([256,256,189]);
+    expect(batches.flat()).toEqual(ids);
+  });
+  it("rejects unsafe batch sizes", () => {
+    expect(() => [...boundedRecordBatches([1],0)]).toThrow();
+    expect(() => [...boundedRecordBatches([1],1025)]).toThrow();
+  });
+});

@@ -202,3 +202,16 @@ export function mayPersistIncomingChunk(
       !Array.isArray(consumedMedia) &&
       (consumedMedia as { consumed?: unknown }).consumed === true);
 }
+
+/** Bound large IndexedDB anyOf/bulkDelete batches while retaining the
+ * caller's single atomic Dexie transaction. Never start an independent
+ * transaction in this iterator. */
+export function* boundedRecordBatches<T>(
+  values: readonly T[],
+  size = 256,
+): Generator<T[]> {
+  if (!Number.isSafeInteger(size) || size < 1 || size > 1024)
+    throw new Error("Invalid database batch size");
+  for (let i = 0; i < values.length; i += size)
+    yield values.slice(i, i + size);
+}

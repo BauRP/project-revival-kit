@@ -9,7 +9,7 @@ import { saveStoredChatMeta, readStoredChatMeta, readAllStoredChatMetas, mutateS
 import { mergeIncomingChatSummary, mergeOutgoingChatSummary, type IncomingChatSummary, type OutgoingChatSummary } from "./chat-meta-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { sanitizeRestoredOneTimeMessage } from "./one-time-policy";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, messageMediaFileId, unreferencedFileIds, redactLocalMessage, deletedLifecycleShell } from "./message-deletion-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, messageMediaFileId, unreferencedFileIds, boundedRecordBatches, redactLocalMessage, deletedLifecycleShell } from "./message-deletion-policy";
 import { hasExpiredMessage } from "./message-retention";
 import { dxdb, upsertContact, type StoredMessage } from "./dexie-db";
 import { advanceDeliveryStatus } from "./delivery-status-policy";
@@ -187,21 +187,24 @@ async function eraseLocalMessages(
         messageId: id, data: { deleted: true, deletedAt: now }, updatedAt: now,
       });
     }
-    await dxdb.messages.bulkDelete(ids);
-    // A canceled/expired outgoing dispatch must not be replayed on reconnect.
-    await dxdb.outbox.bulkDelete(ids);
-    const lifecycleRows = await dxdb.lifecycle.where("messageId").anyOf(ids)
-      .filter((row) => row.chatKey !== LOCAL_DELETED_CHAT_KEY &&
-        row.chatKey !== "consumed-media").toArray();
-    // Pending reactions are queued under their immutable event IDs, not the
-    // deleted message ID. Cancel those in the SAME delete transaction.
-    const reactionEvents = queuedReactionEventIds(lifecycleRows);
-    if (reactionEvents.length) await dxdb.outbox.bulkDelete(reactionEvents);
-    if (lifecycleRows.length)
-      await dxdb.lifecycle.bulkDelete(lifecycleRows.map((row) => row.key));
-    if (orphanedFiles.length) {
-      await dxdb.blobs.bulkDelete(orphanedFiles);
-      await dxdb.partial_chunks.where("fileId").anyOf(orphanedFiles).delete();
+    // Handle long chats in bounded groups while keeping ONE write transaction,
+    // so all deletion markers, message bodies, sealed frames and attachments
+    // commit or abort together.
+    for (const batch of boundedRecordBatches(ids)) {
+      await dxdb.messages.bulkDelete(batch);
+      await dxdb.outbox.bulkDelete(batch);
+      const related = await dxdb.lifecycle.where("messageId").anyOf(batch)
+        .filter((row) => row.chatKey !== LOCAL_DELETED_CHAT_KEY &&
+          row.chatKey !== "consumed-media").toArray();
+      const reactionEvents = queuedReactionEventIds(related);
+      for (const events of boundedRecordBatches(reactionEvents))
+        await dxdb.outbox.bulkDelete(events);
+      for (const keys of boundedRecordBatches(related.map((row) => row.key)))
+        await dxdb.lifecycle.bulkDelete(keys);
+    }
+    for (const batch of boundedRecordBatches(orphanedFiles)) {
+      await dxdb.blobs.bulkDelete(batch);
+      await dxdb.partial_chunks.where("fileId").anyOf(batch).delete();
     }
     return { count: removedIds.length, fileIds: orphanedFiles };
   });
