@@ -68,3 +68,22 @@ describe("local sender must own global mutation before queueing it", () => {
     expect(canAuthorModifyOwnMessage({from,to},from,from)).toBe(false);
   });
 });
+
+import { canQueueLifecycleAfterLocalDeletion } from "../lifecycle-auth";
+describe("asynchronous outgoing edits after local permanent deletion", () => {
+  it("keeps local deletion terminal for delayed edit and pin encryption", () => {
+    const removed = { deleted: true, deletedAt: 9 };
+    expect(canQueueLifecycleAfterLocalDeletion(removed,
+      { isEdited: true, editedText: "should-not-leak" })).toBe(false);
+    expect(canQueueLifecycleAfterLocalDeletion(removed,
+      { pinnedAt: 10, pinnedBy: "sender" })).toBe(false);
+    expect(canQueueLifecycleAfterLocalDeletion(removed,
+      { deletedForEveryone: true, isEdited: false })).toBe(true);
+  });
+  it("does not block ordinary live-chat lifecycle changes", () => {
+    expect(canQueueLifecycleAfterLocalDeletion(undefined,
+      { isEdited: true, editedText: "legitimate" })).toBe(true);
+    expect(canQueueLifecycleAfterLocalDeletion({ deleted: false },
+      { pinnedAt: 12 })).toBe(true);
+  });
+});

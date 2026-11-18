@@ -99,3 +99,17 @@ export function canAuthorModifyOwnMessage(
   return !!message && !!self && !!peer && self !== peer &&
     message.from === self && message.to === peer;
 }
+
+/** A local irreversible deletion also stops stale asynchronous outbound
+ * edits/pins from entering the sealed Tor queue after their crypto finishes.
+ * A user may still choose "Delete for everyone" after "Delete for me".
+ */
+export function canQueueLifecycleAfterLocalDeletion(
+  deleted: unknown,
+  patch: unknown,
+): boolean {
+  if (!deleted || typeof deleted !== "object" || Array.isArray(deleted) ||
+      (deleted as { deleted?: unknown }).deleted !== true) return true;
+  return !!patch && typeof patch === "object" && !Array.isArray(patch) &&
+    (patch as { deletedForEveryone?: unknown }).deletedForEveryone === true;
+}

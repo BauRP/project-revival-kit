@@ -68,7 +68,7 @@ import { duplicateMessageMatches } from "./inbound-identity";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, sameOutgoingDispatchRoute, type DispatchCommitResult } from "./dispatch-commit";
 import { advanceDeliveryStatus, shouldEmitDeliveryEvent, type DeliveryEvent } from "./delivery-status-policy";
-import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp, canMutateDeletedMessage, isDuplicateRemoteDeletion } from "./lifecycle-auth";
+import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp, canMutateDeletedMessage, isDuplicateRemoteDeletion, canQueueLifecycleAfterLocalDeletion } from "./lifecycle-auth";
 
 export const ONION_SERVICE_PORT = 8443;
 export const POLL_INTERVAL_MS = 5_000;
@@ -447,6 +447,17 @@ export async function onionSendDispatch(
       if (kind === "text_message" &&
           !mayQueueOriginalText((await dxdb.lifecycle.get(deletedMessageKey(id)))?.data))
         throw new Error("Original message was deleted before it could be queued");
+      if (kind === "message_lifecycle") {
+        // Prevent stale pending edits and pins from leaking into the durable
+        // Tor outbox after the user locally erased that message. The signed
+        // global deletion itself remains permitted and deliverable.
+        const changedId = payload.messageId;
+        if (typeof changedId !== "string" || !changedId || changedId.length > 128)
+          throw new Error("Invalid lifecycle message reference");
+        const tombstone = await dxdb.lifecycle.get(deletedMessageKey(changedId));
+        if (!canQueueLifecycleAfterLocalDeletion(tombstone?.data, payload.patch))
+          throw new Error("Cannot queue an edit or pin for a deleted message");
+      }
       const concurrent = await dxdb.outbox.get(id);
       if (concurrent) {
         if (concurrent.peer !== to || concurrent.kind !== kind)
