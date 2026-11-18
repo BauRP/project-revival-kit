@@ -52,7 +52,7 @@ import { orderedCompleteChunkSet } from "./media-chunks";
 import { sealIncomingChunk, readIncomingChunk, persistedChunkPlainSize, upgradeVerifiedLegacyChunk } from "./partial-chunk-vault";
 import { validateSharedProfile } from "./profile-wire";
 import { remoteProfileDataKey, sealRemoteProfile } from "./protected-remote-profile";
-import { deniedByHistoryProtection } from "./history-protection-policy";
+import { deniedByStoredHistoryProtection } from "./history-protection-policy";
 import { validateDispatchBody, boundedAcknowledgements, boundedDispatchString } from "./inbound-frame-policy";
 import { boundedChunkIndexes, boundedMediaTransferWindow, validBlobFileId } from "./blob-request-policy";
 import { nextMissingChunkPage, initialTransferWindow } from "./media-retry-policy";
@@ -929,7 +929,7 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
         }
         const patch = patchInput as Record<string, unknown>;
         const protectedRecord = await dxdb.lifecycle.get(`history-protection::local::${sender}`);
-        if (deniedByHistoryProtection(protectedRecord?.data.enabled === true, patch)) {
+        if (deniedByStoredHistoryProtection(protectedRecord, patch)) {
           rejected = true;
           await dxdb.inbox_raw.delete(rawId);
           return;
