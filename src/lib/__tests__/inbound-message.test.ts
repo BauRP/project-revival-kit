@@ -10,6 +10,8 @@ describe("untrusted inbound message boundary", () => {
   });
   it("rejects bogus senders, large messages and future time", () => {
     expect(validateIncomingTextMessage({...base,from:"fake"},2000)).toBeNull();
+    expect(validateIncomingTextMessage({...base,from:"https://"+a},2000)).toBeNull();
+    expect(validateIncomingTextMessage({...base,to:a.toUpperCase()},2000)).toBeNull();
     expect(validateIncomingTextMessage({...base,from:"a".repeat(56)+".onion"},2000))
       .toBeNull(); // Valid length but invalid Tor checksum
     expect(validateIncomingTextMessage({...base,text:"x".repeat(200001)},2000)).toBeNull();
@@ -29,7 +31,7 @@ describe("hostile authenticated attachment JSON", () => {
     expect(validateIncomingTextMessage({...base,media:{...media,type:["image"]}},2000)).toBeNull();
   });
   it("rejects dangerous attachment paths and malformed identifiers", () => {
-    for (const name of ["../photo.jpg", "folder\\photo.jpg", "hello\nphoto.jpg"]) {
+    for (const name of ["../photo.jpg", "folder\\photo.jpg", "hello\nphoto.jpg", "photo\u202egpj.exe"]) {
       expect(validateIncomingTextMessage({...base,media:{...media,name}},2000)).toBeNull();
     }
     expect(validateIncomingTextMessage({...base,media:{...media,fileId:"../bad"}},2000)).toBeNull();

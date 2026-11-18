@@ -61,7 +61,7 @@ export function validateIncomingTextMessage(
         typeof m.type !== "string" ||
         !["image", "audio", "file", "video"].includes(m.type) ||
         typeof m.name !== "string" || m.name.length > 255 ||
-        /[\u0000-\u001f\u007f\\/]/.test(m.name) ||
+        /[\u0000-\u001f\u007f\\/\u202a-\u202e\u2066-\u2069]/.test(m.name) ||
         typeof m.mimeType !== "string" || !m.mimeType || m.mimeType.length > 128 ||
         /[\u0000-\u001f\u007f]/.test(m.mimeType) ||
         typeof m.size !== "number" || !Number.isSafeInteger(m.size) ||

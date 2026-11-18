@@ -70,6 +70,7 @@ describe("backup preflight validation", () => {
   it("rejects unsafe restored file paths, opaque IDs and MIME controls", () => {
     for (const invalid of [
       { ...blob(0, ""), name: "../escape.png" },
+      { ...blob(0, ""), name: "photo\u202egpj.exe" },
       { ...blob(0, ""), name: "folder\\\\escape.png" },
       { ...blob(0, ""), fileId: "../escape" },
       { ...blob(0, ""), mimeType: "image/png\n" },

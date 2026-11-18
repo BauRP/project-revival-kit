@@ -102,7 +102,7 @@ export function validateBackupStructure(dump: unknown): void {
           typeof x.media.type !== "string" ||
           !["image", "audio", "file", "video"].includes(x.media.type) ||
           (x.media.id !== undefined && !id(x.media.id, 128)) ||
-          !id(x.media.name, 255) || /[\\/]/.test(x.media.name as string) ||
+          !id(x.media.name, 255) || /[\\/\u202a-\u202e\u2066-\u2069]/.test(x.media.name as string) ||
           typeof x.media.mimeType !== "string" || x.media.mimeType.length > 128 ||
           /[\u0000-\u001f\u007f]/.test(x.media.mimeType) ||
           !Number.isSafeInteger(x.media.size) ||
@@ -161,7 +161,7 @@ export function validateBackupStructure(dump: unknown): void {
   const blobIds = new Set<string>();
   for (const x of blobs) {
     if (!record(x) || !validBlobFileId(x.fileId) || !id(x.name, 255) ||
-        /[\\/]/.test(x.name as string) ||
+        /[\\/\u202a-\u202e\u2066-\u2069]/.test(x.name as string) ||
         typeof x.mimeType !== "string" || x.mimeType.length > 128 ||
         /[\u0000-\u001f\u007f]/.test(x.mimeType) ||
         !Number.isSafeInteger(x.size) || (x.size as number) < 0 ||
