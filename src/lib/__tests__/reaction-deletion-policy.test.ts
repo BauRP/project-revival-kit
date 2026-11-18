@@ -72,3 +72,17 @@ describe("safe legacy reaction recovery", () => {
     expect(Object.getPrototypeOf(map)).toBeNull();
   });
 });
+
+import { isCurrentReactionEnqueue } from "../reaction-policy";
+describe("superseded reaction before encrypted Tor dispatch", () => {
+  const row = {chatKey:"reaction::peer",messageId:"m",updatedAt:10,
+    data:{outboundEventId:"event",outboundPending:true,emoji:"👍"}};
+  it("accepts only its current immutable event and emoji", () => {
+    expect(isCurrentReactionEnqueue(row,"peer","m","event","👍",10)).toBe(true);
+    expect(isCurrentReactionEnqueue(row,"peer","m","old","👍",10)).toBe(false);
+    expect(isCurrentReactionEnqueue(row,"peer","m","event","❤️",10)).toBe(false);
+    expect(isCurrentReactionEnqueue({...row,data:{...row.data,outboundPending:false}},
+      "peer","m","event","👍",10)).toBe(false);
+    expect(isCurrentReactionEnqueue(row,"other","m","event","👍",10)).toBe(false);
+  });
+});

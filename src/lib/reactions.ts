@@ -54,7 +54,7 @@ export async function toggleReaction(
       typeof emoji !== "string" || !emoji || emoji.length > 24)
     throw new Error("Invalid reaction");
   const legacy = normalizeLegacyReactions(await dbGet<unknown>("settings", legacyKey(chatId)));
-  await dxdb.transaction("rw", [dxdb.messages, dxdb.lifecycle], async () => {
+  await dxdb.transaction("rw", [dxdb.messages, dxdb.lifecycle, dxdb.outbox], async () => {
     // A deleted message stays deleted even when the UI still displays its
     // redacted placeholder or an event races the user's Delete action.
     const stored = await dxdb.messages.get(messageId);
@@ -63,6 +63,14 @@ export async function toggleReaction(
       throw new Error("Cannot react to a deleted or unrelated message");
     const key = reactionRecordKey(chatId, messageId, reactorId);
     const previous = await dxdb.lifecycle.get(key);
+    // The previous queued encrypted reaction is superseded by this toggle.
+    // Cancel only a matching peer/kind in the same Dexie transaction.
+    const oldEvent = previous?.data?.outboundEventId;
+    if (typeof oldEvent === "string" && oldEvent.length > 0 && oldEvent.length <= 128) {
+      const queued = await dxdb.outbox.get(oldEvent);
+      if (queued?.peer === chatId && queued.kind === "message_reaction")
+        await dxdb.outbox.delete(oldEvent);
+    }
     const oldEmoji = previous ? previous.data.emoji : legacy?.[messageId]?.[reactorId];
     const nextEmoji = oldEmoji === emoji ? null : emoji;
     const updatedAt = nextReactionUpdatedAt(previous?.updatedAt || 0, Date.now());
@@ -86,13 +94,22 @@ export function subscribeReactions(chatId: string, cb: (map: ReactionMap) => voi
   return () => { listeners.delete(listener); };
 }
 
+// Ignore an older IndexedDB hydration result if a newer reaction arrived.
+const reactionReadVersions = new Map<string, number>();
 onionRegisterIncomingListener((payload) => {
   if (payload.type !== "message_reaction") return;
-  const peer = String(payload.from || "");
+  const peer = typeof payload.from === "string" ? payload.from : "";
   if (!isValidOnion(peer)) return;
+  const revision = (reactionReadVersions.get(peer) ?? 0) + 1;
+  reactionReadVersions.set(peer, revision);
   void getReactions(peer).then((map) => {
+    if (reactionReadVersions.get(peer) !== revision) return;
+    reactionReadVersions.delete(peer);
     listeners.forEach((cb) => cb(peer, map));
-  }).catch((error) => console.warn("[reactions] unable to update UI", error));
+  }).catch((error) => {
+    if (reactionReadVersions.get(peer) === revision) reactionReadVersions.delete(peer);
+    console.warn("[reactions] unable to update UI", error);
+  });
 });
 
 /** A stale completion must never clear the pending flag of a newer toggle. */

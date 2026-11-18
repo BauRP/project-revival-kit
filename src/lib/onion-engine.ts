@@ -60,7 +60,7 @@ import { hasTransferTimedOut } from "./media-timeout-policy";
 import { MediaSendGate } from "./media-send-gate";
 import { matchesPublishedOnion } from "./onion-publication-policy";
 import { mayQueueOriginalText } from "./outbox-delivery-policy";
-import { shouldApplyRemoteReaction } from "./reaction-policy";
+import { shouldApplyRemoteReaction, isCurrentReactionEnqueue } from "./reaction-policy";
 import { canReactToVisibleMessage, queuedReactionEventIds } from "./reaction-deletion-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, messageMediaFileId, redactLocalMessage, matchesIncomingChunkManifest, mayPersistIncomingChunk, hasAuthorizedAttachmentParent } from "./message-deletion-policy";
@@ -447,6 +447,21 @@ export async function onionSendDispatch(
       if (kind === "text_message" &&
           !mayQueueOriginalText((await dxdb.lifecycle.get(deletedMessageKey(id)))?.data))
         throw new Error("Original message was deleted before it could be queued");
+      if (kind === "message_reaction") {
+        // Encryption may finish after the user toggled a newer reaction.
+        // Only the current authenticated local event may enter the outbox.
+        const mid = payload.messageId;
+        if (typeof mid !== "string" || !mid || mid.length > 128)
+          throw new Error("Invalid queued reaction message ID");
+        if (isDeletedMessageRecord((await dxdb.lifecycle.get(deletedMessageKey(mid)))?.data))
+          throw new Error("Cannot queue reaction for deleted message");
+        const matches = await dxdb.lifecycle.where("messageId").equals(mid)
+          .filter((row) => isCurrentReactionEnqueue(
+            row, to, mid, id, payload.emoji, payload.updatedAt,
+          )).count();
+        if (!matches)
+          throw new Error("Queued reaction was replaced before encryption completed");
+      }
       if (kind === "message_lifecycle") {
         // Prevent stale pending edits and pins from leaking into the durable
         // Tor outbox after the user locally erased that message. The signed

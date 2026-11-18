@@ -23,3 +23,18 @@ export function normalizeLegacyReactions(value: unknown): Record<string, Record<
   }
   return map;
 }
+
+/** A newly sealed reaction is allowed into the durable outbox only while
+ * its immutable event ID, state and timestamp remain current.
+ */
+export function isCurrentReactionEnqueue(
+  row: { chatKey: string; messageId: string; updatedAt: number;
+    data: Record<string, unknown> } | undefined,
+  peer: string, messageId: string, eventId: string,
+  emoji: unknown, updatedAt: unknown,
+): boolean {
+  return !!row && row.chatKey === `reaction::${peer}` &&
+    row.messageId === messageId && row.data?.outboundEventId === eventId &&
+    row.data?.outboundPending === true && row.data?.emoji === emoji &&
+    Number.isSafeInteger(updatedAt) && row.updatedAt === updatedAt;
+}

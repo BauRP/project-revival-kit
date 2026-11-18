@@ -212,7 +212,7 @@ async function handleIncoming(userId: string, raw: unknown): Promise<void> {
   // (chat list, chat header, friends list) renders the newest version.
   try {
     await mutateChatMeta(userId, (meta) => {
-      if (!meta ||
+      if (!meta || remoteCache.get(userId)?.updatedAt !== profile.updatedAt ||
           (meta.friendAvatar === profile.avatar &&
            (!profile.name || meta.friendName === profile.name)))
         return undefined;
@@ -226,6 +226,8 @@ async function handleIncoming(userId: string, raw: unknown): Promise<void> {
     /* contact mirroring is best effort */
   }
 
+  // An older mirror operation may finish after a newer signed update.
+  if (remoteCache.get(userId)?.updatedAt !== profile.updatedAt) return;
   remoteListeners.forEach((cb) => {
     try {
       cb(profile);
