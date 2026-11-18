@@ -65,10 +65,14 @@ export function parseHistoryProtectionState(data?: Record<string, unknown>): His
 }
 export async function getLocalHistoryProtection(peer: string): Promise<HistoryProtectionState> {
   const record = await dxdb.lifecycle.get(localProtectionKey(peer));
+  if (record && !record.data)
+    throw new Error("History protection record is corrupted");
   return parseHistoryProtectionState(record?.data);
 }
 export async function getRemoteHistoryProtection(peer: string): Promise<HistoryProtectionState> {
   const record = await dxdb.lifecycle.get(remoteProtectionKey(peer));
+  if (record && !record.data)
+    throw new Error("History protection record is corrupted");
   return parseHistoryProtectionState(record?.data);
 }
 export async function assertRemoteHistoryAllowsChanges(peer: string): Promise<void> {
@@ -85,7 +89,11 @@ export async function setLocalHistoryProtection(
   const state = await dxdb.transaction("rw", dxdb.lifecycle, async () => {
     const prev = await dxdb.lifecycle.get(localProtectionKey(peer));
     const updatedAt = nextProtectionUpdateAt(
-      parseHistoryProtectionState(prev?.data).updatedAt, Date.now(),
+      (() => {
+        if (prev && !prev.data)
+          throw new Error("History protection record is corrupted");
+        return parseHistoryProtectionState(prev?.data).updatedAt;
+      })(), Date.now(),
     );
     const record: LifecycleRecord = {
       key: localProtectionKey(peer),
