@@ -17,21 +17,23 @@ export const reactionRecordKey = (peer: string, message: string, reactor: string
 export async function getReactions(chatId: string): Promise<ReactionMap> {
   const old = await dbGet<unknown>("settings", legacyKey(chatId));
   const map = normalizeLegacyReactions(old);
-  const rows = await dxdb.lifecycle.where("chatKey").equals(reactionChatKey(chatId)).toArray();
-  for (const row of rows) {
+  // Hydrate one row at a time to avoid duplicating a large lifecycle table.
+  await dxdb.lifecycle.where("chatKey").equals(reactionChatKey(chatId)).each((row) => {
     const actor = row.data?.reactorId;
     const emoji = row.data?.emoji;
     if (typeof actor !== "string" || !actor || actor.length > 128 ||
-        /[\u0000-\u001f\u007f]/.test(actor) || !row.messageId ||
-        row.key !== reactionRecordKey(chatId, row.messageId, actor)) continue;
+        /[\u0000-\u001f\u007f]/.test(actor) ||
+        typeof row.messageId !== "string" || !row.messageId ||
+        row.messageId.length > 128 || /[\u0000-\u001f\u007f]/.test(row.messageId) ||
+        row.key !== reactionRecordKey(chatId, row.messageId, actor)) return;
     const actors = map[row.messageId] ?? Object.create(null) as Record<string, string>;
     if (typeof emoji === "string" && emoji.length > 0 && emoji.length <= 24) {
       actors[actor] = emoji;
     } else if (emoji === null) {
       delete actors[actor];
-    } else continue;
+    } else return;
     map[row.messageId] = actors;
-  }
+  });
   const ids = Object.keys(map);
   if (!ids.length) return map;
   const deleted = new Set<string>();

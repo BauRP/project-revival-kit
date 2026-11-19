@@ -17,6 +17,13 @@ export interface ChatPreferenceState {
 
 const KEY_PREFIX = "chat-preferences-";
 
+function preferenceKey(chatId: string): string {
+  if (typeof chatId !== "string" || !chatId ||
+      chatId.length > 128 || /[\u0000-\u001f\u007f]/.test(chatId))
+    throw new Error("Invalid chat identity for preferences");
+  return KEY_PREFIX + chatId;
+}
+
 const durationToMs: Record<Exclude<DisappearingDuration, "off">, number> = {
   "1h": 60 * 60 * 1000,
   "6h": 6 * 60 * 60 * 1000,
@@ -47,14 +54,14 @@ export function validateChatPreferenceState(value: unknown): ChatPreferenceState
 }
 
 export async function getChatPreferences(chatId: string): Promise<ChatPreferenceState> {
-  return validateChatPreferenceState(await dbGet<unknown>("settings", `${KEY_PREFIX}${chatId}`));
+  return validateChatPreferenceState(await dbGet<unknown>("settings", preferenceKey(chatId)));
 }
 
 export async function saveChatPreferences(
   chatId: string,
   next: ChatPreferenceState,
 ): Promise<void> {
-  await dbPut("settings", `${KEY_PREFIX}${chatId}`, validateChatPreferenceState(next));
+  await dbPut("settings", preferenceKey(chatId), validateChatPreferenceState(next));
 }
 
 export async function updateChatPreferences(
@@ -63,7 +70,7 @@ export async function updateChatPreferences(
 ): Promise<ChatPreferenceState> {
   validateChatPreferenceState(patch);
   return dbUpdateStrict<ChatPreferenceState>(
-    "settings", `${KEY_PREFIX}${chatId}`,
+    "settings", preferenceKey(chatId),
     (current) => validateChatPreferenceState({
       ...validateChatPreferenceState(current), ...patch,
     }),

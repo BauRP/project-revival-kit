@@ -11,7 +11,7 @@ export function normalizeLegacyReactions(value: unknown): Record<string, Record<
   const map: Record<string, Record<string, string>> = Object.create(null);
   if (!value || typeof value !== "object" || Array.isArray(value)) return map;
   for (const [id, actors] of Object.entries(value)) {
-    if (!id || id.length > 256 || /[\u0000-\u001f\u007f]/.test(id) ||
+    if (!id || id.length > 128 || /[\u0000-\u001f\u007f]/.test(id) ||
         !actors || typeof actors !== "object" || Array.isArray(actors)) continue;
     const clean: Record<string, string> = Object.create(null);
     for (const [actor, emoji] of Object.entries(actors)) {
