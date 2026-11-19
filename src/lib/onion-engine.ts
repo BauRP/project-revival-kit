@@ -1346,23 +1346,37 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
       // Rehydrate verified chunks after app restart; only ask for missing data.
       let partial = partialReceives.get(fileId);
       if (!partial) {
-        const saved = await dxdb.partial_chunks.where("fileId").equals(fileId).toArray();
-        const ordered = saved.filter((row) => row.from === source)
-          .sort((a, b) => a.index - b.index);
-        if (ordered.length) {
-          const first = ordered[0];
-          const same = ordered.filter((row) =>
-            row.totalChunks === first.totalChunks && row.name === first.name &&
-            row.mimeType === first.mimeType &&
-            Number.isSafeInteger(row.index) && row.index >= 0 && row.index < first.totalChunks &&
-            persistedChunkPlainSize(row) <= BLOB_CHUNK_BYTES &&
-            persistedChunkPlainSize(row) >= 0 &&
-            (row.index === first.totalChunks - 1 ||
-              persistedChunkPlainSize(row) === BLOB_CHUNK_BYTES));
+        // An attachment may contain 20,000+ verified chunks. Never call
+        // toArray() on those Blob-bearing records during restart recovery:
+        // that can retain an entire gigabyte in the WebView at once.
+        const keys: Array<{ key: string; index: number }> = [];
+        await dxdb.partial_chunks.where("fileId").equals(fileId).each((row) => {
+          if (row.from === source) keys.push({ key: row.key, index: row.index });
+        });
+        keys.sort((a, b) => a.index - b.index);
+        const first = keys.length ? await dxdb.partial_chunks.get(keys[0].key) : undefined;
+        if (first && first.from === source &&
+            Number.isSafeInteger(first.totalChunks) &&
+            first.totalChunks >= 1 && first.totalChunks <= MAX_MEDIA_CHUNKS) {
           const received = new Set<number>();
-          for (const row of same) {
-            const bytes = await readIncomingChunk(row);
-            if (matchesChunkDigest(bytes, row.digest)) {
+          // Read a bounded number of parts at once. Verification and legacy
+          // Keystore migration still occur before an index counts as saved.
+          for (let i = 0; i < keys.length; i += 24) {
+            const batch = await dxdb.partial_chunks.bulkGet(
+              keys.slice(i, i + 24).map((row) => row.key),
+            );
+            for (const row of batch) {
+              if (!row || row.from !== source ||
+                  row.totalChunks !== first.totalChunks || row.name !== first.name ||
+                  row.mimeType !== first.mimeType ||
+                  !Number.isSafeInteger(row.index) || row.index < 0 ||
+                  row.index >= first.totalChunks || received.has(row.index)) continue;
+              const size = persistedChunkPlainSize(row);
+              if (size < 0 || size > BLOB_CHUNK_BYTES ||
+                  (row.index !== first.totalChunks - 1 && size !== BLOB_CHUNK_BYTES))
+                continue;
+              const bytes = await readIncomingChunk(row);
+              if (!matchesChunkDigest(bytes, row.digest)) continue;
               received.add(row.index);
               if (row.encrypted === undefined) {
                 try { await upgradeVerifiedLegacyChunk(row, bytes); }
