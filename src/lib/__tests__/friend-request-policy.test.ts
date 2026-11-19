@@ -16,7 +16,12 @@ describe("Tor friend request durability and safety", () => {
     expect(validateIncomingFriendRequest({ ...payload, fromName:"x\nadmin" },1000)).toBeNull();
     expect(validateIncomingFriendRequest({ ...payload, timestamp:900_000 },1000)).toBeNull();
     expect(validateIncomingFriendRequest({ ...payload, from:"attacker" },1000)).toBeNull();
+    expect(validateIncomingFriendRequest({ ...payload, from:"https://"+onion },1000)).toBeNull();
+    expect(validateIncomingFriendRequest({ ...payload, from:onion.toUpperCase() },1000)).toBeNull();
+    expect(validateIncomingFriendRequest({ ...payload, to:onion },1000)).toBeNull();
     expect(() => validateOutgoingFriendRequest("attacker",other,"Hello")).toThrow();
+    expect(() => validateOutgoingFriendRequest("https://"+onion,other,"Hello")).toThrow();
+    expect(() => validateOutgoingFriendRequest(onion,onion,"Hello")).toThrow();
   });
   it("never rolls an accepted invitation back to pending on a signed replay", () => {
     expect(shouldApplyIncomingFriendRequest({status:"accepted",timestamp:200},300)).toBe(false);

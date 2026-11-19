@@ -1,5 +1,14 @@
 import { isValidOnion } from "./onion-id";
 
+/** A Tor identity stored in the chat database must be a canonical raw v3
+ * host, never an HTTP URL or mixed-case display alias accepted by
+ * isValidOnion()'s UI-oriented normalization.
+ */
+export function isCanonicalFriendOnion(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^[a-z2-7]{56}\.onion$/.test(value) && isValidOnion(value);
+}
+
 /** Signed Tor envelope determines sender identity, not caller JSON fields. */
 export interface ValidatedFriendRequest {
   from: string;
@@ -14,7 +23,9 @@ export function validateIncomingFriendRequest(
   now = Date.now(),
 ): ValidatedFriendRequest | null {
   if (typeof payload.from !== "string" || typeof payload.to !== "string" ||
-      !isValidOnion(payload.from) || !isValidOnion(payload.to) ||
+      !isCanonicalFriendOnion(payload.from) ||
+      !isCanonicalFriendOnion(payload.to) ||
+      payload.from === payload.to ||
       typeof payload.fromName !== "string" || payload.fromName.length > 80 ||
       /[\u0000-\u001f\u007f\u202a-\u202e]/.test(payload.fromName) ||
       !Number.isSafeInteger(payload.timestamp) ||
@@ -46,7 +57,8 @@ export function shouldApplyIncomingFriendRequest(
 export function validateOutgoingFriendRequest(
   from: string, to: string, fromName: string,
 ): void {
-  if (!isValidOnion(from) || !isValidOnion(to) ||
+  if (!isCanonicalFriendOnion(from) || !isCanonicalFriendOnion(to) ||
+      from === to ||
       typeof fromName !== "string" || fromName.length > 80 ||
       /[\u0000-\u001f\u007f\u202a-\u202e]/.test(fromName))
     throw new Error("Invalid friend request");
