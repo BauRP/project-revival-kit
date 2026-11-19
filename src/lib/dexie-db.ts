@@ -410,20 +410,20 @@ export async function putLifecycle(
 export async function getLifecycleMap(
   chatKey: string,
 ): Promise<Record<string, Record<string, unknown>>> {
-  const rows = await dxdb.lifecycle.where("chatKey").equals(chatKey).toArray();
-  // Null-prototype dictionary: a legacy/corrupt messageId such as
-  // "__proto__" must not mutate the object's prototype during hydration.
+  // Avoid duplicating every lifecycle row in a temporary array before
+  // building the history map. A long chat may have many edits and pins.
   const out: Record<string, Record<string, unknown>> = Object.create(null);
-  for (const row of rows) {
+  await dxdb.lifecycle.where("chatKey").equals(chatKey).each((row) => {
     if (typeof row.messageId !== "string" || !row.messageId ||
         row.messageId.length > 128 ||
         /[\u0000-\u001f\u007f]/.test(row.messageId) ||
         !row.data || typeof row.data !== "object" || Array.isArray(row.data) ||
-        row.key !== `${chatKey}::${row.messageId}`) continue;
+        row.key !== `${chatKey}::${row.messageId}`) return;
+    // A null-prototype map keeps legacy IDs from altering object prototypes.
     Object.defineProperty(out, row.messageId, {
       value: row.data, enumerable: true, configurable: true, writable: true,
     });
-  }
+  });
   return out;
 }
 
