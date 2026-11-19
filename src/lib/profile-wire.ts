@@ -39,5 +39,12 @@ export function validateSharedProfile(raw: unknown, authenticatedSender: string,
 
 export function makeSharedProfile(profile: SharedProfile): SharedProfile {
   // Do not forward HTTP(S) avatar URLs or unbounded camera images to peers.
-  return { ...profile, avatar: isSafeAvatar(profile.avatar) ? profile.avatar : null };
+  return {
+    userId: profile.userId,
+    name: profile.name,
+    avatar: isSafeAvatar(profile.avatar) ? profile.avatar : null,
+    status: profile.status,
+    customStatus: profile.customStatus,
+    updatedAt: profile.updatedAt,
+  };
 }

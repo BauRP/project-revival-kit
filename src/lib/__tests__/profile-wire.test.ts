@@ -20,4 +20,17 @@ describe("Tor profile synchronization privacy", () => {
   it("never shares an external avatar URL", () => {
     expect(makeSharedProfile({...p,avatar:"https://tracking.test/avatar"}).avatar).toBeNull();
   });
+  it("never sends extra internal fields when the local profile is augmented", () => {
+    const augmented = {
+      ...p,
+      internalBackupKey: "private-backup-key-must-not-leak",
+      deviceDiagnostics: {serial: "private"},
+    };
+    const shared = makeSharedProfile(augmented);
+    expect(Object.keys(shared).sort()).toEqual(
+      ["userId", "name", "avatar", "status", "customStatus", "updatedAt"].sort(),
+    );
+    expect(JSON.stringify(shared)).not.toContain("internalBackupKey");
+    expect(JSON.stringify(shared)).not.toContain("deviceDiagnostics");
+  });
 });

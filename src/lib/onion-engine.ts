@@ -1383,9 +1383,11 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
           // Read a bounded number of parts at once. Verification and legacy
           // Keystore migration still occur before an index counts as saved.
           for (let i = 0; i < keys.length; i += 24) {
+            if (blobRequests.get(fileId) !== request) return;
             const batch = await dxdb.partial_chunks.bulkGet(
               keys.slice(i, i + 24).map((row) => row.key),
             );
+            if (blobRequests.get(fileId) !== request) return;
             for (const row of batch) {
               if (!row || row.from !== source ||
                   row.totalChunks !== first.totalChunks || row.name !== first.name ||
@@ -1399,6 +1401,9 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
               const bytes = await readIncomingChunk(row);
               if (!matchesChunkDigest(bytes, row.digest)) continue;
               received.add(row.index);
+              // Successful integrity verification is real local progress.
+              // A slow 1 GiB resume must not be canceled as idle midway.
+              request.lastProgressAt = performance.now();
               if (row.encrypted === undefined) {
                 try { await upgradeVerifiedLegacyChunk(row, bytes); }
                 catch (error) { console.warn("[onion] legacy chunk upgrade deferred", error); }
@@ -1411,8 +1416,10 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
           partialReceives.set(fileId, partial);
         }
       }
+      if (blobRequests.get(fileId) !== request) return;
       if (partial && partial.received.size === partial.totalChunks) {
         const assembled = await assemblePersistedBlob(fileId, source);
+        if (blobRequests.get(fileId) !== request) return;
         if (assembled !== "incomplete") {
           partialReceives.delete(fileId);
           blobRequests.delete(fileId);
@@ -1420,10 +1427,12 @@ export function onionRequestBlob(fileId: string, peer: string): Promise<boolean>
           return;
         }
       }
+      if (blobRequests.get(fileId) !== request) return;
       const firstWindow = initialTransferWindow(
         partial?.from === source ? partial.totalChunks : null,
         partial?.from === source ? partial.received : new Set<number>(),
       );
+      if (blobRequests.get(fileId) !== request) return;
       const sent = await sendEphemeral(source, "blob_request", {
         fileId,
         // Resume at the first missing piece. Both the advertised window and

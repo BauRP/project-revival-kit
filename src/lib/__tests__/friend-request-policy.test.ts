@@ -14,6 +14,7 @@ describe("Tor friend request durability and safety", () => {
   });
   it("rejects invalid peer name, future timestamp and malformed identity", () => {
     expect(validateIncomingFriendRequest({ ...payload, fromName:"x\nadmin" },1000)).toBeNull();
+    expect(validateIncomingFriendRequest({ ...payload, fromName:"hidden\u2066friend" },1000)).toBeNull();
     expect(validateIncomingFriendRequest({ ...payload, timestamp:900_000 },1000)).toBeNull();
     expect(validateIncomingFriendRequest({ ...payload, from:"attacker" },1000)).toBeNull();
     expect(validateIncomingFriendRequest({ ...payload, from:"https://"+onion },1000)).toBeNull();
