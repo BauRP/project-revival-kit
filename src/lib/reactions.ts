@@ -34,9 +34,17 @@ export async function getReactions(chatId: string): Promise<ReactionMap> {
   }
   const ids = Object.keys(map);
   if (!ids.length) return map;
-  const tombstones = await dxdb.lifecycle.bulkGet(ids.map(deletedMessageKey));
-  const deleted = new Set(ids.filter((id, i) =>
-    isDeletedMessageRecord(tombstones[i]?.data)));
+  const deleted = new Set<string>();
+  // Large restored chats can carry many legacy reactions; never allocate
+  // a single enormous IndexedDB bulkGet request to check their tombstones.
+  for (let start = 0; start < ids.length; start += 256) {
+    const batch = ids.slice(start, start + 256);
+    const tombstones = await dxdb.lifecycle.bulkGet(batch.map(deletedMessageKey));
+    for (let index = 0; index < batch.length; index++) {
+      if (isDeletedMessageRecord(tombstones[index]?.data))
+        deleted.add(batch[index]);
+    }
+  }
   return deleted.size ? pruneDeletedReactionMap(map, deleted) : map;
 }
 

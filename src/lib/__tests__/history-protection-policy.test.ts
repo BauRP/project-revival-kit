@@ -30,3 +30,19 @@ describe("corrupt durable protection cannot be bypassed by remote Tor mutations"
     }
   });
 });
+
+import { isCurrentHistoryProtectionDispatch } from "../history-protection-policy";
+describe("outgoing history protection is monotonic across rapid toggles", () => {
+  const row = {
+    key: "history-protection::local::peer", chatKey: "history-protection-local",
+    messageId: "peer", updatedAt: 12, data: { enabled: true, updatedAt: 12 },
+  };
+  it("accepts only the latest committed choice, not the earlier sealed frame", () => {
+    expect(isCurrentHistoryProtectionDispatch(row, "peer", true, 12)).toBe(true);
+    expect(isCurrentHistoryProtectionDispatch(row, "peer", false, 12)).toBe(false);
+    expect(isCurrentHistoryProtectionDispatch(row, "peer", true, 11)).toBe(false);
+    expect(isCurrentHistoryProtectionDispatch({...row, data: { enabled: true, updatedAt: 11 }},
+      "peer", true, 12)).toBe(false);
+    expect(isCurrentHistoryProtectionDispatch(undefined, "peer", true, 12)).toBe(false);
+  });
+});

@@ -52,7 +52,7 @@ import { orderedCompleteChunkSet } from "./media-chunks";
 import { sealIncomingChunk, readIncomingChunk, persistedChunkPlainSize, upgradeVerifiedLegacyChunk } from "./partial-chunk-vault";
 import { validateSharedProfile } from "./profile-wire";
 import { remoteProfileDataKey, sealRemoteProfile } from "./protected-remote-profile";
-import { deniedByStoredHistoryProtection } from "./history-protection-policy";
+import { deniedByStoredHistoryProtection, isCurrentHistoryProtectionDispatch } from "./history-protection-policy";
 import { validateDispatchBody, boundedAcknowledgements, boundedDispatchString } from "./inbound-frame-policy";
 import { boundedChunkIndexes, boundedMediaTransferWindow, validBlobFileId } from "./blob-request-policy";
 import { nextMissingChunkPage, initialTransferWindow } from "./media-retry-policy";
@@ -447,6 +447,12 @@ export async function onionSendDispatch(
       if (kind === "text_message" &&
           !mayQueueOriginalText((await dxdb.lifecycle.get(deletedMessageKey(id)))?.data))
         throw new Error("Original message was deleted before it could be queued");
+      if (kind === "history_protection" &&
+          !isCurrentHistoryProtectionDispatch(
+            await dxdb.lifecycle.get(`history-protection::local::${to}`),
+            to, payload.enabled, payload.updatedAt,
+          ))
+        throw new Error("History protection changed before encrypted dispatch");
       if (kind === "message_reaction") {
         // Encryption may finish after the user toggled a newer reaction.
         // Only the current authenticated local event may enter the outbox.

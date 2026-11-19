@@ -86,7 +86,7 @@ export async function setLocalHistoryProtection(
 ): Promise<HistoryProtectionState> {
   if (!isValidOnion(self) || !isValidOnion(peer) || self === peer)
     throw new Error("History protection requires a valid peer chat");
-  const state = await dxdb.transaction("rw", dxdb.lifecycle, async () => {
+  const state = await dxdb.transaction("rw", [dxdb.lifecycle, dxdb.outbox], async () => {
     const prev = await dxdb.lifecycle.get(localProtectionKey(peer));
     const updatedAt = nextProtectionUpdateAt(
       (() => {
@@ -101,6 +101,10 @@ export async function setLocalHistoryProtection(
       data: { enabled, updatedAt }, updatedAt,
     };
     await dxdb.lifecycle.put(record);
+    // A newer privacy toggle supersedes every unacknowledged old frame.
+    // Preserve a single transaction so no reconnect can read a mixed state.
+    await dxdb.outbox.where("peer").equals(peer)
+      .filter((queued) => queued.kind === "history_protection").delete();
     return { enabled, updatedAt };
   });
   emitLocal(peer, state);

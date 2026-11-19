@@ -1,4 +1,4 @@
-import { dbGet, dbPut } from "@/lib/storage";
+import { dbGet, dbPut, dbUpdateStrict } from "@/lib/storage";
 
 export type DisappearingDuration = "1h" | "6h" | "12h" | "24h" | "off";
 
@@ -24,25 +24,50 @@ const durationToMs: Record<Exclude<DisappearingDuration, "off">, number> = {
   "24h": 24 * 60 * 60 * 1000,
 };
 
+/** Never treat a corrupt blocked/mute/expiry preference as an intentional
+ * permission change. Unknown legacy fields remain preserved for compatibility.
+ */
+export function validateChatPreferenceState(value: unknown): ChatPreferenceState {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "object" || Array.isArray(value))
+    throw new Error("Invalid chat preferences");
+  const row = value as Record<string, unknown>;
+  for (const field of ["blocked", "favorite", "archived", "silentDefault", "oneTimeDefault"]) {
+    if (row[field] !== undefined && typeof row[field] !== "boolean")
+      throw new Error("Invalid chat preference: " + field);
+  }
+  const muted = row.mutedUntil;
+  if (muted !== undefined && muted !== null &&
+      (typeof muted !== "number" || !Number.isSafeInteger(muted) || muted < 0))
+    throw new Error("Invalid chat mute deadline");
+  const duration = row.disappearingDuration;
+  if (duration !== undefined && !["off", "1h", "6h", "12h", "24h"].includes(duration as string))
+    throw new Error("Invalid disappearing message duration");
+  return value as ChatPreferenceState;
+}
+
 export async function getChatPreferences(chatId: string): Promise<ChatPreferenceState> {
-  return (await dbGet<ChatPreferenceState>("settings", `${KEY_PREFIX}${chatId}`)) || {};
+  return validateChatPreferenceState(await dbGet<unknown>("settings", `${KEY_PREFIX}${chatId}`));
 }
 
 export async function saveChatPreferences(
   chatId: string,
   next: ChatPreferenceState,
 ): Promise<void> {
-  await dbPut("settings", `${KEY_PREFIX}${chatId}`, next);
+  await dbPut("settings", `${KEY_PREFIX}${chatId}`, validateChatPreferenceState(next));
 }
 
 export async function updateChatPreferences(
   chatId: string,
   patch: Partial<ChatPreferenceState>,
 ): Promise<ChatPreferenceState> {
-  const current = await getChatPreferences(chatId);
-  const next = { ...current, ...patch };
-  await saveChatPreferences(chatId, next);
-  return next;
+  validateChatPreferenceState(patch);
+  return dbUpdateStrict<ChatPreferenceState>(
+    "settings", `${KEY_PREFIX}${chatId}`,
+    (current) => validateChatPreferenceState({
+      ...validateChatPreferenceState(current), ...patch,
+    }),
+  );
 }
 
 export function getDeleteAt(timestamp: number, duration: DisappearingDuration): number | undefined {

@@ -241,6 +241,50 @@ export async function dbDelete(store: string, key: string): Promise<void> {
 
 
 /**
+ * Atomic read/modify/write for independent settings fields. Two rapid UI
+ * patches must not both read the same old state and overwrite each other.
+ * The updater is intentionally synchronous so no external async work can
+ * let IndexedDB auto-commit between the read and the write.
+ */
+export async function dbUpdateStrict<T>(
+  store: string, key: string, update: (current: T | undefined) => T,
+): Promise<T> {
+  const db = await openDB();
+  return new Promise<T>((resolve, reject) => {
+    let result: T | undefined;
+    let updateFailure: unknown;
+    try {
+      const tx = db.transaction(store, "readwrite");
+      const target = tx.objectStore(store);
+      const request = target.get(key);
+      request.onsuccess = () => {
+        try {
+          result = update(request.result as T | undefined);
+          if (result === undefined) throw new Error("Atomic setting update returned no value");
+          if (target.keyPath) target.put(result);
+          else target.put(result, key);
+        } catch (error) {
+          updateFailure = error;
+          tx.abort();
+        }
+      };
+      tx.oncomplete = () => { db.close(); resolve(result as T); };
+      tx.onerror = () => {
+        db.close();
+        reject(updateFailure ?? tx.error ?? new Error("Atomic setting update failed"));
+      };
+      tx.onabort = () => {
+        db.close();
+        reject(updateFailure ?? tx.error ?? new Error("Atomic setting update aborted"));
+      };
+    } catch (error) {
+      db.close();
+      reject(error);
+    }
+  });
+}
+
+/**
  * Atomically compare and update a settings record. Without this guard two
  * WebViews/tabs can both read the same ciphertext, encrypt different edits
  * and silently overwrite the first committed profile.

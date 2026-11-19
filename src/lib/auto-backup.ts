@@ -107,9 +107,10 @@ export function runAutomaticBackupIfDue(): Promise<void> {
       await exportBackup(plaintext, createDatedBackupFilename(new Date(), "auto"));
       // Persist the successful export first. If settings were disabled while
       // the export ran, never touch old archives in this stale cleanup pass.
+      const committedState = { ...state, lastSavedAt: Date.now() };
       try {
         await dbPutIfUnchangedStrict(
-          "settings", KEY, state, { ...state, lastSavedAt: Date.now() },
+          "settings", KEY, state, committedState,
         );
       } catch (error) {
         if (error instanceof ConcurrentProtectedWriteError) return;
@@ -121,6 +122,11 @@ export function runAutomaticBackupIfDue(): Promise<void> {
           path: "", directory: Directory.Documents,
         })).files.map((entry) => entry.name);
         for (const filename of automaticBackupsToPrune(names, 7)) {
+          if (wiping) return;
+          const current = await dbGetStrict<unknown>("settings", KEY);
+          if (!isAutoBackupState(current) ||
+              current.sealed !== committedState.sealed ||
+              current.lastSavedAt !== committedState.lastSavedAt) return;
           await Filesystem.deleteFile({ path: filename, directory: Directory.Documents });
         }
       } catch (error) {
