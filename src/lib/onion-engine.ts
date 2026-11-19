@@ -1329,6 +1329,11 @@ async function assemblePersistedBlob(fileId: string, from: string): Promise<Asse
     const bytes = await readIncomingChunk(current);
     if (bytes.length !== row.size ||
         !matchesChunkDigest(bytes, row.digest)) return "incomplete";
+    // Assembling verified large files can take longer than the idle timer:
+    // count real authenticated progress, never unsolicited repeated frames.
+    const activeRequest = blobRequests.get(fileId);
+    if (activeRequest?.peer === from)
+      activeRequest.lastProgressAt = performance.now();
     // Upgrade legacy plaintext only after verification. Replacement is
     // atomic and cannot resurrect a deleted or consumed chunk.
     if (current.encrypted === undefined) {
