@@ -1299,19 +1299,40 @@ async function persistBlobChunk(from: string, body: Record<string, unknown>): Pr
  */
 type AssemblyOutcome = "saved" | "incomplete" | "rejected";
 async function assemblePersistedBlob(fileId: string, from: string): Promise<AssemblyOutcome> {
-  const records = await dxdb.partial_chunks.where("fileId").equals(fileId).toArray();
-  const ordered = orderedCompleteChunkSet(
-    records.map((row) => ({ ...row, size: persistedChunkPlainSize(row) })), fileId, from,
-  );
+  // Keep metadata/indexes only. A 1 GiB transfer can contain 20,000+
+  // Blob-bearing records; toArray() would duplicate them all in WebView RAM
+  // before a single byte is assembled. Validate the complete manifest first.
+  const records: Array<{
+    key: string; fileId: string; from: string; index: number;
+    totalChunks: number; name: string; mimeType: string;
+    digest: string; size: number;
+  }> = [];
+  await dxdb.partial_chunks.where("fileId").equals(fileId).each((row) => {
+    records.push({
+      key: row.key, fileId: row.fileId, from: row.from, index: row.index,
+      totalChunks: row.totalChunks, name: row.name, mimeType: row.mimeType,
+      digest: row.digest, size: persistedChunkPlainSize(row),
+    });
+  });
+  const ordered = orderedCompleteChunkSet(records, fileId, from);
   if (!ordered) return "incomplete";
   const parts: BlobPart[] = [];
   for (const row of ordered) {
-    const bytes = await readIncomingChunk(row);
-    if (!matchesChunkDigest(bytes, row.digest)) return "incomplete";
+    // Read one encrypted chunk at a time and reject changes made between
+    // manifest scan and read; never retain full IndexedDB row arrays.
+    const current = await dxdb.partial_chunks.get(row.key);
+    if (!current || current.fileId !== row.fileId || current.from !== row.from ||
+        current.index !== row.index || current.totalChunks !== row.totalChunks ||
+        current.name !== row.name || current.mimeType !== row.mimeType ||
+        current.digest !== row.digest ||
+        persistedChunkPlainSize(current) !== row.size) return "incomplete";
+    const bytes = await readIncomingChunk(current);
+    if (bytes.length !== row.size ||
+        !matchesChunkDigest(bytes, row.digest)) return "incomplete";
     // Upgrade legacy plaintext only after verification. Replacement is
     // atomic and cannot resurrect a deleted or consumed chunk.
-    if (row.encrypted === undefined) {
-      try { await upgradeVerifiedLegacyChunk(row, bytes); }
+    if (current.encrypted === undefined) {
+      try { await upgradeVerifiedLegacyChunk(current, bytes); }
       catch (error) { console.warn("[onion] legacy chunk upgrade deferred", error); }
     }
     parts.push(new Blob([new Uint8Array(bytes)]));
