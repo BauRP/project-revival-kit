@@ -54,7 +54,7 @@ import { validateSharedProfile } from "./profile-wire";
 import { remoteProfileDataKey, sealRemoteProfile } from "./protected-remote-profile";
 import { deniedByStoredHistoryProtection, isCurrentHistoryProtectionDispatch } from "./history-protection-policy";
 import { validateDispatchBody, boundedAcknowledgements, boundedDispatchString } from "./inbound-frame-policy";
-import { boundedChunkIndexes, boundedMediaTransferWindow, validBlobFileId } from "./blob-request-policy";
+import { boundedChunkIndexes, boundedMediaTransferWindow, validBlobFileId, MAX_MEDIA_CHUNKS } from "./blob-request-policy";
 import { nextMissingChunkPage, initialTransferWindow } from "./media-retry-policy";
 import { hasTransferTimedOut } from "./media-timeout-policy";
 import { MediaSendGate } from "./media-send-gate";
