@@ -105,12 +105,12 @@ export function subscribeReactions(chatId: string, cb: (map: ReactionMap) => voi
 }
 
 // Ignore an older IndexedDB hydration result if a newer reaction arrived.
-const reactionReadVersions = new Map<string, number>();
+const reactionReadVersions = new Map<string, symbol>();
 onionRegisterIncomingListener((payload) => {
   if (payload.type !== "message_reaction") return;
   const peer = typeof payload.from === "string" ? payload.from : "";
   if (!isValidOnion(peer)) return;
-  const revision = (reactionReadVersions.get(peer) ?? 0) + 1;
+  const revision = Symbol("reaction-read");
   reactionReadVersions.set(peer, revision);
   void getReactions(peer).then((map) => {
     if (reactionReadVersions.get(peer) !== revision) return;
