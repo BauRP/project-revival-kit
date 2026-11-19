@@ -46,3 +46,13 @@ describe("outgoing history protection is monotonic across rapid toggles", () => 
     expect(isCurrentHistoryProtectionDispatch(undefined, "peer", true, 12)).toBe(false);
   });
 });
+
+// The durable history toggle itself is checked before queue insertion.
+// Sealing the next state must finish before the old outbox entry is removed.
+describe("history protection state checks after asynchronous sealing", () => {
+  it("ignores an earlier timestamp even if its enable flag matches", () => {
+    expect(deniedByStoredHistoryProtection(
+      { data: { enabled: true, updatedAt: 10 } }, { isEdited: true }
+    )).toBe(true);
+  });
+});

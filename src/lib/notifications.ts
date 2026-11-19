@@ -7,7 +7,7 @@ import {
 } from "@/lib/translation-config";
 import { isNative } from "@/lib/platform";
 import { isStorageAvailable } from "@/lib/safe-storage";
-import { safeNotificationText, shouldNotifyChat, nextLocalNotificationId, notificationPreferenceUnavailable, type NotificationPolicyInput } from "./notification-policy";
+import { safeNotificationText, shouldNotifyChat, nextLocalNotificationId, notificationPreferenceUnavailable, readNotificationPreference, type NotificationPolicyInput } from "./notification-policy";
 
 function preference(key: string, fallback: boolean): boolean {
   // The boot guard may replace blocked DOM storage with a fresh in-memory
@@ -17,7 +17,7 @@ function preference(key: string, fallback: boolean): boolean {
     return notificationPreferenceUnavailable(key, fallback);
   try {
     const value = localStorage.getItem(key);
-    return value === null ? fallback : value === "true";
+    return readNotificationPreference(key, value, fallback);
   } catch {
     // Storage failure cannot be treated as permission to expose private data.
     return notificationPreferenceUnavailable(key, fallback);

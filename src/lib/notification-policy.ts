@@ -40,6 +40,21 @@ export function nextLocalNotificationId(): number {
   return lastNotificationId;
 }
 
+/** Only actual boolean strings are accepted from untrusted DOM storage.
+ * In particular a damaged "hide-content" value must NOT be interpreted as
+ * permission to display private content in a lock-screen notification.
+ */
+export function readNotificationPreference(
+  key: string,
+  value: string | null,
+  fallback: boolean,
+): boolean {
+  if (value === null) return fallback;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return notificationPreferenceUnavailable(key, fallback);
+}
+
 /** A failed privacy preference read must not reveal notifications. */
 export function notificationPreferenceUnavailable(key: string, fallback: boolean): boolean {
   if (key === "trivo-notifications") return false;

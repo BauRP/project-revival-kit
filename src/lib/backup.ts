@@ -145,6 +145,13 @@ export async function importBackup(
     );
     if (!fileToRead) throw new Error("No local Trivo backup found");
     if (!isSafeBackupFilename(fileToRead)) throw new Error("Invalid backup filename");
+    // Check the native Documents entry BEFORE readFile() materializes all
+    // base64 / UTF-8 bytes in the Android WebView. The existing post-read
+    // size check remains for a file replaced between stat and read.
+    const stats = await Filesystem.stat({
+      path: fileToRead, directory: Directory.Documents,
+    });
+    assertBackupFileSize(stats.size);
     const res = await Filesystem.readFile({
       path: fileToRead,
       directory: Directory.Documents,

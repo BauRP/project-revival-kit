@@ -485,6 +485,14 @@ export async function onionSendDispatch(
           throw new Error("Dispatch ID already belongs to a different destination or event");
         return;
       }
+      if (kind === "history_protection") {
+        // Replace earlier states and insert the newly sealed state in ONE
+        // write transaction. A crash / Keystore failure before insertion
+        // must not wipe the previous recoverable frame from the outbox.
+        await dxdb.outbox.where("peer").equals(to)
+          .filter((row) => row.kind === "history_protection" && row.id !== id)
+          .delete();
+      }
       await dxdb.outbox.add({
         id, peer: to, kind: kind as OutboxKind, frame: sealed, status: "pending",
         attempts: 0, nextAttemptAt: now, createdAt: now, updatedAt: now,

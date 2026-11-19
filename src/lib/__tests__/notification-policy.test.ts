@@ -46,3 +46,19 @@ describe("private notifications remain opaque when preview is disabled", () => {
     expect(JSON.stringify(payload)).not.toContain("private");
   });
 });
+
+import { readNotificationPreference } from "../notification-policy";
+
+describe("malformed notification settings cannot reveal private chat previews", () => {
+  it("retains explicit user choices and defaults for missing settings", () => {
+    expect(readNotificationPreference("trivo-hide-content", "false", true)).toBe(false);
+    expect(readNotificationPreference("trivo-hide-content", "true", false)).toBe(true);
+    expect(readNotificationPreference("trivo-hide-content", null, true)).toBe(true);
+  });
+  it("fails closed on corrupted settings without suppressing valid values", () => {
+    for (const value of ["1", "0", "TRUE", "", "null", "undefined"]) {
+      expect(readNotificationPreference("trivo-hide-content", value, false)).toBe(true);
+      expect(readNotificationPreference("trivo-notifications", value, true)).toBe(false);
+    }
+  });
+});
