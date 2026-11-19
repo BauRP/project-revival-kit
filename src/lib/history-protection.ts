@@ -167,11 +167,22 @@ export function onRemoteHistoryProtection(
   return () => { remoteListeners.delete(cb); };
 }
 
+// A delayed IndexedDB read must never repaint an older protection state
+// after a newer signed Tor toggle was committed.
+const remoteProtectionReads = new Map<string, number>();
 onionRegisterIncomingListener((payload) => {
   if (payload.type !== "history_protection") return;
-  const peer = String(payload.from || "");
+  const peer = typeof payload.from === "string" ? payload.from : "";
   if (!isValidOnion(peer)) return;
+  const revision = (remoteProtectionReads.get(peer) ?? 0) + 1;
+  remoteProtectionReads.set(peer, revision);
   void getRemoteHistoryProtection(peer).then((state) => {
+    if (remoteProtectionReads.get(peer) !== revision) return;
+    remoteProtectionReads.delete(peer);
     remoteListeners.forEach((cb) => cb(peer, state));
-  }).catch((error) => console.warn("[history-protection] status read failed", error));
+  }).catch((error) => {
+    if (remoteProtectionReads.get(peer) === revision)
+      remoteProtectionReads.delete(peer);
+    console.warn("[history-protection] status read failed", error);
+  });
 });
