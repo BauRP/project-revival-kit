@@ -4,6 +4,36 @@
  */
 export const MAX_MEDIA_CHUNKS = Math.ceil((1024 * 1024 * 1024) / (48 * 1024));
 export const MEDIA_CHUNK_SIZE = 48 * 1024;
+/** Validate the exact signed file size of each Tor chunk BEFORE committing
+ * it into private storage. The final chunk may be short or empty ONLY when
+ * the authenticated message advertises that exact byte count.
+ */
+export function expectedSignedChunkLength(
+  fileBytes: number, totalChunks: number, index: number,
+  chunkBytes: number = MEDIA_CHUNK_SIZE,
+): number | null {
+  if (!Number.isSafeInteger(fileBytes) || fileBytes < 0 ||
+      fileBytes > 1024 * 1024 * 1024 ||
+      !Number.isSafeInteger(chunkBytes) || chunkBytes < 1 ||
+      !Number.isSafeInteger(totalChunks) || totalChunks < 1 ||
+      totalChunks > MAX_MEDIA_CHUNKS ||
+      !Number.isSafeInteger(index) || index < 0 || index >= totalChunks ||
+      Math.max(1, Math.ceil(fileBytes / chunkBytes)) !== totalChunks) return null;
+  return index === totalChunks - 1
+    ? fileBytes - (totalChunks - 1) * chunkBytes
+    : chunkBytes;
+}
+
+export function matchesSignedChunkByteLength(
+  fileBytes: unknown, totalChunks: number, index: number, actualLength: number,
+  chunkBytes: number = MEDIA_CHUNK_SIZE,
+): boolean {
+  if (typeof fileBytes !== "number" || !Number.isSafeInteger(actualLength))
+    return false;
+  const expected = expectedSignedChunkLength(fileBytes, totalChunks, index, chunkBytes);
+  return expected !== null && expected === actualLength;
+}
+
 export interface MediaChunkDescriptor {
   fileId: string;
   from: string;

@@ -48,7 +48,7 @@ import { KeyedSerialQueue } from "./keyed-serial-queue";
 import { validateIncomingTextMessage } from "./inbound-message";
 import { chunkDigest, matchesChunkDigest } from "./chunk-integrity";
 import { inspectAttachmentBlob } from "./security-scan";
-import { orderedCompleteChunkSet } from "./media-chunks";
+import { orderedCompleteChunkSet, matchesSignedChunkByteLength } from "./media-chunks";
 import { sealIncomingChunk, readIncomingChunk, persistedChunkPlainSize, upgradeVerifiedLegacyChunk } from "./partial-chunk-vault";
 import { validateSharedProfile } from "./profile-wire";
 import { remoteProfileDataKey, sealRemoteProfile } from "./protected-remote-profile";
@@ -1242,6 +1242,13 @@ async function persistBlobChunk(from: string, body: Record<string, unknown>): Pr
       )).toArray();
     const consumed = await dxdb.lifecycle.get(consumedMediaKey(fileId));
     if (!await hasAuthorizedAttachmentParent(matching, async (parent) => {
+      // Match the exact signed file length BEFORE saving another chunk.
+      // A wrong-size final chunk used to occupy storage until assembly
+      // failed the later whole-file metadata check.
+      const size = (parent.media as { size?: unknown } | undefined)?.size;
+      if (!matchesSignedChunkByteLength(
+        size, chunks, index, chunkBytes.length, BLOB_CHUNK_BYTES,
+      )) return false;
       const deleted = await dxdb.lifecycle.get(deletedMessageKey(parent.id));
       return mayPersistIncomingChunk(deleted?.data, consumed?.data);
     })) return false;

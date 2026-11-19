@@ -30,8 +30,11 @@ const vault = registerPlugin<{
 }>("SecureVault");
 
 function isAutoBackupState(x: unknown): x is AutoBackupState {
-  return !!x && typeof x === "object" && typeof (x as AutoBackupState).sealed === "string" &&
-    Number.isSafeInteger((x as AutoBackupState).lastSavedAt);
+  return !!x && typeof x === "object" && !Array.isArray(x) &&
+    typeof (x as AutoBackupState).sealed === "string" &&
+    (x as AutoBackupState).sealed.length > 0 &&
+    Number.isSafeInteger((x as AutoBackupState).lastSavedAt) &&
+    (x as AutoBackupState).lastSavedAt >= 0;
 }
 export function shouldRunAutomaticBackup(lastSavedAt: number, now = Date.now()): boolean {
   if (!Number.isSafeInteger(lastSavedAt) || lastSavedAt < 0 ||
@@ -57,16 +60,34 @@ export async function isAutomaticBackupEnabled(): Promise<boolean> {
 }
 
 /** Call only AFTER the initial password-encrypted portable backup succeeded. */
+// Serialize preference writes in user-action order. Android Keystore sealing
+// yields control, so an earlier slow "enable" must never run AFTER a later
+// completed "disable" and silently switch backups back on.
+let preferenceMutationTail: Promise<void> = Promise.resolve();
+function changeAutoBackupPreference(work: () => Promise<void>): Promise<void> {
+  const pending = preferenceMutationTail.then(work, work);
+  preferenceMutationTail = pending.then(() => undefined, () => undefined);
+  return pending;
+}
+
 export async function enableAutomaticBackups(password: string): Promise<void> {
   if (!isNative()) throw new Error("Automatic encrypted copies require the Android app");
   if (password.trim().length < 12 || password.length > 1024)
     throw new Error("A recovery password of 12–1024 characters is required");
-  const { sealed } = await vault.sealIdentity({ plaintext: password });
-  await dbPutStrict("settings", KEY, { sealed, lastSavedAt: Date.now() } satisfies AutoBackupState);
+  await changeAutoBackupPreference(async () => {
+    if (wiping) throw new Error("Account is being erased");
+    const { sealed } = await vault.sealIdentity({ plaintext: password });
+    if (!sealed || typeof sealed !== "string")
+      throw new Error("Android Keystore did not seal the backup passphrase");
+    if (wiping) throw new Error("Account is being erased");
+    await dbPutStrict("settings", KEY, { sealed, lastSavedAt: Date.now() } satisfies AutoBackupState);
+  });
 }
 
 export async function disableAutomaticBackups(): Promise<void> {
-  await dbPutStrict("settings", KEY, null);
+  await changeAutoBackupPreference(async () => {
+    await dbPutStrict("settings", KEY, null);
+  });
 }
 
 let running: Promise<void> | null = null;
@@ -80,6 +101,7 @@ export async function pauseAutomaticBackupsForWipe(): Promise<void> {
   for (const stop of monitors) stop();
   monitors.clear();
   if (running) await running;
+  await preferenceMutationTail;
 }
 export function runAutomaticBackupIfDue(): Promise<void> {
   if (running) return running;

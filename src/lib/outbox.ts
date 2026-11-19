@@ -86,6 +86,37 @@ function openDB(): Promise<IDBDatabase> {
   return pending;
 }
 
+/** Find the next wake without materializing every encrypted scheduled message.
+ * The expensive full list is still available for user-visible queue browsing
+ * and actual due-message processing.
+ */
+async function nextScheduledWake(): Promise<number | null> {
+  const db = await openDB();
+  return new Promise<number | null>((resolve, reject) => {
+    let earliest = Number.POSITIVE_INFINITY;
+    let validationError: unknown;
+    const t = db.transaction(STORE, "readonly");
+    const req = t.objectStore(STORE).openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) return;
+      try {
+        const item = cursor.value as ScheduledItem;
+        validateStoredScheduledItem(item, isSealedScheduledText(item.text));
+        earliest = Math.min(earliest, scheduledWakeAt(item));
+        cursor.continue();
+      } catch (error) {
+        validationError = error;
+        t.abort();
+      }
+    };
+    req.onerror = () => { validationError = req.error; };
+    t.oncomplete = () => resolve(Number.isFinite(earliest) ? earliest : null);
+    t.onerror = () => reject(validationError ?? t.error ?? new Error("Cannot read scheduled wake"));
+    t.onabort = () => reject(validationError ?? t.error ?? new Error("Scheduled wake aborted"));
+  });
+}
+
 async function tx<T>(
   mode: IDBTransactionMode,
   run: (s: IDBObjectStore) => IDBRequest<T>,
@@ -242,10 +273,9 @@ function scheduleNextWake() {
     clearTimeout(timer);
     timer = null;
   }
-  void listOutbox().then((items) => {
-    if (generation !== wakeGeneration || !items.length) return;
-    const next = items[0];
-    const delay = Math.max(0, scheduledWakeAt(next) - Date.now());
+  void nextScheduledWake().then((wake) => {
+    if (generation !== wakeGeneration || wake === null) return;
+    const delay = Math.max(0, wake - Date.now());
     // Cap at 60s so we re-evaluate periodically (handles registerSender races).
     timer = setTimeout(() => void fireDue().catch((error) => {
       console.error("[outbox] scheduled delivery failed", error);
