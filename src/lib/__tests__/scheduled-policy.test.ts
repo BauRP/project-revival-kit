@@ -30,11 +30,17 @@ describe("scheduled cancellation and retry identity", () => {
 });
 
 import { canScheduleRecipient } from "../scheduled-policy";
+import { onionFromPublicKey } from "../onion-id";
 describe("scheduled Tor recipient validation", () => {
   it("refuses invalid addresses before saving a durable message", () => {
     for (const peer of ["", "friend", "alice.onion", "https://host", "evil/path"])
       expect(canScheduleRecipient(peer)).toBe(false);
     expect(canScheduleRecipient("TRIVO_MOCK_PEER_999")).toBe(true);
+    const genuine = onionFromPublicKey(new Uint8Array(32));
+    expect(canScheduleRecipient(genuine)).toBe(true);
+    expect(canScheduleRecipient("https://" + genuine)).toBe(false);
+    expect(canScheduleRecipient(genuine.toUpperCase())).toBe(false);
+    expect(canScheduleRecipient(genuine + "/")).toBe(false);
   });
 });
 

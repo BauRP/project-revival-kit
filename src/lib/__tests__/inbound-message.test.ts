@@ -10,6 +10,9 @@ describe("untrusted inbound message boundary", () => {
   });
   it("rejects bogus senders, large messages and future time", () => {
     expect(validateIncomingTextMessage({...base,from:"fake"},2000)).toBeNull();
+    // Regression: a true checksum-valid v3 host MUST pass the canonical
+    // regex (previous escaped dot accidentally rejected every honest peer).
+    expect(validateIncomingTextMessage({...base},2000)?.id).toBe("msg-1");
     expect(validateIncomingTextMessage({...base,from:"https://"+a},2000)).toBeNull();
     expect(validateIncomingTextMessage({...base,to:a.toUpperCase()},2000)).toBeNull();
     expect(validateIncomingTextMessage({...base,from:"a".repeat(56)+".onion"},2000))

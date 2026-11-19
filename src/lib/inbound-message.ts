@@ -39,9 +39,9 @@ export function validateIncomingTextMessage(
   const timestamp = payload.timestamp;
   if (typeof id !== "string" || !id || id.length > 128 ||
       /[\u0000-\u001f\u007f]/.test(id) ||
-      typeof from !== "string" || !/^[a-z2-7]{56}\\.onion$/.test(from) ||
+      typeof from !== "string" || !/^[a-z2-7]{56}\.onion$/.test(from) ||
       !isValidOnion(from) ||
-      typeof to !== "string" || !/^[a-z2-7]{56}\\.onion$/.test(to) ||
+      typeof to !== "string" || !/^[a-z2-7]{56}\.onion$/.test(to) ||
       !isValidOnion(to) ||
       from === to || typeof text !== "string" || text.length > 200_000 ||
       typeof timestamp !== "number" || !Number.isSafeInteger(timestamp) ||

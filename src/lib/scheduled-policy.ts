@@ -82,5 +82,9 @@ export function sameScheduledIdentity(
  * test-bot fixture, which is never routed over Tor.
  */
 export function canScheduleRecipient(peer: string): boolean {
-  return isValidOnion(peer) || isLocalSupportPeer(peer);
+  // Peer identity is a canonical lowercase v3 .onion host, not a URL or
+  // display string. isValidOnion normalizes URLs for convenience in other
+  // UI contexts; never apply that normalization at a durable queue boundary.
+  return isLocalSupportPeer(peer) ||
+    (typeof peer === "string" && /^[a-z2-7]{56}\.onion$/.test(peer) && isValidOnion(peer));
 }
