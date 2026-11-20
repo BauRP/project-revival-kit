@@ -5,12 +5,12 @@ import type { LifecycleRecord } from "../dexie-db";
 describe("Dexie migration conflict and security-row eligibility", () => {
   it("rejects updated bodies, delivery status, metadata or encrypted rows", () => {
     const old = { id: "m", text: "secret", status: "sent", media: { fileId: "f" } };
-    expect(sameLegacyHistorySnapshot({ ...old }, old)).toBe(true);
-    expect(sameLegacyHistorySnapshot({ ...old, text: "edited" }, old)).toBe(false);
-    expect(sameLegacyHistorySnapshot({ ...old, status: "read" }, old)).toBe(false);
-    expect(sameLegacyHistorySnapshot({ ...old, media: { fileId: "g" } }, old)).toBe(false);
-    expect(sameLegacyHistorySnapshot(undefined, old)).toBe(false);
-    expect(sameLegacyHistorySnapshot({ ...old, kind: "trivo-history-message-v1", sealed: {} }, old)).toBe(false);
+    expect(sameLegacyHistorySnapshot<Record<string, unknown>>({ ...old }, old)).toBe(true);
+    expect(sameLegacyHistorySnapshot<Record<string, unknown>>({ ...old, text: "edited" }, old)).toBe(false);
+    expect(sameLegacyHistorySnapshot<Record<string, unknown>>({ ...old, status: "read" }, old)).toBe(false);
+    expect(sameLegacyHistorySnapshot<Record<string, unknown>>({ ...old, media: { fileId: "g" } }, old)).toBe(false);
+    expect(sameLegacyHistorySnapshot<Record<string, unknown>>(undefined, old)).toBe(false);
+    expect(sameLegacyHistorySnapshot<Record<string, unknown>>({ ...old, kind: "trivo-history-message-v1", sealed: {} }, old)).toBe(false);
   });
   it("never migrates deletion, reaction, consumed-file or contact authority rows", () => {
     const edit: LifecycleRecord = {
@@ -30,7 +30,7 @@ describe("Dexie migration conflict and security-row eligibility", () => {
   });
   it("does not silently treat different keys or deleted edit mirrors as unchanged", () => {
     const original = { id: "m", text: "secret", extra: undefined };
-    expect(sameLegacyHistorySnapshot({ id: "m", text: "secret", other: undefined },original)).toBe(false);
+    expect(sameLegacyHistorySnapshot<Record<string, unknown>>({ id: "m", text: "secret", other: undefined },original)).toBe(false);
     const edit: LifecycleRecord = {
       key:"peer::m",chatKey:"peer",messageId:"m",updatedAt:10,data:{isEdited:true},
     };
@@ -41,8 +41,8 @@ describe("Dexie migration conflict and security-row eligibility", () => {
   it("accepts equivalent objects with different field order but not missing nested fields", () => {
     const before = { id: "m", text: "safe", media: { fileId: "file", caption: "hello" } };
     const reordered = { media: { caption: "hello", fileId: "file" }, text: "safe", id: "m" };
-    expect(sameLegacyHistorySnapshot(reordered, before)).toBe(true);
-    expect(sameLegacyHistorySnapshot({
+    expect(sameLegacyHistorySnapshot<Record<string, unknown>>(reordered, before)).toBe(true);
+    expect(sameLegacyHistorySnapshot<Record<string, unknown>>({
       ...before, media: { fileId: "file", caption: undefined },
     }, before)).toBe(false);
   });

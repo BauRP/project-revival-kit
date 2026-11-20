@@ -13,8 +13,9 @@ export function isDeletedMessageRecord(value: unknown): boolean {
   return !!value && typeof value === "object" && !Array.isArray(value) &&
     (value as { deleted?: unknown }).deleted === true;
 }
-export function messageMediaFileId(message: { media?: unknown }): string | null {
-  const media = message.media;
+export function messageMediaFileId(message: unknown): string | null {
+  if (!message || typeof message !== "object" || Array.isArray(message)) return null;
+  const media = (message as { media?: unknown }).media;
   if (!media || typeof media !== "object" || Array.isArray(media)) return null;
   const fileId = (media as { fileId?: unknown }).fileId;
   return typeof fileId === "string" && fileId.length > 0 && fileId.length <= 128 ? fileId : null;

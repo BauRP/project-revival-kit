@@ -24,6 +24,7 @@ import {
   onionSendDispatch,
 } from "./onion-engine";
 import { isCanonicalFriendOnion } from "./friend-request-policy";
+import { isValidOnion } from "./onion-id";
 import { isLocalSupportPeer } from "./local-only-peer-policy";
 
 export interface P2PMessage {

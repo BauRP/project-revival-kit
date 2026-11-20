@@ -26,7 +26,7 @@ export function deniedByStoredHistoryProtection(
  * another toggle has committed. Both timestamp and enabled flag must agree.
  */
 export function isCurrentHistoryProtectionDispatch(
-  row: { chatKey: string; messageId: string; updatedAt: number;
+  row: { key?: string; chatKey: string; messageId: string; updatedAt: number;
     data: Record<string, unknown> } | undefined,
   peer: string, enabled: unknown, updatedAt: unknown,
 ): boolean {
