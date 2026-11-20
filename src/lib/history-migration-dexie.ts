@@ -16,8 +16,14 @@ export function sameLegacyHistorySnapshot<T>(live: T | undefined, expected: T): 
       looksLikeProtectedHistoryRow(live) || looksLikeProtectedHistoryRow(expected))
     return false;
   try {
-    return JSON.stringify(live) === JSON.stringify(expected) &&
-      Object.keys(live).length === Object.keys(expected).length;
+    // Key count alone is insufficient: JSON omits undefined/function values.
+    // Do not migrate a partly unreadable legacy record as if it were exact.
+    const left = Object.keys(live as object).sort();
+    const right = Object.keys(expected as object).sort();
+    if (left.length !== right.length ||
+        left.some((name, index) => name !== right[index]))
+      return false;
+    return JSON.stringify(live) === JSON.stringify(expected);
   } catch {
     return false;
   }
@@ -75,9 +81,18 @@ export function createLifecycleMigrationIO(
     async compareAndReplace(expected, sealed) {
       if (recordKey !== expected.key || sealed.key !== recordKey ||
           !isMigratableMessageLifecycle(expected)) return false;
-      return dxdb.transaction("rw", [dxdb.lifecycle], async () => {
+      return dxdb.transaction("rw", [dxdb.lifecycle, dxdb.messages], async () => {
         const current = await dxdb.lifecycle.get(recordKey);
         if (!sameLegacyHistorySnapshot(current, expected)) return false;
+        // Never encrypt the edit mirror if a concurrent local deletion or
+        // signed global deletion already made the underlying message terminal.
+        const marker = await dxdb.lifecycle.get(deletedMessageKey(expected.messageId));
+        if (isDeletedMessageRecord(marker?.data)) return false;
+        const message = await dxdb.messages.get(expected.messageId);
+        if (!message || looksLikeProtectedHistoryRow(message)) return false;
+        if (current?.data?.deletedForEveryone === true ||
+            current?.data?.deletedFor && Array.isArray(current.data.deletedFor) &&
+            current.data.deletedFor.length > 0) return false;
         await dxdb.lifecycle.put(sealed as unknown as LifecycleRecord);
         return true;
       });
