@@ -30,3 +30,24 @@ export function shouldNotifyMessageAcknowledgement(
 ): boolean {
   return kind === "text_message" && messageStillExists;
 }
+
+/** The immutable sealed frame and original route must still match after
+ * network I/O. An ID reused by another event is never updated by stale I/O.
+ */
+export function sameOutboxFrameForResult(
+  current: { id: string; peer: string; kind: string; frame: string; createdAt: number },
+  original: { id: string; peer: string; kind: string; frame: string; createdAt: number },
+): boolean {
+  return current.id === original.id && current.peer === original.peer &&
+    current.kind === original.kind && current.frame === original.frame &&
+    current.createdAt === original.createdAt;
+}
+
+/** Prevent a signed ACK for a coincidentally reused ID from changing a
+ * local message addressed to a different peer.
+ */
+export function shouldAcceptTextMessageAck(
+  message: { to: string }, authenticatedPeer: string,
+): boolean {
+  return message.to === authenticatedPeer;
+}

@@ -67,7 +67,7 @@ import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, mess
 import { duplicateMessageMatches } from "./inbound-identity";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, sameOutgoingDispatchRoute, type DispatchCommitResult } from "./dispatch-commit";
-import { advanceDeliveryStatus, shouldEmitDeliveryEvent, shouldNotifyMessageAcknowledgement, type DeliveryEvent } from "./delivery-status-policy";
+import { advanceDeliveryStatus, shouldEmitDeliveryEvent, shouldNotifyMessageAcknowledgement, shouldAcceptTextMessageAck, sameOutboxFrameForResult, type DeliveryEvent } from "./delivery-status-policy";
 import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp, canMutateDeletedMessage, isDuplicateRemoteDeletion, canQueueLifecycleAfterLocalDeletion } from "./lifecycle-auth";
 
 export const ONION_SERVICE_PORT = 8443;
@@ -544,18 +544,20 @@ async function sendOutboxOnce(id: string): Promise<boolean> {
   });
   if (!rec) return false;
   const ok = await ship(rec.peer, rec.frame, rec.id);
-  const attempts = rec.attempts + 1;
-  // Update only if the ACK has not already removed the record.
-  await dxdb.outbox
-    .where("id")
-    .equals(id)
-    .modify({
-      status: ok ? "sent" : "failed",
-      attempts,
-      updatedAt: Date.now(),
-      nextAttemptAt: Date.now() + backoff(attempts),
-    } satisfies Partial<OutboxRecord>);
-  if (ok && rec.kind === "text_message") {
+  // The record can be deleted or replaced with a different sealed event
+  // while network I/O is in progress. Never apply an old result to a new
+  // record that happens to reuse the same immutable event ID.
+  let stillCurrent = false;
+  await dxdb.outbox.where("id").equals(id).modify((current) => {
+    if (!sameOutboxFrameForResult(current, rec)) return;
+    const attempts = current.attempts + 1;
+    current.status = ok ? "sent" : "failed";
+    current.attempts = attempts;
+    current.updatedAt = Date.now();
+    current.nextAttemptAt = current.updatedAt + backoff(attempts);
+    stillCurrent = true;
+  });
+  if (ok && stillCurrent && rec.kind === "text_message") {
     // The remote ACK can commit while send() is still resolving. Update only
     // inside an atomic Dexie modify, never from a stale status snapshot.
     let changedToSent = false;
@@ -747,12 +749,15 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
           if (!rec || rec.peer !== from) continue;
           await dxdb.outbox.delete(mid);
           if (rec.kind === "text_message") {
-            const count = await dxdb.messages.where("id").equals(mid).modify((message) => {
+            let matched = false;
+            await dxdb.messages.where("id").equals(mid).modify((message) => {
+              if (!shouldAcceptTextMessageAck(message, rec.peer)) return;
               message.status = advanceDeliveryStatus(message.status, "delivered");
+              matched = true;
             });
             // ACK for a lifecycle, profile, reaction or a deleted message is
             // not evidence that a visible chat message was delivered.
-            if (shouldNotifyMessageAcknowledgement(rec.kind, count > 0))
+            if (shouldNotifyMessageAcknowledgement(rec.kind, matched))
               confirmedMessages.push(mid);
           }
         }

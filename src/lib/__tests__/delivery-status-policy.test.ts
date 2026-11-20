@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advanceDeliveryStatus, shouldEmitDeliveryEvent, shouldNotifyMessageAcknowledgement, type DeliveryStatus } from "../delivery-status-policy";
+import { advanceDeliveryStatus, shouldEmitDeliveryEvent, shouldNotifyMessageAcknowledgement, shouldAcceptTextMessageAck, sameOutboxFrameForResult, type DeliveryStatus } from "../delivery-status-policy";
 
 describe("monotonic authenticated Tor delivery status", () => {
   const states: DeliveryStatus[] = ["pending","sent","delivered","read"];
@@ -42,5 +42,21 @@ describe("durable ACK UI delivery type isolation", () => {
   it("ignores an ACK after the original chat message was deleted", () => {
     expect(shouldNotifyMessageAcknowledgement("text_message", false)).toBe(false);
     expect(shouldNotifyMessageAcknowledgement("text_message", true)).toBe(true);
+  });
+});
+
+describe("stale Tor socket results and authenticated delivery route", () => {
+  const sent = { id: "frame", peer: "peer-a", kind: "text_message",
+    frame: "encrypted-frame-a", createdAt: 10 };
+  it("only changes the exact original outbox frame after network I/O", () => {
+    expect(sameOutboxFrameForResult({...sent},sent)).toBe(true);
+    expect(sameOutboxFrameForResult({...sent,peer:"peer-b"},sent)).toBe(false);
+    expect(sameOutboxFrameForResult({...sent,frame:"replaced-frame"},sent)).toBe(false);
+    expect(sameOutboxFrameForResult({...sent,createdAt:11},sent)).toBe(false);
+    expect(sameOutboxFrameForResult({...sent,kind:"message_reaction"},sent)).toBe(false);
+  });
+  it("only advances delivery for a message addressed to the ACK sender", () => {
+    expect(shouldAcceptTextMessageAck({to:"peer-a"},"peer-a")).toBe(true);
+    expect(shouldAcceptTextMessageAck({to:"peer-b"},"peer-a")).toBe(false);
   });
 });
