@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const calls = vi.hoisted(() => ({
-  readFile: vi.fn(), decrypt: vi.fn(), currentIdentity: vi.fn(),
+  readFile: vi.fn(), stat: vi.fn(), decrypt: vi.fn(), currentIdentity: vi.fn(),
   validateIdentity: vi.fn((x: unknown) => x),
   readPayload: vi.fn(), assertMatching: vi.fn(),
   importDump: vi.fn(), transfer: vi.fn(), purgeExpired: vi.fn(),
 }));
 
 vi.mock("@capacitor/filesystem", () => ({
-  Filesystem: { readFile: calls.readFile },
+  Filesystem: { readFile: calls.readFile, stat: calls.stat },
   Directory: { Documents: "DOCUMENTS" },
   Encoding: { UTF8: "utf8" },
 }));
@@ -39,6 +39,7 @@ const database = {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  calls.stat.mockResolvedValue({ size: 2048 });
   calls.readFile.mockResolvedValue({ data: JSON.stringify({ magic: "TRIVO-BACKUP-V2" }) });
   calls.decrypt.mockResolvedValue("{}");
   calls.currentIdentity.mockResolvedValue({ id: "current" });
