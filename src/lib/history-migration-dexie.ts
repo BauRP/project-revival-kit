@@ -35,6 +35,12 @@ export function sameLegacyHistorySnapshot<T>(live: T | undefined, expected: T): 
 export function isMigratableMessageLifecycle(row: LifecycleRecord): boolean {
   return !!row && typeof row.key === "string" &&
     typeof row.chatKey === "string" && typeof row.messageId === "string" &&
+    row.messageId.length > 0 && row.messageId.length <= 128 &&
+    !/[\u0000-\u001f\u007f]/.test(row.messageId) &&
+    row.data?.deletedForEveryone !== true &&
+    !(
+      Array.isArray(row.data?.deletedFor) && row.data.deletedFor.length > 0
+    ) &&
     row.chatKey !== LOCAL_DELETED_CHAT_KEY &&
     row.chatKey !== "consumed-media" &&
     !row.chatKey.startsWith("reaction::") &&

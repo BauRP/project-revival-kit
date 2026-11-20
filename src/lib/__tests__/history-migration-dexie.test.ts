@@ -28,4 +28,14 @@ describe("Dexie migration conflict and security-row eligibility", () => {
     }
     expect(isMigratableMessageLifecycle({ ...edit, key: "peer::different" })).toBe(false);
   });
+  it("does not silently treat different keys or deleted edit mirrors as unchanged", () => {
+    const original = { id: "m", text: "secret", extra: undefined };
+    expect(sameLegacyHistorySnapshot({ id: "m", text: "secret", other: undefined },original)).toBe(false);
+    const edit: LifecycleRecord = {
+      key:"peer::m",chatKey:"peer",messageId:"m",updatedAt:10,data:{isEdited:true},
+    };
+    expect(isMigratableMessageLifecycle({...edit,data:{deletedForEveryone:true}})).toBe(false);
+    expect(isMigratableMessageLifecycle({...edit,data:{deletedFor:["self"]}})).toBe(false);
+    expect(isMigratableMessageLifecycle({...edit,messageId:"bad\\nID"})).toBe(false);
+  });
 });
