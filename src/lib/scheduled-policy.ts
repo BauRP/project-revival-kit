@@ -78,6 +78,28 @@ export function sameScheduledIdentity(
     current.createdAt === expected.createdAt;
 }
 
+/** The exact persisted version of a schedule, including retry metadata.
+ * A second WebView may cancel, replace or reschedule the same ID while a
+ * Keystore operation or network dispatch is waiting. Identity alone is not
+ * enough: stale callbacks must never overwrite the newer durable state.
+ */
+export interface ScheduledQueueSnapshot extends ScheduledRetryState {
+  id: string;
+  chatId: string;
+  text: string;
+  silent: boolean;
+  createdAt: number;
+}
+export function sameScheduledState(
+  expected: ScheduledQueueSnapshot,
+  current: ScheduledQueueSnapshot | undefined,
+): boolean {
+  return sameScheduledIdentity(expected, current) &&
+    current?.silent === expected.silent &&
+    current?.attempts === expected.attempts &&
+    current?.nextAttemptAt === expected.nextAttemptAt;
+}
+
 /** Reject permanently undeliverable recipients while preserving the local
  * test-bot fixture, which is never routed over Tor.
  */

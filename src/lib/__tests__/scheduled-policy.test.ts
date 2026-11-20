@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem, validateStoredScheduledItem, type ScheduledRetryState, sameScheduledIdentity } from "../scheduled-policy";
+import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem, validateStoredScheduledItem, type ScheduledRetryState, sameScheduledIdentity, sameScheduledState } from "../scheduled-policy";
 describe("durable scheduled message identity", () => {
   const original: ScheduledRetryState & {id:string;text:string}={id:"msg",text:"hi",scheduledAt:1000,attempts:0};
   it("never rewrites scheduledAt when Tor is unavailable",()=>{
@@ -83,5 +83,30 @@ describe("persisted scheduled ciphertext and retry validation", () => {
       {...original,nextAttemptAt:-5}, {...original,createdAt:0},
       {...original,text:""},
     ]) expect(() => validateStoredScheduledItem(wrong, false)).toThrow();
+  });
+});
+
+describe("scheduled IndexedDB compare-and-write safety", () => {
+  const old = {
+    id: "schedule-1", chatId: "TRIVO_MOCK_PEER_999",
+    text: "keystore-ciphertext", silent: false, scheduledAt: 1000,
+    createdAt: 900, attempts: 1, nextAttemptAt: 32000,
+  };
+  it("rejects a cancelled or replaced schedule before a late delete", () => {
+    expect(sameScheduledState(old, undefined)).toBe(false);
+    expect(sameScheduledState(old, { ...old, createdAt: 901 })).toBe(false);
+    expect(sameScheduledState(old, { ...old, text: "new protected content" })).toBe(false);
+    expect(sameScheduledState(old, { ...old, silent: true })).toBe(false);
+  });
+  it("rejects concurrent retry changes before late retry or legacy encryption", () => {
+    expect(sameScheduledState(old, old)).toBe(true);
+    expect(sameScheduledState(old, { ...old, attempts: 2 })).toBe(false);
+    expect(sameScheduledState(old, { ...old, nextAttemptAt: 65000 })).toBe(false);
+    expect(sameScheduledState(old, { ...old, nextAttemptAt: undefined })).toBe(false);
+  });
+  it("supports unchanged legacy items without retry metadata", () => {
+    const legacy = { ...old, attempts: undefined, nextAttemptAt: undefined };
+    expect(sameScheduledState(legacy, { ...legacy })).toBe(true);
+    expect(sameScheduledState(legacy, { ...legacy, attempts: 0 })).toBe(false);
   });
 });

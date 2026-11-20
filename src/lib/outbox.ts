@@ -1,4 +1,4 @@
-import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem, validateStoredScheduledItem, sameScheduledIdentity, canScheduleRecipient } from "./scheduled-policy";
+import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem, validateStoredScheduledItem, sameScheduledState, canScheduleRecipient } from "./scheduled-policy";
 import { protectScheduledText, revealScheduledText, isSealedScheduledText } from "./scheduled-encryption";
 import { isNative } from "./platform";
 // Local outbox for Scheduled Send (Turn 2).
@@ -139,6 +139,46 @@ async function tx<T>(
   });
 }
 
+/** Compare and mutate in ONE IndexedDB write transaction. A serialized
+ * JavaScript mutex cannot protect another WebView/process. In particular,
+ * encrypting legacy text must not recreate a schedule deleted by a peer
+ * window, and a late send/retry must not erase a replacement under its ID.
+ * No network or Keystore promises are awaited inside the transaction.
+ */
+async function updateScheduledIfCurrent(
+  expected: ScheduledItem,
+  apply: (store: IDBObjectStore, current: ScheduledItem) => void,
+): Promise<boolean> {
+  const db = await openDB();
+  return new Promise<boolean>((resolve, reject) => {
+    let tx: IDBTransaction;
+    try {
+      tx = db.transaction(STORE, "readwrite");
+    } catch (error) {
+      reject(error);
+      return;
+    }
+    const store = tx.objectStore(STORE);
+    let changed = false;
+    let cause: unknown;
+    const req = store.get(expected.id) as IDBRequest<ScheduledItem | undefined>;
+    req.onsuccess = () => {
+      if (!sameScheduledState(expected, req.result)) return;
+      try {
+        apply(store, req.result!);
+        changed = true;
+      } catch (error) {
+        cause = error;
+        tx.abort();
+      }
+    };
+    req.onerror = () => { cause = req.error; };
+    tx.oncomplete = () => resolve(changed);
+    tx.onerror = () => reject(cause ?? tx.error ?? new Error("Scheduled update failed"));
+    tx.onabort = () => reject(cause ?? tx.error ?? new Error("Scheduled update aborted"));
+  });
+}
+
 export async function listOutbox(): Promise<ScheduledItem[]> {
   // A failed read is not an empty queue. Propagate the error to prevent
   // falsely reporting that scheduled messages were delivered or deleted.
@@ -216,7 +256,7 @@ async function fireDue() {
         const current = await tx<ScheduledItem | undefined>(
           "readonly", (store) => store.get(item.id) as IDBRequest<ScheduledItem | undefined>,
         );
-        if (!current || !sameScheduledIdentity(item, current)) return;
+        if (!current || !sameScheduledState(item, current)) return;
         const decrypted = await revealScheduledText(current.text);
         const dispatch: ScheduledItem = { ...current, text: decrypted };
         validateScheduledItem(dispatch);
@@ -242,7 +282,9 @@ async function fireDue() {
           silent: dispatch.silent,
         });
       }
-        await tx("readwrite", (store) => store.delete(item.id));
+        await updateScheduledIfCurrent(current, (store) => {
+          store.delete(current.id);
+        });
       });
     } catch (e) {
       console.error("[outbox] send failed", item.id, e);
@@ -250,13 +292,9 @@ async function fireDue() {
       // during an async send or replace a newly scheduled item with old data.
       await serialized(async () => {
         if (closed) return;
-        const current = await tx<ScheduledItem | undefined>(
-          "readonly", (store) => store.get(item.id) as IDBRequest<ScheduledItem | undefined>,
-        );
-        if (sameScheduledIdentity(item, current))
-          await tx("readwrite", (store) =>
-            store.put(nextScheduledRetry(current!, Date.now())),
-          );
+        await updateScheduledIfCurrent(item, (store, current) => {
+          store.put(nextScheduledRetry(current, Date.now()));
+        });
       });
     }
   }
@@ -323,8 +361,10 @@ export async function migrateLegacyScheduledTexts(): Promise<number> {
       if (isSealedScheduledText(item.text)) continue;
       validateScheduledItem(item);
       const sealed = await protectScheduledText(item.text);
-      await tx("readwrite", (store) => store.put({ ...item, text: sealed }));
-      changed++;
+      const migrated = await updateScheduledIfCurrent(item, (store, current) => {
+        store.put({ ...current, text: sealed });
+      });
+      if (migrated) changed++;
     }
     return changed;
   });
