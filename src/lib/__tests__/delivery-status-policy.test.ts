@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advanceDeliveryStatus, shouldEmitDeliveryEvent, type DeliveryStatus } from "../delivery-status-policy";
+import { advanceDeliveryStatus, shouldEmitDeliveryEvent, shouldNotifyMessageAcknowledgement, type DeliveryStatus } from "../delivery-status-policy";
 
 describe("monotonic authenticated Tor delivery status", () => {
   const states: DeliveryStatus[] = ["pending","sent","delivered","read"];
@@ -27,5 +27,20 @@ describe("Tor UI events can never regress after a remote ACK", () => {
     expect(shouldEmitDeliveryEvent("delivered", "delivered")).toBe(false);
     expect(shouldEmitDeliveryEvent("sent", "sent")).toBe(false);
     expect(shouldEmitDeliveryEvent(undefined, "delivered")).toBe(true);
+  });
+});
+
+describe("durable ACK UI delivery type isolation", () => {
+  it("does not mark a chat message delivered for non-message event ACKs", () => {
+    for (const kind of [
+      "profile_update", "message_reaction", "message_lifecycle",
+      "history_protection", "friend_request", "message_status",
+    ]) {
+      expect(shouldNotifyMessageAcknowledgement(kind, true)).toBe(false);
+    }
+  });
+  it("ignores an ACK after the original chat message was deleted", () => {
+    expect(shouldNotifyMessageAcknowledgement("text_message", false)).toBe(false);
+    expect(shouldNotifyMessageAcknowledgement("text_message", true)).toBe(true);
   });
 });

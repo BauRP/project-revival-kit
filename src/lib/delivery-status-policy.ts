@@ -21,3 +21,12 @@ export function shouldEmitDeliveryEvent(
 ): boolean {
   return previous !== incoming && previous !== "delivered";
 }
+
+/** Only durable ACKs for a still-present text message can advance the
+ * chat's delivery indicator. Other sealed event categories have ACKs too.
+ */
+export function shouldNotifyMessageAcknowledgement(
+  kind: string, messageStillExists: boolean,
+): boolean {
+  return kind === "text_message" && messageStillExists;
+}

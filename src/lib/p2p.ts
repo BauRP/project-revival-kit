@@ -23,7 +23,7 @@ import {
   onionRegisterIncomingListener,
   onionSendDispatch,
 } from "./onion-engine";
-import { isValidOnion } from "./onion-id";
+import { isCanonicalFriendOnion } from "./friend-request-policy";
 import { isLocalSupportPeer } from "./local-only-peer-policy";
 
 export interface P2PMessage {
@@ -96,7 +96,7 @@ onionRegisterIncomingListener((payload) => {
 export async function sendP2PMessage(toOnion: string, message: P2PMessage): Promise<boolean> {
   const stored: P2PMessage = { ...message, to: toOnion, status: "pending" };
   // Local-only chats (built-in support bot) never touch the network.
-  if (!isValidOnion(toOnion)) {
+  if (!isCanonicalFriendOnion(toOnion)) {
     if (!isLocalSupportPeer(toOnion))
       throw new Error("Message not sent: recipient must have a valid Tor .onion address");
     await saveLocalMessage({ ...stored, status: "delivered" });
@@ -126,7 +126,7 @@ export async function sendP2PMessage(toOnion: string, message: P2PMessage): Prom
 }
 
 export function connectToPeer(onion: string): void {
-  if (isValidOnion(onion)) void onionEnsureConnection(onion).catch(() => false);
+  if (isCanonicalFriendOnion(onion)) void onionEnsureConnection(onion).catch(() => false);
 }
 
 // ─── Local persistence (Dexie) ───────────────────────────────
@@ -139,6 +139,10 @@ export async function saveLocalMessage(msg: P2PMessage): Promise<void> {
     if (isDeletedMessageRecord(erased?.data))
       throw new Error("Cannot save a locally deleted message");
     const previous = await dxdb.messages.get(msg.id);
+    // A legacy or local-only writer must never overwrite another author's
+    // message when reusing an existing ID. Edits retain their own update path.
+    if (previous && (previous.from !== msg.from || previous.to !== msg.to))
+      throw new Error("Local message ID belongs to another conversation");
     const safe = previous
       ? { ...msg, status: advanceDeliveryStatus(previous.status, msg.status) }
       : msg;

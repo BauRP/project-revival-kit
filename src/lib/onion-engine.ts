@@ -67,7 +67,7 @@ import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, mess
 import { duplicateMessageMatches } from "./inbound-identity";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, sameOutgoingDispatchRoute, type DispatchCommitResult } from "./dispatch-commit";
-import { advanceDeliveryStatus, shouldEmitDeliveryEvent, type DeliveryEvent } from "./delivery-status-policy";
+import { advanceDeliveryStatus, shouldEmitDeliveryEvent, shouldNotifyMessageAcknowledgement, type DeliveryEvent } from "./delivery-status-policy";
 import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp, canMutateDeletedMessage, isDuplicateRemoteDeletion, canQueueLifecycleAfterLocalDeletion } from "./lifecycle-auth";
 
 export const ONION_SERVICE_PORT = 8443;
@@ -534,8 +534,12 @@ async function sendOutboxOnce(id: string): Promise<boolean> {
       return undefined;
     }
     if (queued.kind === "text_message" &&
-        !mayQueueOriginalText((await dxdb.lifecycle.get(deletedMessageKey(id)))?.data))
+        !mayQueueOriginalText((await dxdb.lifecycle.get(deletedMessageKey(id)))?.data)) {
+      // The deletion marker is irreversible. An old outbound frame must not
+      // survive reconnect/restart and repeatedly attempt to send erased text.
+      await dxdb.outbox.delete(id);
       return undefined;
+    }
     return queued;
   });
   if (!rec) return false;
@@ -733,7 +737,7 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
     }
     case "ack": {
       const ids = boundedAcknowledgements(inner.body.ids);
-      const confirmed: string[] = [];
+      const confirmedMessages: string[] = [];
       await dxdb.transaction("rw", [dxdb.outbox, dxdb.messages, dxdb.inbox_raw], async () => {
         for (const mid of ids) {
           if (typeof mid !== "string") continue;
@@ -743,15 +747,18 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
           if (!rec || rec.peer !== from) continue;
           await dxdb.outbox.delete(mid);
           if (rec.kind === "text_message") {
-            await dxdb.messages.where("id").equals(mid).modify((message) => {
+            const count = await dxdb.messages.where("id").equals(mid).modify((message) => {
               message.status = advanceDeliveryStatus(message.status, "delivered");
             });
+            // ACK for a lifecycle, profile, reaction or a deleted message is
+            // not evidence that a visible chat message was delivered.
+            if (shouldNotifyMessageAcknowledgement(rec.kind, count > 0))
+              confirmedMessages.push(mid);
           }
-          confirmed.push(mid);
         }
         await dxdb.inbox_raw.delete(rawId);
       });
-      confirmed.forEach((mid) => notifyDelivery(mid, "delivered"));
+      confirmedMessages.forEach((mid) => notifyDelivery(mid, "delivered"));
       return;
     }
     case "hello":
