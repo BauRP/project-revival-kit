@@ -113,7 +113,10 @@ export async function sealHistoryMessage(
   const extras: Record<string, unknown> = Object.create(null);
   for (const [name, value] of Object.entries(message)) {
     if (!MESSAGE_INDEX_FIELDS.has(name) && name !== "text") {
-      if (name === "__proto__" || name === "constructor" || name === "prototype")
+      // A future/legacy schema must not silently copy a conflicting encrypted
+      // envelope into the private extras. Refuse ambiguous mixed records.
+      if (name === "kind" || name === "sealed" || name === "__proto__" ||
+          name === "constructor" || name === "prototype")
         throw new Error("Unsafe private message property");
       extras[name] = value;
     }
@@ -123,6 +126,14 @@ export async function sealHistoryMessage(
     timestamp: message.timestamp, text: message.text, extras,
   });
   if (typeof payload !== "string") throw new Error("Cannot serialize private message");
+  // Do not silently lose JSON-unsupported values (Blob, BigInt, cyclic data,
+  // undefined nested properties). Refuse the row instead of encrypting an
+  // incomplete snapshot and later deleting its only plaintext copy.
+  const parsedPayload = JSON.parse(payload) as {
+    text: string; extras: Record<string, unknown>;
+  };
+  if (JSON.stringify(parsedPayload.extras) !== JSON.stringify(extras))
+    throw new Error("Private message contains nonportable fields");
   return {
     kind: SEALED_MESSAGE_KIND,
     id: message.id, from: message.from, to: message.to,
@@ -174,6 +185,9 @@ export async function sealHistoryLifecycle(
     data: row.data,
   });
   if (typeof payload !== "string") throw new Error("Cannot serialize private lifecycle");
+  const parsed = JSON.parse(payload) as { data: Record<string, unknown> };
+  if (JSON.stringify(parsed.data) !== JSON.stringify(row.data))
+    throw new Error("Private lifecycle contains nonportable fields");
   return {
     kind: SEALED_LIFECYCLE_KIND,
     key: row.key, chatKey: row.chatKey, messageId: row.messageId,
