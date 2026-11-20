@@ -27,17 +27,17 @@ export function messageMediaFileId(message: unknown): string | null {
 export function mayShareOutgoingAttachment(
   message: { from?: unknown; to?: unknown; media?: unknown } | null | undefined,
   self: string, peer: string, fileId: string,
-  deleted: unknown, consumed: unknown, revokedContact: unknown,
+  deletedRecord: unknown, consumedRecord: unknown, revokedContact: unknown,
 ): boolean {
+  // These are full canonical IndexedDB records, not just .data payloads.
+  // A corrupt existing marker must never silently grant old media access.
   return !!message && !!self && !!peer && self !== peer &&
     typeof fileId === "string" && fileId.length > 0 &&
     message.from === self && message.to === peer &&
     messageMediaFileId(message) === fileId &&
-    revokedContact === undefined &&
-    !isDeletedMessageRecord(deleted) &&
-    !(!!consumed && typeof consumed === "object" &&
-      !Array.isArray(consumed) &&
-      (consumed as { consumed?: unknown }).consumed === true);
+    deletedRecord === undefined &&
+    consumedRecord === undefined &&
+    revokedContact === undefined;
 }
 
 export function findUnreferencedMedia(

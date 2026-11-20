@@ -20,3 +20,15 @@ describe("honest Tor connection indicator", () => {
     expect(isTorServiceReady({ ...ready, lastError: "mismatched identity" })).toBe(false);
   });
 });
+
+describe("Tor indicator rejects aliases and unusable ports", () => {
+  it("requires an exact raw v3 hostname", () => {
+    expect(isTorServiceReady({ ...ready, onion: "https://" + ready.onion })).toBe(false);
+    expect(isTorServiceReady({ ...ready, onion: ready.onion!.toUpperCase() })).toBe(false);
+  });
+  it("requires live native transport endpoints", () => {
+    expect(isTorServiceReady({ ...ready, socksPort: 0 })).toBe(false);
+    expect(isTorServiceReady({ ...ready, servicePort: 0 })).toBe(false);
+    expect(isTorServiceReady({ ...ready, socksPort: Number.NaN })).toBe(false);
+  });
+});

@@ -93,7 +93,19 @@ export async function toggleReaction(
     };
     await dxdb.lifecycle.put(record);
   });
-  return getReactions(chatId);
+  // Notify active local chat subscribers after the durable toggle, too.
+  // Previously only signed incoming reactions triggered subscriptions.
+  const revision = Symbol("local-reaction-update");
+  reactionReadVersions.set(chatId, revision);
+  const map = await getReactions(chatId);
+  if (reactionReadVersions.get(chatId) === revision) {
+    reactionReadVersions.delete(chatId);
+    listeners.forEach((listener) => {
+      try { listener(chatId, map); }
+      catch (error) { console.warn("[reactions] listener failed", error); }
+    });
+  }
+  return map;
 }
 
 /** Display listeners fire AFTER the authenticated inbound Dexie commit. */

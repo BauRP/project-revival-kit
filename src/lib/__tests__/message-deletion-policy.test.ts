@@ -236,10 +236,12 @@ describe("outgoing Tor attachment access after privacy events", () => {
     expect(allow({ ...message, media: { fileId: "unrelated" } })).toBe(false);
   });
   it("never resends a deleted, consumed or revoked attachment", () => {
-    expect(allow(message, { deleted: true })).toBe(false);
-    expect(allow(message, undefined, { consumed: true })).toBe(false);
+    expect(allow(message, { data: { deleted: true } })).toBe(false);
+    expect(allow(message, undefined, { data: { consumed: true } })).toBe(false);
     expect(allow(message, undefined, undefined, { data: { removed: true } })).toBe(false);
     expect(allow(message, undefined, undefined, { data: "corrupt" })).toBe(false);
-    expect(allow(message, { deleted: false }, { consumed: false })).toBe(true);
+    expect(allow(message, { data: "damaged" })).toBe(false);
+    expect(allow(message, undefined, { data: "damaged" })).toBe(false);
+    expect(allow(message)).toBe(true);
   });
 });

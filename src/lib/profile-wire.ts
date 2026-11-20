@@ -1,3 +1,5 @@
+import { isValidOnion } from "./onion-id";
+
 /** Allowlisted profile information shared only with known Tor contacts. */
 export type SharedProfileStatus = "online" | "away" | "dnd" | "offline" | "custom";
 export interface SharedProfile {
@@ -13,6 +15,12 @@ function isSafeAvatar(avatar: unknown): avatar is string | null {
   return avatar === null ||
     (typeof avatar === "string" && avatar.length <= 65_536 &&
       /^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(avatar));
+}
+
+/** Do not send private profile data to URL aliases or uppercase contact keys. */
+export function canPublishProfileToPeer(peer: string): boolean {
+  return typeof peer === "string" && /^[a-z2-7]{56}\.onion$/.test(peer) &&
+    isValidOnion(peer);
 }
 
 /** Signed sender, not a field controlled by remote JSON, establishes identity. */

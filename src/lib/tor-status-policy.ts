@@ -7,6 +7,9 @@ export function isTorServiceReady(status: TorStatus): boolean {
     status.bootstrapped === true &&
     status.bootstrapPercent >= 100 &&
     typeof status.onion === "string" &&
+    /^[a-z2-7]{56}\.onion$/.test(status.onion) &&
     isValidOnion(status.onion) &&
+    Number.isSafeInteger(status.socksPort) && status.socksPort > 0 &&
+    Number.isSafeInteger(status.servicePort) && status.servicePort > 0 &&
     !status.lastError;
 }

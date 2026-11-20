@@ -34,3 +34,15 @@ describe("Tor profile synchronization privacy", () => {
     expect(JSON.stringify(shared)).not.toContain("deviceDiagnostics");
   });
 });
+
+import { canPublishProfileToPeer } from "../profile-wire";
+import { onionFromPublicKey } from "../onion-id";
+describe("outbound profile contact identity", () => {
+  it("only allows checksum-valid lowercase raw onion hosts", () => {
+    const onion = onionFromPublicKey(new Uint8Array(32).fill(4));
+    expect(canPublishProfileToPeer(onion)).toBe(true);
+    for (const id of ["https://" + onion, onion.toUpperCase(), onion + "/", "example.onion"]) {
+      expect(canPublishProfileToPeer(id)).toBe(false);
+    }
+  });
+});

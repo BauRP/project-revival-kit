@@ -1,3 +1,5 @@
+import { isDeletedMessageRecord } from "./message-deletion-policy";
+
 /**
  * Validation of remote lifecycle commands. Pure functions so security rules
  * can be regression-tested without a WebView, Tor service or IndexedDB.
@@ -98,6 +100,19 @@ export function canAuthorModifyOwnMessage(
 ): boolean {
   return !!message && !!self && !!peer && self !== peer &&
     message.from === self && message.to === peer;
+}
+
+/** Either participant may pin a still-visible message. This is not an
+ * author-only edit, but a stale message ID from another chat is forbidden.
+ */
+export function mayPinChatMessage(
+  message: { from?: string; to?: string } | undefined,
+  self: string, peer: string, deletion: unknown,
+): boolean {
+  return !!message && !!self && !!peer && self !== peer &&
+    ((message.from === self && message.to === peer) ||
+     (message.from === peer && message.to === self)) &&
+    !isDeletedMessageRecord(deletion);
 }
 
 /** A local irreversible deletion also stops stale asynchronous outbound

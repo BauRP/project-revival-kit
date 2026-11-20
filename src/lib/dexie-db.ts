@@ -11,7 +11,7 @@ import Dexie, { type Table } from "dexie";
 import { consumedMediaKey, consumedMediaFileIds, hasConsumedMediaReference, isConsumedMediaRecord, isProtectedByConsumedTombstone, sanitizeRestoredOneTimeMessage } from "./one-time-policy";
 import { validateBackupStructure } from "./backup-validation";
 import { stripSessionMediaUrl } from "./backup-media-policy";
-import { lifecycleRowsForRestore, lifecycleRowsToPurgeForDeletedMessages } from "./backup-merge-policy";
+import { lifecycleRowsForRestore, lifecycleRowsToPurgeForDeletedMessages, isIrreversiblePrivacyMarker } from "./backup-merge-policy";
 import { queuedReactionEventIds } from "./reaction-deletion-policy";
 import { assertPortableBackupFits } from "./backup-budget";
 import { assertExportSnapshotSafe } from "./backup-snapshot-policy";
@@ -688,7 +688,7 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
         row?.chatKey === "consumed-media" && isConsumedMediaRecord(row.data) &&
         row.key === consumedMediaKey(row.messageId));
       const revoked = new Set([
-        ...currentTombstones.filter((row) => isConsumedMediaRecord(row.data)).map((row) => row.key),
+        ...currentTombstones.filter(isIrreversiblePrivacyMarker).map((row) => row.key),
         ...restoredTombstones.map((row) => row.key),
       ]);
       // Preserve local removal decisions; a restored older archive must not
@@ -733,7 +733,7 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
         row?.chatKey === LOCAL_DELETED_CHAT_KEY && isDeletedMessageRecord(row.data) &&
         row.key === deletedMessageKey(row.messageId));
       const deletedIds = new Set([
-        ...currentDeleted.filter((r) => isDeletedMessageRecord(r.data)).map((r) => r.messageId),
+        ...currentDeleted.filter(isIrreversiblePrivacyMarker).map((r) => r.messageId),
         ...restoredDeleted.map((r) => r.messageId),
       ]);
       await dxdb.messages.bulkPut((dump.messages || []).filter((m) =>

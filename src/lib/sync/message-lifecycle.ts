@@ -13,7 +13,8 @@ import { isValidOnion } from "../onion-id";
 import { dxdb, getLifecycleMap } from "../dexie-db";
 import { assertRemoteHistoryAllowsChanges } from "../history-protection";
 import { redactMessageForMe } from "../p2p";
-import { canAuthorModifyOwnMessage } from "../lifecycle-auth";
+import { canAuthorModifyOwnMessage, mayPinChatMessage } from "../lifecycle-auth";
+import { deletedMessageKey } from "../message-deletion-policy";
 
 export interface MessageLifecycle {
   messageId: string;
@@ -170,7 +171,19 @@ export async function deleteMessageForEveryone(
   await writeLocalEntry(selfId, peerId, messageId, patch);
 }
 
+async function assertPinTarget(selfId: string, peerId: string, messageId: string): Promise<void> {
+  const allowed = await dxdb.transaction("r", [dxdb.messages, dxdb.lifecycle], async () => {
+    const [message, deleted] = await Promise.all([
+      dxdb.messages.get(messageId),
+      dxdb.lifecycle.get(deletedMessageKey(messageId)),
+    ]);
+    return mayPinChatMessage(message, selfId, peerId, deleted?.data);
+  });
+  if (!allowed) throw new Error("Cannot pin a deleted or unrelated message");
+}
+
 export async function pinMessage(selfId: string, peerId: string, messageId: string): Promise<void> {
+  await assertPinTarget(selfId, peerId, messageId);
   const patch: Partial<MessageLifecycle> = { pinnedAt: Date.now(), pinnedBy: selfId };
   // Durable encrypted outbox first. If sealing/storage fails, the UI must
   // not claim the remote mutation succeeded in the local mirror.
@@ -183,6 +196,7 @@ export async function unpinMessage(
   peerId: string,
   messageId: string,
 ): Promise<void> {
+  await assertPinTarget(selfId, peerId, messageId);
   const patch: Partial<MessageLifecycle> = { pinnedAt: undefined, pinnedBy: undefined };
   await broadcastLifecycle(selfId, peerId, messageId, {
     ...patch,

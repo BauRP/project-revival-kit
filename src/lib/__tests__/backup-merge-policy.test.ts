@@ -52,3 +52,17 @@ describe("restore deletion erases stale mutable lifecycle state", () => {
     expect(lifecycleRowsToPurgeForDeletedMessages([ordinary],new Set())).toEqual([]);
   });
 });
+
+describe("restore trusts canonical current privacy marker keys only", () => {
+  it("ignores mismatched local row identifiers but honors true tombstones", () => {
+    const invalid = [
+      { ...removed, key: "unrelated" },
+      { ...removed, messageId: "other" },
+      { ...consumed, key: "consumed-media::other" },
+      { ...consumed, messageId: "other" },
+    ];
+    expect(invalid.filter(isIrreversiblePrivacyMarker)).toEqual([]);
+    expect([removed, consumed].filter(isIrreversiblePrivacyMarker))
+      .toEqual([removed, consumed]);
+  });
+});

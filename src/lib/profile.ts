@@ -15,7 +15,7 @@ import { mutateChatMeta } from "./p2p";
 import { getAllContacts, dxdb } from "./dexie-db";
 import { onionRegisterIncomingListener, onionSendDispatch } from "./onion-engine";
 import { isValidOnion } from "./onion-id";
-import { makeSharedProfile, validateSharedProfile } from "./profile-wire";
+import { makeSharedProfile, validateSharedProfile, canPublishProfileToPeer } from "./profile-wire";
 import { remoteProfileDataKey, openRemoteProfile, sealRemoteProfile,
   looksLikeSealedRemoteProfile, sameRemoteProfileRow } from "./protected-remote-profile";
 
@@ -287,7 +287,7 @@ async function publishProfileToContacts(profile: UserProfile): Promise<void> {
   const shared = makeSharedProfile(profile);
   const contacts = await getAllContacts();
   const peers = contacts.filter((c) =>
-    isValidOnion(c.onion) && c.onion !== profile.userId);
+    canPublishProfileToPeer(c.onion) && c.onion !== profile.userId);
   const errors: unknown[] = [];
   // Limit simultaneous encryption/sealing, IndexedDB writes and Tor dials
   // rather than spawning thousands of outstanding promises on a large list.

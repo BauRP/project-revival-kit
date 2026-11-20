@@ -87,3 +87,16 @@ describe("asynchronous outgoing edits after local permanent deletion", () => {
       { pinnedAt: 12 })).toBe(true);
   });
 });
+
+import { mayPinChatMessage } from "../lifecycle-auth";
+describe("local pin cannot change a different or erased conversation", () => {
+  it("permits either participant in the actual conversation", () => {
+    expect(mayPinChatMessage({ from, to }, from, to, undefined)).toBe(true);
+    expect(mayPinChatMessage({ from, to }, to, from, undefined)).toBe(true);
+  });
+  it("rejects absent, unrelated and deleted messages", () => {
+    expect(mayPinChatMessage(undefined, from, to, undefined)).toBe(false);
+    expect(mayPinChatMessage({ from, to }, "third", to, undefined)).toBe(false);
+    expect(mayPinChatMessage({ from, to }, from, to, { deleted: true })).toBe(false);
+  });
+});

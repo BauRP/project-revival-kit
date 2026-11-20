@@ -1129,14 +1129,18 @@ async function canPeerRequestBlob(peer: string, fileId: string): Promise<string 
     const consumed = await dxdb.lifecycle.get(consumedMediaKey(fileId));
     if (hasStoredContactRevocation(revoked) || isConsumedMediaRecord(consumed?.data))
       return null;
-    const candidates = await dxdb.messages.where("to").equals(peer)
+    // Only load matching primary keys, not every full chat message.
+    const ids = await dxdb.messages.where("to").equals(peer)
       .filter((row) => row.from === self && messageMediaFileId(row) === fileId)
-      .toArray();
-    for (const row of candidates) {
-      const deleted = await dxdb.lifecycle.get(deletedMessageKey(row.id));
-      if (mayShareOutgoingAttachment(
-        row, self, peer, fileId, deleted?.data, consumed?.data, revoked,
-      )) return row.id;
+      .primaryKeys();
+    for (const id of ids) {
+      if (typeof id !== "string") continue;
+      const [row, deleted] = await Promise.all([
+        dxdb.messages.get(id),
+        dxdb.lifecycle.get(deletedMessageKey(id)),
+      ]);
+      if (mayShareOutgoingAttachment(row, self, peer, fileId, deleted, consumed, revoked))
+        return id;
     }
     return null;
   });
@@ -1157,7 +1161,7 @@ async function mayContinueBlobSend(
       dxdb.lifecycle.get(removedContactKey(peer)),
     ]);
     return mayShareOutgoingAttachment(
-      parent, self, peer, fileId, deleted?.data, consumed?.data, revoked,
+      parent, self, peer, fileId, deleted, consumed, revoked,
     );
   });
 }
@@ -1207,6 +1211,9 @@ async function sendBlob(
     const slice = new Uint8Array(await rec.data.slice(
       index * BLOB_CHUNK_BYTES, (index + 1) * BLOB_CHUNK_BYTES,
     ).arrayBuffer());
+    // Blob.slice().arrayBuffer() is asynchronous: revoke access again if
+    // this message was erased while its chunk was being read from disk.
+    if (!(await mayContinueBlobSend(peer, fileId, parentId))) return;
     const ok = await sendEphemeral(peer, "blob_chunk", {
       fileId,
       index,
