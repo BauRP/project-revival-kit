@@ -62,3 +62,21 @@ describe("malformed notification settings cannot reveal private chat previews", 
     }
   });
 });
+
+describe("damaged per-chat notification controls", () => {
+  it("does not disclose notifications when a stored mute or block flag is corrupted", () => {
+    for (const settings of [
+      { mutedUntil: "tomorrow" },
+      { mutedUntil: Number.NaN },
+      { mutedUntil: Number.POSITIVE_INFINITY },
+      { mutedUntil: -1 },
+      { blocked: "true" },
+      { silent: null },
+    ]) {
+      expect(shouldNotifyChat({ enabled: true, ...settings } as unknown as import("../notification-policy").NotificationPolicyInput))
+        .toBe(false);
+    }
+    expect(shouldNotifyChat({ enabled: true, mutedUntil: null }, 100)).toBe(true);
+    expect(shouldNotifyChat({ enabled: true, blocked: false, silent: false, mutedUntil: 0 }, 100)).toBe(true);
+  });
+});

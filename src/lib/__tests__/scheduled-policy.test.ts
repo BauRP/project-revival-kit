@@ -110,3 +110,16 @@ describe("scheduled IndexedDB compare-and-write safety", () => {
     expect(sameScheduledState(legacy, { ...legacy, attempts: 0 })).toBe(false);
   });
 });
+
+describe("scheduled Keystore migration conflicts", () => {
+  it("requires an unchanged encrypted source before replacing a legacy entry", () => {
+    const initial = {
+      id: "legacy", chatId: "TRIVO_MOCK_PEER_999", text: "old plaintext",
+      silent: false, scheduledAt: 1000, createdAt: 999,
+    };
+    expect(sameScheduledState(initial, initial)).toBe(true);
+    expect(sameScheduledState(initial, undefined)).toBe(false);
+    expect(sameScheduledState(initial, { ...initial, text: "newer plaintext" })).toBe(false);
+    expect(sameScheduledState(initial, { ...initial, text: "TRIVO-SCHEDULED-V1:sealed" })).toBe(false);
+  });
+});

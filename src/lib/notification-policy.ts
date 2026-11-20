@@ -6,9 +6,14 @@ export interface NotificationPolicyInput {
   silent?: boolean;
 }
 export function shouldNotifyChat(input: NotificationPolicyInput, now: number = Date.now()): boolean {
-  return input.enabled &&
-    input.blocked !== true &&
-    input.silent !== true &&
+  if (input.enabled !== true || !Number.isSafeInteger(now) || now < 0) return false;
+  // Corrupted persisted preferences must not silently unmute a private chat.
+  // Only absence (undefined) is the legacy default; malformed values fail closed.
+  if (input.blocked !== undefined && typeof input.blocked !== "boolean") return false;
+  if (input.silent !== undefined && typeof input.silent !== "boolean") return false;
+  if (input.mutedUntil !== undefined && input.mutedUntil !== null &&
+      (!Number.isSafeInteger(input.mutedUntil) || input.mutedUntil < 0)) return false;
+  return input.blocked !== true && input.silent !== true &&
     !(typeof input.mutedUntil === "number" && input.mutedUntil > now);
 }
 /** Only visible Unicode text is allowed into system notifications. */

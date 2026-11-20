@@ -64,7 +64,7 @@ export async function isAutomaticBackupEnabled(): Promise<boolean> {
 // yields control, so an earlier slow "enable" must never run AFTER a later
 // completed "disable" and silently switch backups back on.
 let preferenceMutationTail: Promise<void> = Promise.resolve();
-function changeAutoBackupPreference(work: () => Promise<void>): Promise<void> {
+function changeAutoBackupPreference<T>(work: () => Promise<T>): Promise<T> {
   const pending = preferenceMutationTail.then(work, work);
   preferenceMutationTail = pending.then(() => undefined, () => undefined);
   return pending;
@@ -119,25 +119,28 @@ export function runAutomaticBackupIfDue(): Promise<void> {
       if (await getTotalBlobBytes() > AUTO_MEDIA_LIMIT)
         throw new Error("Automatic backup skipped: media exceeds safe memory limit");
       if (wiping) return;
-      // A user can disable or replace the automatic-backup configuration
-      // while this large snapshot is being prepared. Do not begin a new
-      // export using a revoked configuration.
-      const beforeExport = await dbGetStrict<unknown>("settings", KEY);
-      if (!isAutoBackupState(beforeExport) ||
-          beforeExport.sealed !== state.sealed ||
-          beforeExport.lastSavedAt !== state.lastSavedAt) return;
-      await exportBackup(plaintext, createDatedBackupFilename(new Date(), "auto"));
-      // Persist the successful export first. If settings were disabled while
-      // the export ran, never touch old archives in this stale cleanup pass.
-      const committedState = { ...state, lastSavedAt: Date.now() };
-      try {
-        await dbPutIfUnchangedStrict(
-          "settings", KEY, state, committedState,
-        );
-      } catch (error) {
-        if (error instanceof ConcurrentProtectedWriteError) return;
-        throw error;
-      }
+      // Export and its preference commit are one serialized operation with
+      // enable/disable. Previously disable() could report success while a
+      // stale automatic export was still writing a NEW archive afterwards.
+      // The user-visible disable completes only after an in-flight export.
+      // Cross-WebView settings still use IndexedDB compare-and-swap.
+      const committedState = await changeAutoBackupPreference(async (): Promise<AutoBackupState | null> => {
+        if (wiping) return null;
+        const beforeExport = await dbGetStrict<unknown>("settings", KEY);
+        if (!isAutoBackupState(beforeExport) ||
+            beforeExport.sealed !== state.sealed ||
+            beforeExport.lastSavedAt !== state.lastSavedAt) return null;
+        await exportBackup(plaintext, createDatedBackupFilename(new Date(), "auto"));
+        const committed = { ...state, lastSavedAt: Date.now() };
+        try {
+          await dbPutIfUnchangedStrict("settings", KEY, state, committed);
+        } catch (error) {
+          if (error instanceof ConcurrentProtectedWriteError) return null;
+          throw error;
+        }
+        return committed;
+      });
+      if (!committedState) return;
       lastFailedAt = 0;
       try {
         const names = (await Filesystem.readdir({

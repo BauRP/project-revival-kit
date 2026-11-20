@@ -179,6 +179,43 @@ async function updateScheduledIfCurrent(
   });
 }
 
+/** Keystore migration may race an old WebView writing a legacy plaintext
+ * schedule. Check the committed store without copying all queued texts into
+ * JS memory before declaring Android's schedule migration complete.
+ */
+async function assertAllScheduledTextsProtected(): Promise<void> {
+  const db = await openDB();
+  return new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(STORE, "readonly");
+    let failure: unknown;
+    let foundPlaintext = false;
+    const request = transaction.objectStore(STORE).openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      try {
+        const item = cursor.value as ScheduledItem;
+        const protectedText = isSealedScheduledText(item.text);
+        validateStoredScheduledItem(item, protectedText);
+        if (!protectedText) {
+          foundPlaintext = true;
+          return;
+        }
+        cursor.continue();
+      } catch (error) {
+        failure = error;
+        transaction.abort();
+      }
+    };
+    request.onerror = () => { failure = request.error; };
+    transaction.oncomplete = () => foundPlaintext
+      ? reject(new Error("Scheduled Android queue still contains legacy plaintext"))
+      : resolve();
+    transaction.onerror = () => reject(failure ?? transaction.error ?? new Error("Cannot inspect scheduled queue"));
+    transaction.onabort = () => reject(failure ?? transaction.error ?? new Error("Scheduled queue scan aborted"));
+  });
+}
+
 export async function listOutbox(): Promise<ScheduledItem[]> {
   // A failed read is not an empty queue. Propagate the error to prevent
   // falsely reporting that scheduled messages were delivered or deleted.
@@ -257,6 +294,13 @@ async function fireDue() {
           "readonly", (store) => store.get(item.id) as IDBRequest<ScheduledItem | undefined>,
         );
         if (!current || !sameScheduledState(item, current)) return;
+        // A legacy WebView or interrupted migration can leave a new plaintext
+        // entry after startup. Do not dispatch it or treat migration as done.
+        if (isNative() && !isSealedScheduledText(current.text)) {
+          scheduledMigrationReady = false;
+          void Promise.resolve().then(initializeScheduledOutbox);
+          throw new Error("Scheduled message requires Android Keystore migration");
+        }
         const decrypted = await revealScheduledText(current.text);
         const dispatch: ScheduledItem = { ...current, text: decrypted };
         validateScheduledItem(dispatch);
@@ -364,8 +408,11 @@ export async function migrateLegacyScheduledTexts(): Promise<number> {
       const migrated = await updateScheduledIfCurrent(item, (store, current) => {
         store.put({ ...current, text: sealed });
       });
-      if (migrated) changed++;
+      if (!migrated)
+        throw new Error("Scheduled message changed during Keystore migration; retry required");
+      changed++;
     }
+    await assertAllScheduledTextsProtected();
     return changed;
   });
 }
