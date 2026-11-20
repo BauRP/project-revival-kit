@@ -67,7 +67,7 @@ function strictFields(value: Record<string, unknown>, allowed: ReadonlySet<strin
     if (!allowed.has(field)) throw new Error("Protected history contains plaintext or unknown fields");
   }
 }
-function messageIndexes(value: unknown): value is {
+function messageIndexes(value: unknown): value is Record<string, unknown> & {
   id: string; from: string; to: string;
   timestamp: number; status: StoredMessage["status"];
 } {
@@ -76,7 +76,7 @@ function messageIndexes(value: unknown): value is {
     stringIdentity(value.to) && indexTime(value.timestamp) &&
     typeof value.status === "string" && STATUSES.has(value.status);
 }
-function lifecycleIndexes(value: unknown): value is {
+function lifecycleIndexes(value: unknown): value is Record<string, unknown> & {
   key: string; chatKey: string; messageId: string; updatedAt: number;
 } {
   if (!object(value)) return false;
