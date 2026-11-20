@@ -18,6 +18,19 @@ describe("consistent backup snapshot and actual disk-size preflight", () => {
       blobs: [smallBlob(256)],
     })).not.toThrow();
   });
+  it("refuses device-bound encrypted messages or lifecycle in portable backups", () => {
+    for (const field of ["messages", "lifecycle"] as const) {
+      expect(() => assertExportSnapshotSafe({
+        ...empty(),
+        [field]: [{ key: "id", kind: "trivo-history-lifecycle-v1",
+          sealed: {nonce: "unreadable", ciphertext: "bound-to-device"} }],
+      })).toThrow(/portable decryption/);
+    }
+    expect(() => assertExportSnapshotSafe({
+      ...empty(),
+      messages: [{ id: "m", text: "normal legacy message" }],
+    })).not.toThrow();
+  });
   it("rejects false Blob metadata rather than silently exporting a corrupt archive", () => {
     expect(() => assertExportSnapshotSafe({
       ...empty(), blobs: [smallBlob(20, 1)],

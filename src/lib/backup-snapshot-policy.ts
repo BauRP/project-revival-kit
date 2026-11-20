@@ -5,6 +5,7 @@
  * metadata record from bypassing the archive's memory limit.
  */
 import { assertPortableBackupFits } from "./backup-budget";
+import { looksLikeProtectedHistoryRow } from "./protected-history-record";
 
 export interface BackupSnapshotRows {
   contacts: readonly unknown[];
@@ -43,6 +44,13 @@ export function assertExportSnapshotSafe(snapshot: BackupSnapshotRows): void {
   assertPortableBackupFits({ mediaBytes: 0, textCodeUnits: 0, records });
   for (const rows of tables) {
     for (const row of rows) {
+      // Password-encrypted portable backups MUST NOT contain device-bound
+      // ciphertext whose Keystore key cannot travel to another phone.
+      // Once history at-rest migration is enabled, the export adapter must
+      // decrypt and validate those rows before reaching this snapshot.
+      // Refuse a partial/hybrid backup instead of silently losing messages.
+      if (looksLikeProtectedHistoryRow(row))
+        throw new Error("Device-bound history requires portable decryption before backup");
       metadataCodeUnits += measuredCodeUnits(row);
       // Stop at the first overflowing row instead of serializing the entire history.
       assertPortableBackupFits({ mediaBytes, textCodeUnits: metadataCodeUnits, records });
