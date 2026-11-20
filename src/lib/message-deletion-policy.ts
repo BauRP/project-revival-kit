@@ -20,6 +20,26 @@ export function messageMediaFileId(message: unknown): string | null {
   const fileId = (media as { fileId?: unknown }).fileId;
   return typeof fileId === "string" && fileId.length > 0 && fileId.length <= 128 ? fileId : null;
 }
+/** A signed attachment reference is not valid after deletion, consumption or
+ * contact revocation. Existence of a revoked-contact key denies access even
+ * when its value is damaged: fail closed, not silently re-share private media.
+ */
+export function mayShareOutgoingAttachment(
+  message: { from?: unknown; to?: unknown; media?: unknown } | null | undefined,
+  self: string, peer: string, fileId: string,
+  deleted: unknown, consumed: unknown, revokedContact: unknown,
+): boolean {
+  return !!message && !!self && !!peer && self !== peer &&
+    typeof fileId === "string" && fileId.length > 0 &&
+    message.from === self && message.to === peer &&
+    messageMediaFileId(message) === fileId &&
+    revokedContact === undefined &&
+    !isDeletedMessageRecord(deleted) &&
+    !(!!consumed && typeof consumed === "object" &&
+      !Array.isArray(consumed) &&
+      (consumed as { consumed?: unknown }).consumed === true);
+}
+
 export function findUnreferencedMedia(
   removed: ReadonlyArray<{ media?: unknown }>,
   remaining: ReadonlyArray<{ media?: unknown }>,

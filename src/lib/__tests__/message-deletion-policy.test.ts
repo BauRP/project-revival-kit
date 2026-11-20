@@ -219,3 +219,27 @@ describe("large chat deletion batches", () => {
     expect(() => [...boundedRecordBatches([1],1025)]).toThrow();
   });
 });
+
+import { mayShareOutgoingAttachment } from "../message-deletion-policy";
+
+describe("outgoing Tor attachment access after privacy events", () => {
+  const message = { id: "m", from: "self", to: "peer", media: { fileId: "shared" } };
+  const allow = (row: typeof message | undefined, deletion?: unknown,
+    consumed?: unknown, revoked?: unknown) =>
+    mayShareOutgoingAttachment(row, "self", "peer", "shared",
+      deletion, consumed, revoked);
+  it("requires a live signed sender-to-recipient reference", () => {
+    expect(allow(message)).toBe(true);
+    expect(allow(undefined)).toBe(false);
+    expect(allow({ ...message, to: "unrelated" })).toBe(false);
+    expect(allow({ ...message, from: "other" })).toBe(false);
+    expect(allow({ ...message, media: { fileId: "unrelated" } })).toBe(false);
+  });
+  it("never resends a deleted, consumed or revoked attachment", () => {
+    expect(allow(message, { deleted: true })).toBe(false);
+    expect(allow(message, undefined, { consumed: true })).toBe(false);
+    expect(allow(message, undefined, undefined, { data: { removed: true } })).toBe(false);
+    expect(allow(message, undefined, undefined, { data: "corrupt" })).toBe(false);
+    expect(allow(message, { deleted: false }, { consumed: false })).toBe(true);
+  });
+});

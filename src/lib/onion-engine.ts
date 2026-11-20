@@ -63,7 +63,7 @@ import { mayQueueOriginalText } from "./outbox-delivery-policy";
 import { shouldApplyRemoteReaction, isCurrentReactionEnqueue } from "./reaction-policy";
 import { canReactToVisibleMessage, queuedReactionEventIds } from "./reaction-deletion-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, messageMediaFileId, redactLocalMessage, matchesIncomingChunkManifest, mayPersistIncomingChunk, hasAuthorizedAttachmentParent } from "./message-deletion-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, messageMediaFileId, redactLocalMessage, matchesIncomingChunkManifest, mayPersistIncomingChunk, hasAuthorizedAttachmentParent, mayShareOutgoingAttachment } from "./message-deletion-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, sameOutgoingDispatchRoute, type DispatchCommitResult } from "./dispatch-commit";
@@ -782,8 +782,11 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
       if (!validBlobFileId(fileId) || !have) return;
       const hasWindow = inner.body.windowStart !== undefined ||
         inner.body.windowCount !== undefined;
-      const available = await getBlob(fileId);
-      if (!available || !(await canPeerRequestBlob(from, fileId))) {
+      // Authorize BEFORE fetching the Blob. A revoked peer must not force
+      // repeated large reads of files they can no longer request.
+      const parentId = await canPeerRequestBlob(from, fileId);
+      const available = parentId ? await getBlob(fileId) : undefined;
+      if (!parentId || !available) {
         await sendEphemeral(from, "blob_missing", { fileId });
         return;
       }
@@ -797,7 +800,7 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
         // inbox and other chats while sending its individual Tor chunks.
         mediaSendGate.start(from, fileId, () =>
           sendBlob(from, fileId, (i) => !have.has(i) &&
-            (!window || (i >= window.start && i < window.start + window.count))));
+            (!window || (i >= window.start && i < window.start + window.count)), parentId));
       }
       return;
     }
@@ -807,9 +810,10 @@ async function processInboxRecord(rawId: string, raw: string): Promise<void> {
       if (!missing) return;
       const requestedFile = inner.body.fileId;
       if (!validBlobFileId(requestedFile)) return;
-      if (await hasBlob(requestedFile) && await canPeerRequestBlob(from, requestedFile)) {
+      const parentId = await canPeerRequestBlob(from, requestedFile);
+      if (parentId && await hasBlob(requestedFile)) {
         mediaSendGate.start(from, requestedFile, () =>
-          sendBlob(from, requestedFile, (i) => missing.has(i)));
+          sendBlob(from, requestedFile, (i) => missing.has(i), parentId));
       }
       return;
     }
@@ -1112,18 +1116,50 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
 }
 
 /** Keep a file private to the chat participants to whom it was sent. */
-async function canPeerRequestBlob(peer: string, fileId: string): Promise<boolean> {
-  if (!fileId || !isValidOnion(peer)) return false;
+/** Find a live signed parent WITHOUT reading the private attachment.
+ * A shared file remains accessible if one parent is deleted and another
+ * legitimate message still references it.
+ */
+async function canPeerRequestBlob(peer: string, fileId: string): Promise<string | null> {
+  if (!validBlobFileId(fileId) || !isValidOnion(peer) ||
+      !/^[a-z2-7]{56}\.onion$/.test(peer)) return null;
   const self = await ensureLocalIdentity();
-  // Send-time permission is rechecked for every chunk. Use an IndexedDB
-  // cursor and stop at the first matching message, rather than allocating
-  // the peer's entire chat history for every 48 KB of a large file.
-  const match = await dxdb.messages.where("to").equals(peer)
-    .filter((row) => {
-      const media = row.media as { fileId?: string } | undefined;
-      return row.from === self && media?.fileId === fileId;
-    }).first();
-  return !!match;
+  return dxdb.transaction("r", [dxdb.messages, dxdb.lifecycle], async () => {
+    const revoked = await dxdb.lifecycle.get(removedContactKey(peer));
+    const consumed = await dxdb.lifecycle.get(consumedMediaKey(fileId));
+    if (hasStoredContactRevocation(revoked) || isConsumedMediaRecord(consumed?.data))
+      return null;
+    const candidates = await dxdb.messages.where("to").equals(peer)
+      .filter((row) => row.from === self && messageMediaFileId(row) === fileId)
+      .toArray();
+    for (const row of candidates) {
+      const deleted = await dxdb.lifecycle.get(deletedMessageKey(row.id));
+      if (mayShareOutgoingAttachment(
+        row, self, peer, fileId, deleted?.data, consumed?.data, revoked,
+      )) return row.id;
+    }
+    return null;
+  });
+}
+
+/** Recheck just the indexed message ID before every streamed Tor chunk,
+ * avoiding O(chat history length × chunk count) scanning.
+ */
+async function mayContinueBlobSend(
+  peer: string, fileId: string, parentId: string,
+): Promise<boolean> {
+  const self = await ensureLocalIdentity();
+  return dxdb.transaction("r", [dxdb.messages, dxdb.lifecycle], async () => {
+    const [parent, deleted, consumed, revoked] = await Promise.all([
+      dxdb.messages.get(parentId),
+      dxdb.lifecycle.get(deletedMessageKey(parentId)),
+      dxdb.lifecycle.get(consumedMediaKey(fileId)),
+      dxdb.lifecycle.get(removedContactKey(peer)),
+    ]);
+    return mayShareOutgoingAttachment(
+      parent, self, peer, fileId, deleted?.data, consumed?.data, revoked,
+    );
+  });
 }
 
 // ─── Blob transfer (sealed, chunked, resumable) ──────────────
@@ -1148,16 +1184,26 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-async function sendBlob(peer: string, fileId: string, include: (index: number) => boolean) {
+async function sendBlob(
+  peer: string, fileId: string, include: (index: number) => boolean,
+  authorizedParentId: string,
+) {
   const rec = await getBlob(fileId);
   if (!rec) return;
   // Stream each slice separately. Never materialize a 1 GB attachment in RAM.
   const totalChunks = Math.max(1, Math.ceil(rec.data.size / BLOB_CHUNK_BYTES));
+  let parentId = authorizedParentId;
   for (let index = 0; index < totalChunks; index++) {
     if (!include(index)) continue;
     // A chat deletion or one-time revocation must stop an already-running
     // bulk send; do not hold the old Blob as perpetual access permission.
-    if (!(await hasBlob(fileId)) || !(await canPeerRequestBlob(peer, fileId))) return;
+    if (!(await hasBlob(fileId))) return;
+    if (!(await mayContinueBlobSend(peer, fileId, parentId))) {
+      // If one shared parent vanished, check for another live signed parent.
+      const replacement = await canPeerRequestBlob(peer, fileId);
+      if (!replacement) return;
+      parentId = replacement;
+    }
     const slice = new Uint8Array(await rec.data.slice(
       index * BLOB_CHUNK_BYTES, (index + 1) * BLOB_CHUNK_BYTES,
     ).arrayBuffer());
