@@ -38,4 +38,12 @@ describe("Dexie migration conflict and security-row eligibility", () => {
     expect(isMigratableMessageLifecycle({...edit,data:{deletedFor:["self"]}})).toBe(false);
     expect(isMigratableMessageLifecycle({...edit,messageId:"bad\\nID"})).toBe(false);
   });
+  it("accepts equivalent objects with different field order but not missing nested fields", () => {
+    const before = { id: "m", text: "safe", media: { fileId: "file", caption: "hello" } };
+    const reordered = { media: { caption: "hello", fileId: "file" }, text: "safe", id: "m" };
+    expect(sameLegacyHistorySnapshot(reordered, before)).toBe(true);
+    expect(sameLegacyHistorySnapshot({
+      ...before, media: { fileId: "file", caption: undefined },
+    }, before)).toBe(false);
+  });
 });

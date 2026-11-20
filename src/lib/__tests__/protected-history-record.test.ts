@@ -61,4 +61,16 @@ describe("versioned protected message and lifecycle payloads (migration building
     await expect(openHistoryLifecycle(await key(9), encrypted)).rejects.toThrow();
     await expect(openHistoryMessage(k, message)).rejects.toThrow();
   });
+  it("refuses lossy nested media and lifecycle fields before encryption", async () => {
+    const key = await key(10);
+    await expect(sealHistoryMessage(key, {
+      ...message, media: { fileId: "secret", caption: undefined },
+    })).rejects.toThrow();
+    await expect(sealHistoryMessage(key, {
+      ...message, media: { image: new Blob(["private"]) },
+    })).rejects.toThrow();
+    await expect(sealHistoryLifecycle(key, {
+      ...lifecycle, data: { editedText: "safe", unknown: Number.NaN },
+    })).rejects.toThrow();
+  });
 });

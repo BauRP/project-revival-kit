@@ -11,6 +11,7 @@
  * the original row or an independently decryptable encrypted row.
  */
 import type { StoredMessage, LifecycleRecord } from "./dexie-db";
+import { sameHistoryJson } from "./history-json-snapshot";
 import {
   openHistoryMessage, openHistoryLifecycle, sealHistoryMessage, sealHistoryLifecycle,
   type ProtectedMessageRecord, type ProtectedLifecycleRecord,
@@ -39,12 +40,12 @@ async function migrateOne<Legacy, Sealed>(
   const prepared = await prepare(original);
   // Prove that the ciphertext can be opened, before replacing plaintext.
   const preparedOpened = await open(prepared);
-  if (JSON.stringify(preparedOpened) !== JSON.stringify(original))
+  if (!sameHistoryJson(preparedOpened, original))
     throw new Error("Encrypted history row does not preserve source data");
   const replaced = await io.compareAndReplace(original, prepared);
   if (!replaced) throw new HistoryMigrationConflictError();
   const committed = await open(await io.readCommitted());
-  if (JSON.stringify(committed) !== JSON.stringify(original))
+  if (!sameHistoryJson(committed, original))
     throw new Error("Committed encrypted history differs from source data");
 }
 

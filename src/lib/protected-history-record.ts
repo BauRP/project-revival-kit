@@ -11,6 +11,7 @@
  * AES-GCM additionally authenticates immutable indexed identities.
  */
 import type { StoredMessage, LifecycleRecord } from "./dexie-db";
+import { canonicalHistoryJson } from "./history-json-snapshot";
 import {
   sealLocalRecord, openLocalRecord, type SealedLocalRecord,
 } from "./local-record-crypto";
@@ -121,19 +122,13 @@ export async function sealHistoryMessage(
       extras[name] = value;
     }
   }
-  const payload = JSON.stringify({
+  // Strict, canonical JSON rejects unsupported nested values, prototype
+  // properties, Blob/Date objects and cyclic data before any plaintext row
+  // is eligible for replacement. Ordinary field ordering is irrelevant.
+  const payload = canonicalHistoryJson({
     id: message.id, from: message.from, to: message.to,
     timestamp: message.timestamp, text: message.text, extras,
   });
-  if (typeof payload !== "string") throw new Error("Cannot serialize private message");
-  // Do not silently lose JSON-unsupported values (Blob, BigInt, cyclic data,
-  // undefined nested properties). Refuse the row instead of encrypting an
-  // incomplete snapshot and later deleting its only plaintext copy.
-  const parsedPayload = JSON.parse(payload) as {
-    text: string; extras: Record<string, unknown>;
-  };
-  if (JSON.stringify(parsedPayload.extras) !== JSON.stringify(extras))
-    throw new Error("Private message contains nonportable fields");
   return {
     kind: SEALED_MESSAGE_KIND,
     id: message.id, from: message.from, to: message.to,
@@ -153,7 +148,8 @@ export async function openHistoryMessage(
   let payload: unknown;
   try { payload = JSON.parse(plaintext) as unknown; }
   catch { throw new Error("Invalid authenticated message JSON"); }
-  if (!object(payload) || payload.id !== row.id ||
+  if (!object(payload) || !canonicalHistoryJson(payload) ||
+      payload.id !== row.id ||
       payload.from !== row.from || payload.to !== row.to ||
       payload.timestamp !== row.timestamp ||
       typeof payload.text !== "string" ||
@@ -179,15 +175,11 @@ export async function sealHistoryLifecycle(
 ): Promise<ProtectedLifecycleRecord> {
   if (!lifecycleIndexes(row) || !object(row.data))
     throw new Error("Cannot protect malformed message lifecycle");
-  const payload = JSON.stringify({
+  const payload = canonicalHistoryJson({
     key: row.key, chatKey: row.chatKey,
     messageId: row.messageId, updatedAt: row.updatedAt,
     data: row.data,
   });
-  if (typeof payload !== "string") throw new Error("Cannot serialize private lifecycle");
-  const parsed = JSON.parse(payload) as { data: Record<string, unknown> };
-  if (JSON.stringify(parsed.data) !== JSON.stringify(row.data))
-    throw new Error("Private lifecycle contains nonportable fields");
   return {
     kind: SEALED_LIFECYCLE_KIND,
     key: row.key, chatKey: row.chatKey, messageId: row.messageId,
@@ -205,7 +197,8 @@ export async function openHistoryLifecycle(
   let payload: unknown;
   try { payload = JSON.parse(plaintext) as unknown; }
   catch { throw new Error("Invalid authenticated lifecycle JSON"); }
-  if (!object(payload) || payload.key !== row.key ||
+  if (!object(payload) || !canonicalHistoryJson(payload) ||
+      payload.key !== row.key ||
       payload.chatKey !== row.chatKey || payload.messageId !== row.messageId ||
       payload.updatedAt !== row.updatedAt || !object(payload.data))
     throw new Error("Protected lifecycle indexed metadata mismatch");

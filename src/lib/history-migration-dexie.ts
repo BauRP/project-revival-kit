@@ -4,6 +4,7 @@
  * encrypted rows and portable-backup decryption. No crypto awaits inside tx.
  */
 import { dxdb, type StoredMessage, type LifecycleRecord } from "./dexie-db";
+import { sameHistoryJson } from "./history-json-snapshot";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, messageMediaFileId } from "./message-deletion-policy";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { looksLikeProtectedHistoryRow, type ProtectedMessageRecord, type ProtectedLifecycleRecord } from "./protected-history-record";
@@ -15,18 +16,7 @@ export function sameLegacyHistorySnapshot<T>(live: T | undefined, expected: T): 
       !expected || typeof expected !== "object" || Array.isArray(expected) ||
       looksLikeProtectedHistoryRow(live) || looksLikeProtectedHistoryRow(expected))
     return false;
-  try {
-    // Key count alone is insufficient: JSON omits undefined/function values.
-    // Do not migrate a partly unreadable legacy record as if it were exact.
-    const left = Object.keys(live as object).sort();
-    const right = Object.keys(expected as object).sort();
-    if (left.length !== right.length ||
-        left.some((name, index) => name !== right[index]))
-      return false;
-    return JSON.stringify(live) === JSON.stringify(expected);
-  } catch {
-    return false;
-  }
+  return sameHistoryJson(live, expected);
 }
 
 /** Security tombstones and remote synchronization state must not be silently
