@@ -321,7 +321,7 @@ export async function migrateLegacyMessages(): Promise<void> {
       for (const msg of legacy) {
         if (typeof msg?.id !== "string" || !msg.id || msg.id.length > 128) continue;
         if (!(await dxdb.messages.get(msg.id)) &&
-            !hasStoredDeletedMessageMarker(await dxdb.lifecycle.get(deletedMessageKey(msg.id))) {
+            !hasStoredDeletedMessageMarker(await dxdb.lifecycle.get(deletedMessageKey(msg.id)))) {
           await dxdb.messages.add(sanitizeRestoredOneTimeMessage(msg, revoked) as unknown as StoredMessage);
         }
       }
