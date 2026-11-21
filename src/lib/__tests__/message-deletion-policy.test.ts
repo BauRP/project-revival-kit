@@ -284,3 +284,29 @@ describe("restore file retention after batch deletion without loading messages",
     expect(unreferencedFileIds(removed, new Set())).toEqual(["orphan-file", "shared-file"]);
   });
 });
+
+import { mayRedactLocalMessageForChat, mayConsumeOneTimeMedia } from "../message-deletion-policy";
+describe("chat-scoped delete-for-me cannot erase an unrelated chat", () => {
+  const original = { from: "me", to: "friend" };
+  it("permits only the actual conversation or absent delayed Tor message", () => {
+    expect(mayRedactLocalMessageForChat(original, "me", "friend")).toBe(true);
+    expect(mayRedactLocalMessageForChat(original, "friend", "me")).toBe(true);
+    expect(mayRedactLocalMessageForChat(undefined, "me", "friend")).toBe(true);
+    expect(mayRedactLocalMessageForChat(original, "me", "stranger")).toBe(false);
+    expect(mayRedactLocalMessageForChat(original, "stranger", "friend")).toBe(false);
+    expect(mayRedactLocalMessageForChat(original, "me", "me")).toBe(false);
+  });
+});
+describe("one-time attachment consumption is bound to its signed conversation", () => {
+  const m = { from: "author", to: "recipient",
+    media: { fileId: "file" }, oneTimeView: true, oneTimeConsumed: false };
+  it("rejects cross-chat consumption and already opened files", () => {
+    expect(mayConsumeOneTimeMedia(m, "file", "author")).toBe(true);
+    expect(mayConsumeOneTimeMedia(m, "file", "recipient")).toBe(true);
+    expect(mayConsumeOneTimeMedia(m, "file", "unrelated")).toBe(false);
+    expect(mayConsumeOneTimeMedia(m, "other", "author")).toBe(false);
+    expect(mayConsumeOneTimeMedia({ ...m, oneTimeConsumed: true }, "file")).toBe(false);
+    expect(mayConsumeOneTimeMedia({ ...m, oneTimeView: false }, "file")).toBe(false);
+    expect(mayConsumeOneTimeMedia(undefined, "file")).toBe(false);
+  });
+});

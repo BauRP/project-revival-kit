@@ -215,6 +215,40 @@ export function matchesIncomingChunkManifest(
     Math.max(1, Math.ceil(media.size / chunkBytes)) === totalChunks;
 }
 
+/** Verify the source conversation before erasing text, media and pending
+ * ciphertext. A stale UI selection from another chat is NEVER permission
+ * to redact that chat's message. A missing record is intentionally allowed
+ * for an anticipated/cancelled Tor delivery: its tombstone remains durable.
+ */
+export function mayRedactLocalMessageForChat(
+  message: { from?: unknown; to?: unknown } | undefined,
+  selfId: string, peerId: string,
+): boolean {
+  if (typeof selfId !== "string" || !selfId ||
+      typeof peerId !== "string" || !peerId || selfId === peerId) return false;
+  return message === undefined ||
+    (message.from === selfId && message.to === peerId) ||
+    (message.from === peerId && message.to === selfId);
+}
+
+/** A one-time viewing request must reference the current chat and the exact
+ * file identity. A stale cross-chat request cannot consume unrelated media.
+ */
+export function mayConsumeOneTimeMedia(
+  message: {
+    from?: unknown; to?: unknown; media?: unknown;
+    oneTimeView?: unknown; oneTimeConsumed?: unknown;
+  } | undefined,
+  fileId: string, peer?: string,
+): boolean {
+  if (!message || message.oneTimeView !== true ||
+      message.oneTimeConsumed === true || messageMediaFileId(message) !== fileId)
+    return false;
+  return peer === undefined ||
+    (typeof peer === "string" && !!peer &&
+      (message.from === peer || message.to === peer));
+}
+
 /** A shared attachment may have multiple independently tombstoned parent
  * messages. Choose any authorized, live signed reference; one deleted parent
  * must not block another. Never authorize an empty candidate set.

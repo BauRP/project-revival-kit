@@ -8,6 +8,7 @@ import { dxdb, getBlob, putBlob, discardUnreferencedUpload } from "./dexie-db";
 import { onionRequestBlob } from "./onion-engine";
 import { stripExifMetadata, inspectAttachmentBlob } from "./security-scan";
 import { consumedMediaKey, hasStoredConsumedMediaMarker } from "./one-time-policy";
+import { mayConsumeOneTimeMedia } from "./message-deletion-policy";
 
 export const TRIVO_MAX_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1 GB ceiling
 
@@ -150,6 +151,9 @@ export function downloadFromTrivo(fileId: string, peer?: string): Promise<string
     const cached = blobUrlCache.get(fileId);
     const local = await getBlob(fileId);
     if (cached && local) {
+      // Previously a cache hit skipped the file-signature check entirely.
+      // A restored legacy Blob must meet today's safety rules as well.
+      await assertSafeToOpen(local);
       await assertNotConsumed(fileId);
       return cached;
     }
@@ -161,12 +165,10 @@ export function downloadFromTrivo(fileId: string, peer?: string): Promise<string
       await assertNotConsumed(fileId);
       const url = URL.createObjectURL(local.data);
       blobUrlCache.set(fileId, url);
-      inFlight.delete(fileId);
       return url;
     }
     // Try to pull it from any open peer connection that has it.
     const ok = peer ? await onionRequestBlob(fileId, peer).catch(() => false) : false;
-    inFlight.delete(fileId);
     if (!ok) throw new Error(`Blob ${fileId} not available locally or via peer`);
     // The viewer may have consumed the attachment while the Tor fetch was
     // in flight. Never return a freshly downloaded copy after revocation.
@@ -272,8 +274,7 @@ export async function consumeOneTimeMediaForViewing(
       dxdb.messages, dxdb.lifecycle, dxdb.blobs, dxdb.partial_chunks,
     ], async () => {
       const message = await dxdb.messages.get(messageId);
-      const media = message?.media as { fileId?: string } | undefined;
-      if (!message?.oneTimeView || message.oneTimeConsumed || media?.fileId !== fileId)
+      if (!mayConsumeOneTimeMedia(message, fileId, peer))
         throw new Error("One-time attachment was already opened or changed");
       if (hasStoredConsumedMediaMarker(await dxdb.lifecycle.get(consumedMediaKey(fileId))))
         throw new Error("One-time attachment already viewed");

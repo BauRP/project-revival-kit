@@ -179,6 +179,40 @@ async function updateScheduledIfCurrent(
   });
 }
 
+/** Enumerate only primary keys of legacy plaintext scheduled messages.
+ * No full getAll/listOutbox of possibly huge protected text envelopes.
+ * The actual row is fetched again and CAS-checked before sealing.
+ */
+async function legacyScheduledKeys(): Promise<string[]> {
+  const db = await openDB();
+  return new Promise<string[]>((resolve, reject) => {
+    const keys: string[] = [];
+    let failure: unknown;
+    const transaction = db.transaction(STORE, "readonly");
+    const request = transaction.objectStore(STORE).openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      try {
+        const row = cursor.value as ScheduledItem;
+        const encrypted = isSealedScheduledText(row.text);
+        validateStoredScheduledItem(row, encrypted);
+        if (!encrypted) keys.push(row.id);
+        cursor.continue();
+      } catch (error) {
+        failure = error;
+        transaction.abort();
+      }
+    };
+    request.onerror = () => { failure = request.error; };
+    transaction.oncomplete = () => resolve(keys);
+    transaction.onerror = () => reject(failure ?? transaction.error ??
+      new Error("Unable to enumerate scheduled migration keys"));
+    transaction.onabort = () => reject(failure ?? transaction.error ??
+      new Error("Scheduled migration key scan aborted"));
+  });
+}
+
 /** Keystore migration may race an old WebView writing a legacy plaintext
  * schedule. Check the committed store without copying all queued texts into
  * JS memory before declaring Android's schedule migration complete.
@@ -401,9 +435,15 @@ export async function migrateLegacyScheduledTexts(): Promise<number> {
   if (!isNative()) return 0;
   return serialized(async () => {
     let changed = 0;
-    for (const item of await listOutbox()) {
-      if (isSealedScheduledText(item.text)) continue;
-      validateScheduledItem(item);
+    for (const key of await legacyScheduledKeys()) {
+      // Another WebView may cancel or encrypt this entry after the cursor
+      // closed. Do not recreate it, and never overwrite the replacement.
+      const item = await tx<ScheduledItem | undefined>(
+        "readonly",
+        (store) => store.get(key) as IDBRequest<ScheduledItem | undefined>,
+      );
+      if (!item || isSealedScheduledText(item.text)) continue;
+      validateStoredScheduledItem(item, false);
       const sealed = await protectScheduledText(item.text);
       const migrated = await updateScheduledIfCurrent(item, (store, current) => {
         store.put({ ...current, text: sealed });
