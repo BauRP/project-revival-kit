@@ -1,4 +1,3 @@
-import { isDeletedMessageRecord } from "./message-deletion-policy";
 
 /**
  * Validation of remote lifecycle commands. Pure functions so security rules
@@ -112,7 +111,7 @@ export function mayPinChatMessage(
   return !!message && !!self && !!peer && self !== peer &&
     ((message.from === self && message.to === peer) ||
      (message.from === peer && message.to === self)) &&
-    !isDeletedMessageRecord(deletion);
+    deletion === undefined;
 }
 
 /** A late local mirror write after Tor encryption must never resurrect an
@@ -131,6 +130,17 @@ export function mayCommitLocalLifecycle(
   if ("isEdited" in patch || "editedText" in patch)
     return canAuthorModifyOwnMessage(message, self, peer);
   return mayPinChatMessage(message, self, peer, undefined);
+}
+
+/** A canonical deletion row is irreversible even if its payload is corrupt.
+ * The original author's delete-for-everyone event remains dispatchable.
+ */
+export function canQueueLifecycleAfterLocalDeletionRow(
+  deletionRow: unknown, patch: unknown,
+): boolean {
+  if (deletionRow === undefined) return true;
+  return !!patch && typeof patch === "object" && !Array.isArray(patch) &&
+    (patch as { deletedForEveryone?: unknown }).deletedForEveryone === true;
 }
 
 /** A local irreversible deletion also stops stale asynchronous outbound

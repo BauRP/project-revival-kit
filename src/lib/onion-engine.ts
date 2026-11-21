@@ -59,16 +59,15 @@ import { nextMissingChunkPage, initialTransferWindow } from "./media-retry-polic
 import { hasTransferTimedOut } from "./media-timeout-policy";
 import { MediaSendGate } from "./media-send-gate";
 import { matchesPublishedOnion } from "./onion-publication-policy";
-import { mayQueueOriginalText } from "./outbox-delivery-policy";
 import { shouldApplyRemoteReaction, isCurrentReactionEnqueue } from "./reaction-policy";
 import { canReactToVisibleMessage, queuedReactionEventIds, hasReactionDeletionMarker } from "./reaction-deletion-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, messageMediaFileId, redactLocalMessage, matchesIncomingChunkManifest, mayPersistIncomingChunkFromRows, hasAuthorizedAttachmentParent, mayShareOutgoingAttachment } from "./message-deletion-policy";
+import { deletedMessageKey, hasStoredDeletedMessageMarker, LOCAL_DELETED_CHAT_KEY, messageMediaFileId, redactLocalMessage, matchesIncomingChunkManifest, mayPersistIncomingChunkFromRows, hasAuthorizedAttachmentParent, mayShareOutgoingAttachment } from "./message-deletion-policy";
 import { duplicateMessageMatches, deletedRetryMatchesKnownParticipants } from "./inbound-identity";
-import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
+import { consumedMediaKey, hasStoredConsumedMediaMarker } from "./one-time-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, sameOutgoingDispatchRoute, type DispatchCommitResult } from "./dispatch-commit";
 import { advanceDeliveryStatus, shouldEmitDeliveryEvent, shouldNotifyMessageAcknowledgement, shouldAcceptTextMessageAck, sameOutboxFrameForResult, type DeliveryEvent } from "./delivery-status-policy";
-import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp, canMutateDeletedMessage, isDuplicateRemoteDeletion, canQueueLifecycleAfterLocalDeletion } from "./lifecycle-auth";
+import { canApplyRemoteLifecycle, acceptsLifecycleTimestamp, canMutateDeletedMessage, isDuplicateRemoteDeletion, canQueueLifecycleAfterLocalDeletionRow } from "./lifecycle-auth";
 
 export const ONION_SERVICE_PORT = 8443;
 export const POLL_INTERVAL_MS = 5_000;
@@ -445,7 +444,7 @@ export async function onionSendDispatch(
           hasStoredContactRevocation(await dxdb.lifecycle.get(removedContactKey(to))))
         throw new Error("Profile update recipient has been removed");
       if (kind === "text_message" &&
-          !mayQueueOriginalText((await dxdb.lifecycle.get(deletedMessageKey(id)))?.data))
+          hasStoredDeletedMessageMarker(await dxdb.lifecycle.get(deletedMessageKey(id))))
         throw new Error("Original message was deleted before it could be queued");
       if (kind === "history_protection" &&
           !isCurrentHistoryProtectionDispatch(
@@ -459,7 +458,7 @@ export async function onionSendDispatch(
         const mid = payload.messageId;
         if (typeof mid !== "string" || !mid || mid.length > 128)
           throw new Error("Invalid queued reaction message ID");
-        if (isDeletedMessageRecord((await dxdb.lifecycle.get(deletedMessageKey(mid)))?.data))
+        if (hasStoredDeletedMessageMarker(await dxdb.lifecycle.get(deletedMessageKey(mid))))
           throw new Error("Cannot queue reaction for deleted message");
         const matches = await dxdb.lifecycle.where("messageId").equals(mid)
           .filter((row) => isCurrentReactionEnqueue(
@@ -476,7 +475,7 @@ export async function onionSendDispatch(
         if (typeof changedId !== "string" || !changedId || changedId.length > 128)
           throw new Error("Invalid lifecycle message reference");
         const tombstone = await dxdb.lifecycle.get(deletedMessageKey(changedId));
-        if (!canQueueLifecycleAfterLocalDeletion(tombstone?.data, payload.patch))
+        if (!canQueueLifecycleAfterLocalDeletionRow(tombstone, payload.patch))
           throw new Error("Cannot queue an edit or pin for a deleted message");
       }
       const concurrent = await dxdb.outbox.get(id);
@@ -534,7 +533,7 @@ async function sendOutboxOnce(id: string): Promise<boolean> {
       return undefined;
     }
     if (queued.kind === "text_message" &&
-        !mayQueueOriginalText((await dxdb.lifecycle.get(deletedMessageKey(id)))?.data)) {
+        hasStoredDeletedMessageMarker(await dxdb.lifecycle.get(deletedMessageKey(id)))) {
       // The deletion marker is irreversible. An old outbound frame must not
       // survive reconnect/restart and repeatedly attempt to send erased text.
       await dxdb.outbox.delete(id);
@@ -869,7 +868,7 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
       if (!validated) rejected = true;
       if (validated) {
         const erased = await dxdb.lifecycle.get(deletedMessageKey(id));
-        if (isDeletedMessageRecord(erased?.data)) {
+        if (hasStoredDeletedMessageMarker(erased)) {
           // Do not ACK a different sender's collision with a deleted ID.
           // The original redacted shell still knows both participants.
           if (!deletedRetryMatchesKnownParticipants(
@@ -1131,7 +1130,7 @@ async function canPeerRequestBlob(peer: string, fileId: string): Promise<string 
   return dxdb.transaction("r", [dxdb.messages, dxdb.lifecycle], async () => {
     const revoked = await dxdb.lifecycle.get(removedContactKey(peer));
     const consumed = await dxdb.lifecycle.get(consumedMediaKey(fileId));
-    if (hasStoredContactRevocation(revoked) || isConsumedMediaRecord(consumed?.data))
+    if (hasStoredContactRevocation(revoked) || hasStoredConsumedMediaMarker(consumed))
       return null;
     // Only load matching primary keys, not every full chat message.
     const ids = await dxdb.messages.where("to").equals(peer)
@@ -1413,7 +1412,7 @@ async function assemblePersistedBlob(fileId: string, from: string): Promise<Asse
   }
   const first = ordered[0];
   // Recheck after digest verification: revocation can race a large assembly.
-  if (isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data))
+  if (hasStoredConsumedMediaMarker(await dxdb.lifecycle.get(consumedMediaKey(fileId))))
     return "rejected";
   const assembled = new Blob(parts, { type: first.mimeType });
   // Hashes verify transport integrity, NOT whether the file is safe.

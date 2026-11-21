@@ -239,9 +239,10 @@ export function mayConsumeOneTimeMedia(
     from?: unknown; to?: unknown; media?: unknown;
     oneTimeView?: unknown; oneTimeConsumed?: unknown;
   } | undefined,
-  fileId: string, peer?: string,
+  fileId: string, peer?: string, deletionRow?: unknown,
 ): boolean {
-  if (!message || message.oneTimeView !== true ||
+  if (deletionRow !== undefined ||
+      !message || message.oneTimeView !== true ||
       message.oneTimeConsumed === true || messageMediaFileId(message) !== fileId)
     return false;
   return peer === undefined ||

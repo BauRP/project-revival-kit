@@ -310,3 +310,17 @@ describe("one-time attachment consumption is bound to its signed conversation", 
     expect(mayConsumeOneTimeMedia(undefined, "file")).toBe(false);
   });
 });
+
+describe("deleted parent cannot consume and reopen a one-time attachment", () => {
+  const msg={from:"sender",to:"recipient",media:{fileId:"attachment"},
+    oneTimeView:true,oneTimeConsumed:false};
+  it("rejects any present deletion row in the same consume transaction", () => {
+    expect(mayConsumeOneTimeMedia(msg,"attachment","recipient")).toBe(true);
+    expect(mayConsumeOneTimeMedia(msg,"attachment","recipient",
+      { data: { deleted: true } })).toBe(false);
+    expect(mayConsumeOneTimeMedia(msg,"attachment","recipient",
+      { data: { deleted: false } })).toBe(false);
+    expect(mayConsumeOneTimeMedia(msg,"attachment","recipient",
+      { data: "corrupt" })).toBe(false);
+  });
+});

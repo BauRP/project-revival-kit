@@ -8,7 +8,7 @@ import { dxdb, getBlob, putBlob, discardUnreferencedUpload } from "./dexie-db";
 import { onionRequestBlob } from "./onion-engine";
 import { stripExifMetadata, inspectAttachmentBlob } from "./security-scan";
 import { consumedMediaKey, hasStoredConsumedMediaMarker } from "./one-time-policy";
-import { mayConsumeOneTimeMedia } from "./message-deletion-policy";
+import { mayConsumeOneTimeMedia, deletedMessageKey } from "./message-deletion-policy";
 
 export const TRIVO_MAX_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1 GB ceiling
 
@@ -274,7 +274,8 @@ export async function consumeOneTimeMediaForViewing(
       dxdb.messages, dxdb.lifecycle, dxdb.blobs, dxdb.partial_chunks,
     ], async () => {
       const message = await dxdb.messages.get(messageId);
-      if (!mayConsumeOneTimeMedia(message, fileId, peer))
+      const deleted = await dxdb.lifecycle.get(deletedMessageKey(messageId));
+      if (!mayConsumeOneTimeMedia(message, fileId, peer, deleted))
         throw new Error("One-time attachment was already opened or changed");
       if (hasStoredConsumedMediaMarker(await dxdb.lifecycle.get(consumedMediaKey(fileId))))
         throw new Error("One-time attachment already viewed");

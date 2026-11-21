@@ -8,11 +8,11 @@
  * cannot race against another transaction while composing the archive.
  */
 import type { BlobRecord, LifecycleRecord, StoredMessage } from "./dexie-db";
-import { isConsumedMediaRecord, isProtectedByConsumedTombstone } from "./one-time-policy";
+import { isProtectedByConsumedTombstone, isCanonicalConsumedMediaRow } from "./one-time-policy";
 import { sanitizeRestoredOneTimeMessage } from "./one-time-policy";
 import { isIrreversiblePrivacyMarker } from "./backup-merge-policy";
 import { stripSessionMediaUrl } from "./backup-media-policy";
-import { LOCAL_DELETED_CHAT_KEY, isDeletedMessageRecord, unusedBackupMedia } from "./message-deletion-policy";
+import { LOCAL_DELETED_CHAT_KEY, unusedBackupMedia, isCanonicalDeletedMarkerRow } from "./message-deletion-policy";
 import { lifecycleRowsToPurgeForDeletedMessages } from "./backup-merge-policy";
 
 export function sanitizePortableExportPrivacy(
@@ -20,20 +20,20 @@ export function sanitizePortableExportPrivacy(
   lifecycle: readonly LifecycleRecord[],
   blobs: readonly BlobRecord[],
 ): { messages: StoredMessage[]; lifecycle: LifecycleRecord[]; blobs: BlobRecord[] } {
-  const revoked = new Set(lifecycle.filter((row) =>
-    row.chatKey === "consumed-media" &&
-    isConsumedMediaRecord(row.data) &&
-    isIrreversiblePrivacyMarker(row)
-  ).map((row) => row.key));
+  // A corrupted irreversible local row must never yield an archive that
+  // recreates deleted files or contains invalid markers on another phone.
+  // Abort BEFORE Base64 encoding / overwriting an older valid backup.
+  for (const row of lifecycle) {
+    if ((row.chatKey === "consumed-media" || row.chatKey === LOCAL_DELETED_CHAT_KEY) &&
+        !isIrreversiblePrivacyMarker(row))
+      throw new Error("Cannot export with corrupted privacy marker");
+  }
+  const revoked = new Set(lifecycle.filter(isCanonicalConsumedMediaRow).map((row) => row.key));
 
   // A crash or an older app version may have left private message or edit
   // plaintext beside an authoritative deletion tombstone. Do not copy those
   // bytes into a NEW portable archive, even when cleanup was interrupted.
-  const deletedIds = new Set(lifecycle.filter((row) =>
-    row.chatKey === LOCAL_DELETED_CHAT_KEY &&
-    isDeletedMessageRecord(row.data) &&
-    isIrreversiblePrivacyMarker(row)
-  ).map((row) => row.messageId));
+  const deletedIds = new Set(lifecycle.filter(isCanonicalDeletedMarkerRow).map((row) => row.messageId));
   const staleLifecycle = new Set(lifecycleRowsToPurgeForDeletedMessages(
     lifecycle, deletedIds,
   ));

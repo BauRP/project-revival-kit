@@ -66,7 +66,7 @@ describe("portable backup must not retain consumed media bytes", () => {
     expect(result.messages.map((row) => row.id)).toEqual(["alive"]);
     expect(result.blobs.map((row) => row.fileId)).toEqual(["shared"]);
   });
-  it("does not trust forged or unconfirmed deletion flags", () => {
+  it("refuses portable export with corrupt or mismatched irreversible rows", () => {
     const edited: LifecycleRecord = {
       key:"peer::m", chatKey:"peer", messageId:"m",
       data:{editedText:"legitimate"},updatedAt:1,
@@ -74,22 +74,13 @@ describe("portable backup must not retain consumed media bytes", () => {
     for (const bad of [
       {key:"wrong",chatKey:"deleted-message-local",messageId:"m",data:{deleted:true},updatedAt:2},
       {key:'["deleted-message","m"]',chatKey:"deleted-message-local",messageId:"m",data:{deleted:false},updatedAt:2},
+      {key:"consumed-media::file",chatKey:"consumed-media",messageId:"file",data:{consumed:false},updatedAt:2},
+      marker(deletedFile,false),
     ] as LifecycleRecord[]) {
-      const result = sanitizePortableExportPrivacy(
+      expect(() => sanitizePortableExportPrivacy(
         [baseMessage("m","media")], [bad,edited], [blob("media")],
-      );
-      expect(result.messages).toHaveLength(1);
-      expect(result.lifecycle).toHaveLength(2);
-      expect(result.blobs).toHaveLength(1);
+      )).toThrow("Cannot export with corrupted privacy marker");
     }
-  });
-  it("does not trust a mismatched or forged consumed marker", () => {
-    const result = sanitizePortableExportPrivacy(
-      [baseMessage("m",deletedFile)], [marker(deletedFile,false)],
-      [blob(deletedFile)],
-    );
-    expect(result.blobs).toHaveLength(1);
-    expect(result.messages[0].media).toBeDefined();
   });
   it("preserves user media without irreversible tombstones", () => {
     const input=[baseMessage("m1",ordinaryFile)];

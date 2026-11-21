@@ -184,7 +184,7 @@ async function assertPinTarget(selfId: string, peerId: string, messageId: string
       dxdb.messages.get(messageId),
       dxdb.lifecycle.get(deletedMessageKey(messageId)),
     ]);
-    return mayPinChatMessage(message, selfId, peerId, deleted?.data);
+    return mayPinChatMessage(message, selfId, peerId, deleted);
   });
   if (!allowed) throw new Error("Cannot pin a deleted or unrelated message");
 }

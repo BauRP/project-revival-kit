@@ -125,3 +125,22 @@ describe("atomic local edit and pin mirror after slow encryption", () => {
       { deletedForEveryone: true }, undefined)).toBe(false);
   });
 });
+
+import { canQueueLifecycleAfterLocalDeletionRow } from "../lifecycle-auth";
+describe("persistent malformed deletion rows block late outbound edits", () => {
+  it("never queues an edit or pin when the canonical marker exists", () => {
+    for (const row of [
+      { data: { deleted: true } }, { data: { deleted: false } }, { data: "damaged" },
+    ]) {
+      expect(canQueueLifecycleAfterLocalDeletionRow(row,
+        { isEdited: true, editedText: "private" })).toBe(false);
+      expect(canQueueLifecycleAfterLocalDeletionRow(row,
+        { pinnedAt: 123, pinnedBy: from })).toBe(false);
+      expect(canQueueLifecycleAfterLocalDeletionRow(row,
+        { deletedForEveryone: true, isEdited: false })).toBe(true);
+    }
+    expect(canQueueLifecycleAfterLocalDeletionRow(undefined,
+      { isEdited: true, editedText: "allowed" })).toBe(true);
+    expect(mayPinChatMessage({ from, to }, from, to, { data: { deleted: false } })).toBe(false);
+  });
+});
