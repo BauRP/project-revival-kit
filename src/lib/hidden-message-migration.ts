@@ -90,7 +90,8 @@ export async function scrubLegacyHiddenMessageBodies(selfId: string): Promise<nu
             ? old.deletedFor.filter((x): x is string => typeof x === "string")
             : [],
           updatedAt: now,
-          remoteUpdatedAt: Number.isSafeInteger(old.remoteUpdatedAt) &&
+          remoteUpdatedAt: typeof old.remoteUpdatedAt === "number" &&
+            Number.isSafeInteger(old.remoteUpdatedAt) &&
             old.remoteUpdatedAt > 0 ? old.remoteUpdatedAt : undefined,
         },
         updatedAt: now,
