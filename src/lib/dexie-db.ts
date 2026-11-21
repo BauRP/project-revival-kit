@@ -347,7 +347,7 @@ export async function putReceivedBlob(
       // locally deleted reference must not prevent the live reference from
       // accepting its signed media. Only matching parents are materialized.
       for (const parent of parents) {
-        if (hasStoredDeletedMessageMarker(await dxdb.lifecycle.get(deletedMessageKey(parent.id)))
+        if (hasStoredDeletedMessageMarker(await dxdb.lifecycle.get(deletedMessageKey(parent.id))))
           continue;
         const incomingMeta = {
           name: name || `file-${fileId}`,
