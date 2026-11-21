@@ -117,3 +117,18 @@ describe("bounded header sniff and unsafe Unicode filenames", () => {
     expect(check("photo\⁦.png","image/png",[0x89,0x50,0x4e,0x47,0x0d,0x0a,0x1a,0x0a]).safe).toBe(false);
   });
 });
+
+describe("full-width executable suffix and direction-mark spoofing", () => {
+  it("blocks disguised executable suffixes after Unicode NFKC normalization", () => {
+    const jpeg = [0xff, 0xd8, 0xff, 0xe0];
+    expect(check("invoice．ａｐｋ.jpg", "image/jpeg", jpeg).safe).toBe(false);
+    expect(check("runner．ｓｈ", "text/plain", [65]).safe).toBe(false);
+    expect(check("photo．png", "image/png",
+      [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).safe).toBe(true);
+  });
+  it("rejects invisible bidirectional marks in names", () => {
+    expect(check("image\u200f.jpg", "image/jpeg", [0xff, 0xd8, 0xff]).safe).toBe(false);
+    expect(check("picture\u061c.png", "image/png",
+      [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).safe).toBe(false);
+  });
+});

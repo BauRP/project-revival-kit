@@ -33,3 +33,14 @@ describe("chat preference safety and compatibility", () => {
     expect(getDeleteAt(100, "off")).toBeUndefined();
   });
 });
+
+describe("disappearing-message timestamps do not silently become NaN", () => {
+  it("refuses malformed duration and clock without deleting valid chat history", () => {
+    expect(() => getDeleteAt(100, "invalid" as "1h")).toThrow();
+    expect(() => getDeleteAt(NaN, "1h")).toThrow();
+    expect(() => getDeleteAt(-1, "off")).toThrow();
+    expect(() => getDeleteAt(Number.MAX_SAFE_INTEGER, "1h")).toThrow();
+    expect(getDeleteAt(100, "1h")).toBe(3600100);
+    expect(getDeleteAt(100, "off")).toBeUndefined();
+  });
+});

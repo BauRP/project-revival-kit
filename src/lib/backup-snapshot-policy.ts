@@ -60,6 +60,14 @@ export function assertExportSnapshotSafe(snapshot: BackupSnapshotRows): void {
     if (!(row.data instanceof Blob) || !Number.isSafeInteger(row.size) ||
         row.size < 0 || row.size !== row.data.size)
       throw new Error("Backup attachment size differs from committed media");
+    // Validate file metadata BEFORE copying the Blob to a Base64 archive.
+    // A corrupt legacy record must not cause work on an unusable backup.
+    if (typeof row.fileId !== "string" || !row.fileId ||
+        row.fileId.length > 128 || /[\u0000-\u001f\u007f]/.test(row.fileId) ||
+        typeof row.name !== "string" || !row.name || row.name.length > 255 ||
+        typeof row.mimeType !== "string" || !row.mimeType || row.mimeType.length > 128 ||
+        !Number.isSafeInteger(row.storedAt) || row.storedAt < 0)
+      throw new Error("Invalid backup attachment metadata");
     mediaBytes += row.data.size;
     // Browser/JS JSON serialization of a Blob omits its bytes. Count the
     // metadata separately, then include its actual binary size in the budget.

@@ -78,8 +78,16 @@ export async function updateChatPreferences(
 }
 
 export function getDeleteAt(timestamp: number, duration: DisappearingDuration): number | undefined {
+  // A corrupt duration used to become NaN, silently preventing messages
+  // from expiring. Refuse invalid data without deleting any user history.
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0)
+    throw new Error("Invalid disappearing message timestamp");
   if (duration === "off") return undefined;
-  return timestamp + durationToMs[duration];
+  const offset = durationToMs[duration];
+  if (!Number.isSafeInteger(offset) || offset <= 0 ||
+      !Number.isSafeInteger(timestamp + offset))
+    throw new Error("Invalid disappearing message duration");
+  return timestamp + offset;
 }
 
 export function isExpired(deleteAt?: number): boolean {

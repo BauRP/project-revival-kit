@@ -67,3 +67,18 @@ describe("consistent backup snapshot and actual disk-size preflight", () => {
     })).toThrow(/nonserializable/);
   });
 });
+
+describe("archive metadata checked before expensive Blob encoding", () => {
+  it("rejects impossible file identifiers and unsafe metadata", () => {
+    for (const invalid of [
+      { fileId: "" }, { fileId: "A".repeat(129) },
+      { fileId: "bad\nkey" }, { name: "" },
+      { name: "x".repeat(256) }, { mimeType: "" },
+      { storedAt: NaN }, { storedAt: -1 },
+    ]) {
+      expect(() => assertExportSnapshotSafe({
+        ...empty(), blobs: [{ ...smallBlob(32), ...invalid }],
+      })).toThrow(/metadata/);
+    }
+  });
+});

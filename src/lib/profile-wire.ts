@@ -11,7 +11,8 @@ export interface SharedProfile {
   updatedAt: number;
 }
 
-function isSafeAvatar(avatar: unknown): avatar is string | null {
+/** The same canonical Base64 rule applies BEFORE local persistence and Tor sync. */
+export function isSafeProfileAvatar(avatar: unknown): avatar is string | null {
   if (avatar === null) return true;
   if (typeof avatar !== "string" || avatar.length > 65_536) return false;
   const parsed = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/i.exec(avatar);
@@ -40,7 +41,7 @@ export function validateSharedProfile(raw: unknown, authenticatedSender: string,
       typeof p.customStatus !== "string" || p.customStatus.length > 280 ||
       typeof p.status !== "string" ||
       !["online", "away", "dnd", "offline", "custom"].includes(p.status) ||
-      !isSafeAvatar(p.avatar) ||
+      !isSafeProfileAvatar(p.avatar) ||
       typeof p.updatedAt !== "number" || !Number.isSafeInteger(p.updatedAt) ||
       p.updatedAt < 1 || p.updatedAt > now + 600_000) return null;
   return {
@@ -58,7 +59,7 @@ export function makeSharedProfile(profile: SharedProfile): SharedProfile {
   const shared: SharedProfile = {
     userId: profile.userId,
     name: profile.name,
-    avatar: isSafeAvatar(profile.avatar) ? profile.avatar : null,
+    avatar: isSafeProfileAvatar(profile.avatar) ? profile.avatar : null,
     status: profile.status,
     customStatus: profile.customStatus,
     updatedAt: profile.updatedAt,

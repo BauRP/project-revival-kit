@@ -123,3 +123,19 @@ describe("scheduled Keystore migration conflicts", () => {
     expect(sameScheduledState(initial, { ...initial, text: "TRIVO-SCHEDULED-V1:sealed" })).toBe(false);
   });
 });
+
+describe("durable retry never writes invalid timestamps", () => {
+  const item = { scheduledAt: 1000, attempts: 1 };
+  it("refuses a damaged system clock rather than persisting NaN", () => {
+    for (const bad of [NaN, Infinity, 0, -1, Number.MAX_SAFE_INTEGER]) {
+      expect(() => nextScheduledRetry(item, bad)).toThrow();
+    }
+    expect(() => nextScheduledRetry({ ...item, attempts: NaN }, 2000)).toThrow();
+    expect(() => nextScheduledRetry({ ...item, scheduledAt: -1 }, 2000)).toThrow();
+  });
+  it("keeps ordinary retries backward-compatible", () => {
+    expect(nextScheduledRetry(item, 2000)).toMatchObject({
+      scheduledAt: 1000, attempts: 2, nextAttemptAt: 62000,
+    });
+  });
+});

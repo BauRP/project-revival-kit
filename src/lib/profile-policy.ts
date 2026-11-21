@@ -1,3 +1,5 @@
+import { isSafeProfileAvatar } from "./profile-wire";
+
 /** Validate locally edited profile fields before persisting or sharing them. */
 export interface EditableProfileFields {
   name: string;
@@ -20,12 +22,14 @@ export function validateEditableProfile(profile: EditableProfileFields): void {
   if (profile.avatar !== null &&
       (typeof profile.avatar !== "string" ||
        profile.avatar.length > LOCAL_AVATAR_MAX ||
-       !/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(profile.avatar)))
+       !isSafeProfileAvatar(profile.avatar)))
     throw new Error("Unsupported profile avatar encoding");
 }
 export function nextProfileTimestamp(previous: number, now: number): number {
   if (!Number.isSafeInteger(now) || now <= 0 ||
       !Number.isSafeInteger(previous) || previous < 0)
     throw new Error("Invalid profile timestamp");
+  if (previous === Number.MAX_SAFE_INTEGER)
+    throw new Error("Profile timestamp overflow");
   return Math.max(previous + 1, now);
 }

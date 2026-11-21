@@ -127,15 +127,18 @@ export function imageFilenameMatchesMime(fileName: string, detectedMime: string)
 export function inspectAttachmentHeader(
   fileName: string, declaredMime: string, header: Uint8Array,
 ): ScanResult {
-  const byName = simulateSecurityScan(fileName);
-  if (!byName.safe) return byName;
+  // NFKC exposes full-width dots and letters in executable suffixes.
+  // Keep the original visible name but assess its canonicalized meaning.
+  const normalizedName = fileName.normalize("NFKC");
+  const byName = simulateSecurityScan(normalizedName);
+  if (!byName.safe) return { ...byName, fileName };
   const blocked = (): ScanResult => ({ safe: false, threatType: "malware", fileName });
   const mime = declaredMime.toLowerCase().split(";")[0].trim();
-  const name = fileName.toLowerCase();
+  const name = normalizedName.toLowerCase();
   // Treat scripts, path spoofing and double executable extensions as unsafe
   // even when the declared final suffix looks like a supported image.
   if (!name || name.length > 255 ||
-      /[\u0000-\u001f\u007f\\/\u202a-\u202e\u2066-\u2069]/.test(name) ||
+      /[\u0000-\u001f\u007f\\/\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(name) ||
       /\.(exe|bat|cmd|scr|pif|vbs|js|mjs|cjs|wsf|com|ps1|hta|apk|jar|dex|so|dll|msi|lnk|desktop)\./i.test(name))
     return blocked();
   const starts = (...bytes: number[]) => bytes.every((b, i) => header[i] === b);

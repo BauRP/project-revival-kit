@@ -25,9 +25,17 @@ export function scheduledWakeAt(
 export function nextScheduledRetry<T extends ScheduledRetryState>(
   item: T, now: number,
 ): T {
+  if (!Number.isSafeInteger(now) || now <= 0 ||
+      !Number.isSafeInteger(item.scheduledAt) || item.scheduledAt <= 0 ||
+      (item.attempts !== undefined &&
+       (!Number.isSafeInteger(item.attempts) || item.attempts < 0 || item.attempts > 1000)))
+    throw new Error("Invalid scheduled retry clock or attempts");
   const attempts = Math.min(1000, (item.attempts ?? 0) + 1);
   const delay = Math.min(30_000 * 2 ** Math.min(attempts - 1, 7), 60 * 60_000);
-  return { ...item, attempts, nextAttemptAt: now + delay };
+  const nextAttemptAt = now + delay;
+  if (!Number.isSafeInteger(nextAttemptAt))
+    throw new Error("Scheduled retry clock overflow");
+  return { ...item, attempts, nextAttemptAt };
 }
 
 /** A durable schedule cannot be changed while its sealed Tor frame exists. */
