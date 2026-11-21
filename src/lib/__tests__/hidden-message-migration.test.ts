@@ -28,3 +28,23 @@ describe("bounded legacy redaction keeps shared attachments", () => {
       new Set([live.media.fileId]))).toEqual(["only-hidden"]);
   });
 });
+
+import { lifecycleRowsToPurgeForDeletedMessages } from "../backup-merge-policy";
+import { queuedReactionEventIds } from "../reaction-deletion-policy";
+describe("legacy hidden-message migration also scrubs former reaction dispatches", () => {
+  it("cancels old signed reaction events and obsolete edit text, not durable tombstones", () => {
+    const rows = [
+      { key: "chat::m", chatKey: "chat", messageId: "m",
+        data: { deletedFor: ["self"], editedText: "obsolete private text" } },
+      { key: "reaction::peer::m", chatKey: "reaction::peer", messageId: "m",
+        data: { emoji: "✅", outboundEventId: "signed-reaction-event" } },
+      { key: '["deleted-message","m"]', chatKey: "deleted-message-local",
+        messageId: "m", data: { deleted: true } },
+      { key: "chat::n", chatKey: "chat", messageId: "n",
+        data: { editedText: "someone else's message" } },
+    ];
+    const stale = lifecycleRowsToPurgeForDeletedMessages(rows, new Set(["m"]));
+    expect(stale.map((r) => r.key)).toEqual(["chat::m", "reaction::peer::m"]);
+    expect(queuedReactionEventIds(stale)).toEqual(["signed-reaction-event"]);
+  });
+});

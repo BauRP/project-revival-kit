@@ -17,7 +17,7 @@ import { assertPortableBackupFits } from "./backup-budget";
 import { assertExportSnapshotSafe } from "./backup-snapshot-policy";
 import { sanitizePortableExportPrivacy } from "./backup-export-privacy";
 import { encodePortableMedia, decodePortableMedia } from "./backup-media-codec";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, unusedBackupMedia, matchesReceivedAttachmentMetadata, hasStoredDeletedMessageMarker, isCanonicalDeletedMarkerRow } from "./message-deletion-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, unreferencedFileIds, messageMediaFileId, boundedRecordBatches, matchesReceivedAttachmentMetadata, hasStoredDeletedMessageMarker, isCanonicalDeletedMarkerRow } from "./message-deletion-policy";
 import { canEvictUnreferencedMedia, isMatchingReceivedCache } from "./media-cache-policy";
 import { platform } from "./platform";
 import { sealDexieContact, openDexieContact, hasProtectedDexieContactName, sameStoredContact, type StoredContactRecord } from "./dexie-contact-protection";
@@ -757,46 +757,50 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
       // authoritative against a message already present on this device.
       // The previous importer only filtered NEW backup rows; it could leave
       // an existing plaintext message visible despite a restored deletion.
-      const existingDeleted = deletedIds.size
-        ? await dxdb.messages.where("id").anyOf([...deletedIds]).toArray()
-        : [];
-      const remaining = existingDeleted.length
-        ? await dxdb.messages.filter((m) => !deletedIds.has(m.id)).toArray()
-        : [];
-      const orphaned = findUnreferencedMedia(
-        existingDeleted.map((message) => ({ media: message.media })),
-        remaining.map((message) => ({ media: message.media })),
+      // Collect only candidate file IDs. In older restore code this built
+      // TWO full copies of the entire surviving chat including private text.
+      // Deletion and related reaction cleanup stay in the same transaction.
+      const candidateFiles = new Set<string>();
+      for (const m of dump.messages || []) {
+        if (!deletedIds.has(m.id)) continue;
+        const file = messageMediaFileId(m);
+        if (file) candidateFiles.add(file);
+      }
+      for (const batch of boundedRecordBatches([...deletedIds])) {
+        const existing = await dxdb.messages.bulkGet(batch);
+        for (const message of existing) {
+          if (!message) continue;
+          const file = messageMediaFileId(message);
+          if (file) candidateFiles.add(file);
+        }
+        await dxdb.messages.bulkDelete(batch);
+        await dxdb.outbox.bulkDelete(batch);
+        // A restored delete also cancels queued reaction frames and removes
+        // obsolete edits; the original tombstones must never be removed.
+        const lifecycleRows = await dxdb.lifecycle.where("messageId").anyOf(batch).toArray();
+        const stale = lifecycleRowsToPurgeForDeletedMessages(
+          lifecycleRows, deletedIds,
+        );
+        for (const reactionBatch of boundedRecordBatches(queuedReactionEventIds(stale)))
+          await dxdb.outbox.bulkDelete(reactionBatch);
+        for (const staleBatch of boundedRecordBatches(stale.map((row) => row.key)))
+          await dxdb.lifecycle.bulkDelete(staleBatch);
+      }
+      // Scan only retained file REFERENCES using a cursor, never load every
+      // message into JS memory. New and previously stored live messages both
+      // protect shared attachments, even after an older archive is merged.
+      const retainedFiles = new Set<string>();
+      if (candidateFiles.size) await dxdb.messages.each((message) => {
+        const file = messageMediaFileId(message);
+        if (file && candidateFiles.has(file)) retainedFiles.add(file);
+      });
+      const deniedBackupMedia = new Set(
+        unreferencedFileIds([...candidateFiles], retainedFiles),
       );
-      if (existingDeleted.length) await dxdb.messages.bulkDelete(existingDeleted.map((m) => m.id));
-      if (deletedIds.size) {
-        await dxdb.outbox.bulkDelete([...deletedIds]);
-        // Backup merge can restore an old "edit" or reaction beside a newer
-        // deletion tombstone. Erase mutable lifecycle plaintext and cancel
-        // queued reaction events in the same all-tables restore transaction.
-        // Otherwise a reconnect may resend a reaction for a deleted message.
-        const lifecycleRows = await dxdb.lifecycle.where("messageId")
-          .anyOf([...deletedIds]).toArray();
-        const stale = lifecycleRowsToPurgeForDeletedMessages(lifecycleRows, deletedIds);
-        const pendingReactionIds = queuedReactionEventIds(stale);
-        if (pendingReactionIds.length)
-          await dxdb.outbox.bulkDelete(pendingReactionIds);
-        if (stale.length) await dxdb.lifecycle.bulkDelete(stale.map((r) => r.key));
+      for (const batch of boundedRecordBatches([...deniedBackupMedia])) {
+        await dxdb.blobs.bulkDelete(batch);
+        await dxdb.partial_chunks.where("fileId").anyOf(batch).delete();
       }
-      if (orphaned.length) {
-        await dxdb.blobs.bulkDelete(orphaned);
-        await dxdb.partial_chunks.where("fileId").anyOf(orphaned).delete();
-      }
-
-      // No full-history scan is needed if neither device nor backup has
-      // a deleted-message marker. This is the common restore path.
-      const surviving = deletedIds.size ? await dxdb.messages.toArray() : [];
-      const deniedBackupMedia = new Set([
-        ...orphaned,
-        ...unusedBackupMedia(
-          dump.messages || [], deletedIds,
-          surviving.map((message) => ({ media: message.media })),
-        ),
-      ]);
       // Filter BEFORE Base64 decoding. A removed 100 MB attachment should
       // never be recreated in memory merely to discard it after import.
       const existingBlobIds = new Set(await dxdb.blobs.toCollection().primaryKeys());

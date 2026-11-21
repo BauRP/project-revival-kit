@@ -10,6 +10,8 @@ import {
   deletedMessageKey, LOCAL_DELETED_CHAT_KEY, messageMediaFileId,
   redactLocalMessage, unreferencedFileIds, boundedRecordBatches,
 } from "./message-deletion-policy";
+import { queuedReactionEventIds } from "./reaction-deletion-policy";
+import { lifecycleRowsToPurgeForDeletedMessages } from "./backup-merge-policy";
 
 const MIGRATION_FLAG = "trivo-private-deletion-v2";
 
@@ -62,6 +64,19 @@ export async function scrubLegacyHiddenMessageBodies(selfId: string): Promise<nu
       if (fileId && candidates.has(fileId)) retained.add(fileId);
     });
     const orphaned = unreferencedFileIds([...candidates], retained);
+    // Old releases left a SECOND copy of the deleted content in lifecycle
+    // edits and queued signed reaction events. Scrub all per-message mutable
+    // state before republishing the tiny safe legacy tombstone.
+    for (const batch of boundedRecordBatches(ids)) {
+      const related = await dxdb.lifecycle.where("messageId").anyOf(batch).toArray();
+      const stale = lifecycleRowsToPurgeForDeletedMessages(
+        related, new Set(batch),
+      );
+      for (const eventBatch of boundedRecordBatches(queuedReactionEventIds(stale)))
+        await dxdb.outbox.bulkDelete(eventBatch);
+      for (const keyBatch of boundedRecordBatches(stale.map((row) => row.key)))
+        await dxdb.lifecycle.bulkDelete(keyBatch);
+    }
     for (const entry of flags) {
       // Only the fields required to display a tombstone may survive; old
       // lifecycle edits sometimes contain a second plaintext editedText.
@@ -75,8 +90,8 @@ export async function scrubLegacyHiddenMessageBodies(selfId: string): Promise<nu
             ? old.deletedFor.filter((x): x is string => typeof x === "string")
             : [],
           updatedAt: now,
-          remoteUpdatedAt: typeof old.remoteUpdatedAt === "number"
-            ? old.remoteUpdatedAt : undefined,
+          remoteUpdatedAt: Number.isSafeInteger(old.remoteUpdatedAt) &&
+            old.remoteUpdatedAt > 0 ? old.remoteUpdatedAt : undefined,
         },
         updatedAt: now,
       });

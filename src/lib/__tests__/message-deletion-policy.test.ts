@@ -275,3 +275,12 @@ describe("corrupted stored deletion markers fail closed during legacy restore", 
     })).toBe(false);
   });
 });
+
+describe("restore file retention after batch deletion without loading messages", () => {
+  it("keeps a file shared by a living chat but removes deleted-only blobs", () => {
+    const removed = ["orphan-file", "shared-file", "shared-file"];
+    const referencedAfterDeletion = new Set(["shared-file"]);
+    expect(unreferencedFileIds(removed, referencedAfterDeletion)).toEqual(["orphan-file"]);
+    expect(unreferencedFileIds(removed, new Set())).toEqual(["orphan-file", "shared-file"]);
+  });
+});
