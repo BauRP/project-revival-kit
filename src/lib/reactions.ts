@@ -4,7 +4,7 @@ import { onionRegisterIncomingListener, onionSendDispatch, ensureLocalIdentity }
 import { isValidOnion } from "./onion-id";
 import { deletedMessageKey, isDeletedMessageRecord } from "./message-deletion-policy";
 import { canReactToVisibleMessage, pruneDeletedReactionMap } from "./reaction-deletion-policy";
-import { normalizeLegacyReactions } from "./reaction-policy";
+import { normalizeLegacyReactions, isRecoverableReactionRow } from "./reaction-policy";
 
 /** Reactions are durable Dexie records, with tombstones for removals. */
 export type ReactionMap = Record<string, Record<string, string>>;
@@ -143,18 +143,18 @@ export function isSameReactionDispatch(
     current.outboundPending === true;
 }
 
-async function persistReactionToOutbox(peer: string, messageId: string, self: string): Promise<void> {
-  if (!isValidOnion(peer)) return;
+async function persistReactionToOutbox(peer: string, messageId: string, self: string): Promise<boolean> {
+  if (!isValidOnion(peer)) return false;
   const key = reactionRecordKey(peer, messageId, self);
   const stored = await dxdb.lifecycle.get(key);
-  if (!stored) return;
+  if (!stored) return false;
   const [message, erased] = await Promise.all([
     dxdb.messages.get(messageId),
     dxdb.lifecycle.get(deletedMessageKey(messageId)),
   ]);
-  if (!canReactToVisibleMessage(message, peer, self, erased?.data)) return;
+  if (!canReactToVisibleMessage(message, peer, self, erased?.data)) return false;
   const emoji = stored.data.emoji;
-  if (emoji !== null && (typeof emoji !== "string" || emoji.length > 24)) return;
+  if (emoji !== null && (typeof emoji !== "string" || emoji.length > 24)) return false;
   const eventId = typeof stored.data.outboundEventId === "string"
     ? stored.data.outboundEventId : crypto.randomUUID();
   // A false result means Tor delivery is pending, not that the durable
@@ -171,6 +171,7 @@ async function persistReactionToOutbox(peer: string, messageId: string, self: st
       data: { ...current.data, outboundPending: false },
     });
   });
+  return true;
 }
 
 export function broadcastReaction(peer: string, messageId: string, _emoji: string | null): void {
@@ -183,18 +184,20 @@ export function broadcastReaction(peer: string, messageId: string, _emoji: strin
 /** Recover reactions committed immediately before WebView death or a crash. */
 export async function recoverPendingReactionSync(): Promise<number> {
   const self = await ensureLocalIdentity();
-  const rows = await dxdb.lifecycle.where("chatKey").startsWith("reaction::")
+  // Re-read current rows by indexed primary key, without allocating all
+  // pending reaction payloads or replaying stale cancelled toggles.
+  const keys = await dxdb.lifecycle.where("chatKey").startsWith("reaction::")
     .filter((row) => row.data?.reactorId === self && row.data?.outboundPending === true)
-    .toArray();
+    .primaryKeys();
   let recovered = 0;
-  for (const row of rows) {
-    if (row.data.reactorId !== self || row.data.outboundPending !== true ||
-        !row.chatKey.startsWith("reaction::")) continue;
-    const peer = row.chatKey.slice("reaction::".length);
+  for (const key of keys) {
+    if (typeof key !== "string") continue;
+    const row = await dxdb.lifecycle.get(key);
+    if (!isRecoverableReactionRow(row, self)) continue;
+    const peer = row!.chatKey.slice("reaction::".length);
     if (!isValidOnion(peer)) continue;
     try {
-      await persistReactionToOutbox(peer, row.messageId, self);
-      recovered++;
+      if (await persistReactionToOutbox(peer, row!.messageId, self)) recovered++;
     } catch (error) {
       console.warn("[reactions] pending reaction retained for later recovery", error);
     }

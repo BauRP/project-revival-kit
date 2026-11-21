@@ -23,6 +23,18 @@ const mediaIdentity = (media: unknown): string | null => {
   const m = media as Record<string, unknown>;
   return JSON.stringify([m.fileId, m.id, m.name, m.size, m.mimeType, m.type]);
 };
+/** A redacted shell retains signed participants to distinguish duplicates
+ * from another sender reusing the deleted message ID. A legacy bulk deletion
+ * can have no shell, so retain its previous idempotent retry behavior.
+ */
+export function deletedRetryMatchesKnownParticipants(
+  shell: { from?: unknown; to?: unknown } | undefined,
+  retry: { from: string; to: string },
+): boolean {
+  return shell === undefined ||
+    (shell.from === retry.from && shell.to === retry.to);
+}
+
 export function duplicateMessageMatches(
   existing: InboundIdentityMessage, incoming: InboundIdentityMessage,
 ): boolean {

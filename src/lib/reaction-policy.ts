@@ -24,6 +24,20 @@ export function normalizeLegacyReactions(value: unknown): Record<string, Record<
   return map;
 }
 
+/** Restart recovery must not replay another identity's or an already
+ * acknowledged reaction. Revalidate each row after its indexed key is read.
+ */
+export function isRecoverableReactionRow(
+  row: { chatKey?: unknown; messageId?: unknown; data?: Record<string, unknown> } | undefined,
+  self: string,
+): boolean {
+  return !!row && typeof row.chatKey === "string" &&
+    row.chatKey.startsWith("reaction::") &&
+    typeof row.messageId === "string" && row.messageId.length > 0 &&
+    row.messageId.length <= 128 && row.data?.reactorId === self &&
+    row.data?.outboundPending === true;
+}
+
 /** A newly sealed reaction is allowed into the durable outbox only while
  * its immutable event ID, state and timestamp remain current.
  */

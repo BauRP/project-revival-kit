@@ -12,9 +12,17 @@ export interface SharedProfile {
 }
 
 function isSafeAvatar(avatar: unknown): avatar is string | null {
-  return avatar === null ||
-    (typeof avatar === "string" && avatar.length <= 65_536 &&
-      /^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(avatar));
+  if (avatar === null) return true;
+  if (typeof avatar !== "string" || avatar.length > 65_536) return false;
+  const parsed = /^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/i.exec(avatar);
+  if (!parsed) return false;
+  const encoded = parsed[2];
+  if (encoded.length % 4 !== 0) return false;
+  const padding = encoded.endsWith("==") ? 2 : encoded.endsWith("=") ? 1 : 0;
+  if (!padding) return true;
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  const last = alphabet.indexOf(encoded[encoded.length - padding - 1]);
+  return last >= 0 && (padding === 2 ? (last & 15) === 0 : (last & 3) === 0);
 }
 
 /** Do not send private profile data to URL aliases or uppercase contact keys. */

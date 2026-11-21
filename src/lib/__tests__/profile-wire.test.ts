@@ -46,3 +46,23 @@ describe("outbound profile contact identity", () => {
     }
   });
 });
+
+describe("canonical profile avatar bytes before offline Tor sync", () => {
+  it("accepts locally generated canonical image data", () => {
+    expect(validateSharedProfile({
+      ...p, avatar: "data:image/png;base64,AQ==",
+    }, id, 2000)?.avatar).toBe("data:image/png;base64,AQ==");
+  });
+  it("rejects malformed padding, empty image and unsafe Base64", () => {
+    for (const avatar of [
+      "data:image/png;base64,",
+      "data:image/png;base64,A",
+      "data:image/png;base64,AR==",
+      "data:image/jpeg;base64,AQJ=",
+      "data:image/webp;base64,@@",
+    ]) {
+      expect(validateSharedProfile({ ...p, avatar }, id, 2000)).toBeNull();
+      expect(makeSharedProfile({ ...p, avatar }).avatar).toBeNull();
+    }
+  });
+});

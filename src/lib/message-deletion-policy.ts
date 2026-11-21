@@ -224,6 +224,15 @@ export function mayPersistIncomingChunk(
       (consumedMedia as { consumed?: unknown }).consumed === true);
 }
 
+/** An existing canonical privacy row, even if damaged, denies a late chunk.
+ * This receives the full Dexie rows from inside the SAME write transaction.
+ */
+export function mayPersistIncomingChunkFromRows(
+  deletionRow: unknown, consumedRow: unknown,
+): boolean {
+  return deletionRow === undefined && consumedRow === undefined;
+}
+
 /** Bound large IndexedDB anyOf/bulkDelete batches while retaining the
  * caller's single atomic Dexie transaction. Never start an independent
  * transaction in this iterator. */

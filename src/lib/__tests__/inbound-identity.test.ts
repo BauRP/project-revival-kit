@@ -22,3 +22,19 @@ describe("authenticated duplicate inbound identity",()=>{
     expect(duplicateMessageMatches({...base,media},{...base,media:{...media,fileId:"other"}})).toBe(false);
   });
 });
+
+import { deletedRetryMatchesKnownParticipants } from "../inbound-identity";
+describe("signed inbound retries for an erased message", () => {
+  it("does not ACK another sender's collision with the redacted shell", () => {
+    const shell = { from: "author.onion", to: "recipient.onion" };
+    expect(deletedRetryMatchesKnownParticipants(shell, {
+      from: "author.onion", to: "recipient.onion",
+    })).toBe(true);
+    expect(deletedRetryMatchesKnownParticipants(shell, {
+      from: "other.onion", to: "recipient.onion",
+    })).toBe(false);
+    expect(deletedRetryMatchesKnownParticipants(undefined, {
+      from: "author.onion", to: "recipient.onion",
+    })).toBe(true);
+  });
+});

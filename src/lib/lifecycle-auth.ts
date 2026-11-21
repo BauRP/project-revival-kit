@@ -115,6 +115,24 @@ export function mayPinChatMessage(
     !isDeletedMessageRecord(deletion);
 }
 
+/** A late local mirror write after Tor encryption must never resurrect an
+ * edited or pinned deleted message. Global deletion remains permitted after
+ * its own local body redaction, but only by the original message author.
+ */
+export function mayCommitLocalLifecycle(
+  message: { from?: string; to?: string } | undefined,
+  self: string, peer: string, patch: Record<string, unknown>,
+  deletionRow: unknown,
+): boolean {
+  if (!message || !self || !peer || self === peer) return false;
+  if (patch.deletedForEveryone === true)
+    return canAuthorModifyOwnMessage(message, self, peer);
+  if (deletionRow !== undefined) return false;
+  if ("isEdited" in patch || "editedText" in patch)
+    return canAuthorModifyOwnMessage(message, self, peer);
+  return mayPinChatMessage(message, self, peer, undefined);
+}
+
 /** A local irreversible deletion also stops stale asynchronous outbound
  * edits/pins from entering the sealed Tor queue after their crypto finishes.
  * A user may still choose "Delete for everyone" after "Delete for me".

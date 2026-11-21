@@ -3,8 +3,7 @@
  * before opening the Dexie write transaction. Legacy backups use this check too.
  */
 import { isIrreversiblePrivacyMarker } from "./backup-merge-policy";
-import { isConsumedMediaRecord } from "./one-time-policy";
-import { isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY } from "./message-deletion-policy";
+import { LOCAL_DELETED_CHAT_KEY } from "./message-deletion-policy";
 import { REMOVED_CONTACT_CHAT_KEY, isRemovedContactMarker } from "./contact-removal-policy";
 import { validateSharedProfile } from "./profile-wire";
 import { validBlobFileId } from "./blob-request-policy";
@@ -149,12 +148,12 @@ export function validateBackupStructure(dump: unknown): void {
       throw new Error("Invalid portable remote profile");
     // Never accept privacy deletion flags under a forged/mismatched key.
     // A valid exported record always uses the canonical key for its ID.
-    const irreversible = (x.chatKey === "consumed-media" &&
-      isConsumedMediaRecord(x.data)) ||
-      (x.chatKey === LOCAL_DELETED_CHAT_KEY && isDeletedMessageRecord(x.data));
-    if (irreversible && !isIrreversiblePrivacyMarker({
-      key: x.key, chatKey: x.chatKey, messageId: x.messageId, data: x.data,
-    })) throw new Error("Invalid backup privacy marker");
+    // An archive cannot undo a deletion by writing consumed:false/deleted:false
+    // under a reserved lifecycle namespace. Validate before touching Dexie.
+    if ((x.chatKey === "consumed-media" || x.chatKey === LOCAL_DELETED_CHAT_KEY) &&
+        !isIrreversiblePrivacyMarker({
+          key: x.key, chatKey: x.chatKey, messageId: x.messageId, data: x.data,
+        })) throw new Error("Invalid backup privacy marker");
   }
 
   let encodedMediaBytes = 0;

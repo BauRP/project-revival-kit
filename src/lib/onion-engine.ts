@@ -63,8 +63,8 @@ import { mayQueueOriginalText } from "./outbox-delivery-policy";
 import { shouldApplyRemoteReaction, isCurrentReactionEnqueue } from "./reaction-policy";
 import { canReactToVisibleMessage, queuedReactionEventIds } from "./reaction-deletion-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, messageMediaFileId, redactLocalMessage, matchesIncomingChunkManifest, mayPersistIncomingChunk, hasAuthorizedAttachmentParent, mayShareOutgoingAttachment } from "./message-deletion-policy";
-import { duplicateMessageMatches } from "./inbound-identity";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, messageMediaFileId, redactLocalMessage, matchesIncomingChunkManifest, mayPersistIncomingChunkFromRows, hasAuthorizedAttachmentParent, mayShareOutgoingAttachment } from "./message-deletion-policy";
+import { duplicateMessageMatches, deletedRetryMatchesKnownParticipants } from "./inbound-identity";
 import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
 import { shouldAckDispatch, shouldNotifyDispatch, isValidDispatchId, sameOutgoingDispatchRoute, type DispatchCommitResult } from "./dispatch-commit";
 import { advanceDeliveryStatus, shouldEmitDeliveryEvent, shouldNotifyMessageAcknowledgement, shouldAcceptTextMessageAck, sameOutboxFrameForResult, type DeliveryEvent } from "./delivery-status-policy";
@@ -870,8 +870,11 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
       if (validated) {
         const erased = await dxdb.lifecycle.get(deletedMessageKey(id));
         if (isDeletedMessageRecord(erased?.data)) {
-          // Locally deleted messages remain deleted even after sender retry.
-          // Acknowledge this as a handled duplicate, without notifying the UI.
+          // Do not ACK a different sender's collision with a deleted ID.
+          // The original redacted shell still knows both participants.
+          if (!deletedRetryMatchesKnownParticipants(
+            await dxdb.messages.get(id), validated,
+          )) rejected = true;
         } else {
           const existing = await dxdb.messages.get(id);
           if (!existing) {
@@ -1241,7 +1244,7 @@ async function persistBlobChunk(from: string, body: Record<string, unknown>): Pr
   if (!validBlobFileId(fileId)) return;
   const pending = blobRequests.get(fileId);
   // A consumed one-time attachment may not be re-created by a late Tor frame.
-  if (fileId && isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data)) return;
+  if (fileId && await dxdb.lifecycle.get(consumedMediaKey(fileId))) return;
   // Reject unsolicited frames, unexpected senders and abusive chunk counts.
   const index = body.index;
   const chunks = body.totalChunks;
@@ -1315,7 +1318,7 @@ async function persistBlobChunk(from: string, body: Record<string, unknown>): Pr
         size, chunks, index, chunkBytes.length, BLOB_CHUNK_BYTES,
       )) return false;
       const deleted = await dxdb.lifecycle.get(deletedMessageKey(parent.id));
-      return mayPersistIncomingChunk(deleted?.data, consumed?.data);
+      return mayPersistIncomingChunkFromRows(deleted, consumed);
     })) return false;
     const current = await dxdb.partial_chunks.get(key);
     if (current && (current.from !== from || current.name !== entry.name ||

@@ -86,3 +86,19 @@ describe("superseded reaction before encrypted Tor dispatch", () => {
     expect(isCurrentReactionEnqueue(row,"other","m","event","👍",10)).toBe(false);
   });
 });
+
+import { isRecoverableReactionRow } from "../reaction-policy";
+describe("reaction recovery after an interrupted WebView", () => {
+  const original = {
+    chatKey: "reaction::peer", messageId: "message",
+    data: { reactorId: "my-id", outboundPending: true },
+  };
+  it("replays only currently pending rows for the right local identity", () => {
+    expect(isRecoverableReactionRow(original, "my-id")).toBe(true);
+    expect(isRecoverableReactionRow(original, "other-id")).toBe(false);
+    expect(isRecoverableReactionRow({
+      ...original, data: { ...original.data, outboundPending: false },
+    }, "my-id")).toBe(false);
+    expect(isRecoverableReactionRow({ ...original, messageId: "" }, "my-id")).toBe(false);
+  });
+});

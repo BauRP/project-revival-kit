@@ -177,3 +177,26 @@ describe("portable remote-profile structure", () => {
     ]) expect(() => validateBackupStructure({...dump(),lifecycle:[bad]})).toThrow();
   });
 });
+
+describe("strict irreversible privacy namespaces in portable archives", () => {
+  it("rejects forged false or corrupt tombstones before import", () => {
+    const erased = { key: '["deleted-message","m1"]', chatKey: "deleted-message-local",
+      messageId: "m1", data: { deleted: true }, updatedAt: 1 };
+    const used = { key: "consumed-media::file", chatKey: "consumed-media",
+      messageId: "file", data: { consumed: true }, updatedAt: 1 };
+    for (const tampered of [
+      { ...erased, data: { deleted: false } },
+      { ...erased, data: {} },
+      { ...used, data: { consumed: false } },
+      { ...used, data: {} },
+      { ...used, key: "consumed-media::wrong" },
+    ]) {
+      expect(() => validateBackupStructure({
+        ...dump(), lifecycle: [tampered],
+      })).toThrow("Invalid backup privacy marker");
+    }
+    expect(() => validateBackupStructure({
+      ...dump(), lifecycle: [erased, used],
+    })).not.toThrow();
+  });
+});

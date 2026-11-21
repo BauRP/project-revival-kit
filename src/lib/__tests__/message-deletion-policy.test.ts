@@ -245,3 +245,14 @@ describe("outgoing Tor attachment access after privacy events", () => {
     expect(allow(message)).toBe(true);
   });
 });
+
+import { mayPersistIncomingChunkFromRows } from "../message-deletion-policy";
+describe("late signed media after irreversible removal", () => {
+  it("refuses any existing deletion or consumed row including corrupt records", () => {
+    expect(mayPersistIncomingChunkFromRows(undefined, undefined)).toBe(true);
+    expect(mayPersistIncomingChunkFromRows({ data: { deleted: true } }, undefined)).toBe(false);
+    expect(mayPersistIncomingChunkFromRows(undefined, { data: { consumed: true } })).toBe(false);
+    expect(mayPersistIncomingChunkFromRows({ data: { deleted: false } }, undefined)).toBe(false);
+    expect(mayPersistIncomingChunkFromRows(undefined, { data: "damaged" })).toBe(false);
+  });
+});

@@ -13,7 +13,7 @@ import { isValidOnion } from "../onion-id";
 import { dxdb, getLifecycleMap } from "../dexie-db";
 import { assertRemoteHistoryAllowsChanges } from "../history-protection";
 import { redactMessageForMe } from "../p2p";
-import { canAuthorModifyOwnMessage, mayPinChatMessage } from "../lifecycle-auth";
+import { canAuthorModifyOwnMessage, mayPinChatMessage, mayCommitLocalLifecycle } from "../lifecycle-auth";
 import { deletedMessageKey } from "../message-deletion-policy";
 
 export interface MessageLifecycle {
@@ -86,8 +86,15 @@ async function writeLocalEntry(
   const key = `${ck}::${safeId}`;
   // Serialize concurrent edits/pins to this one record. Reading the whole
   // conversation outside a transaction previously lost unrelated changes.
-  await dxdb.transaction("rw", dxdb.lifecycle, async () => {
-    const previous = await dxdb.lifecycle.get(key);
+  await dxdb.transaction("rw", [dxdb.messages, dxdb.lifecycle], async () => {
+    const [message, deleted, previous] = await Promise.all([
+      dxdb.messages.get(messageId),
+      dxdb.lifecycle.get(deletedMessageKey(messageId)),
+      dxdb.lifecycle.get(key),
+    ]);
+    if (!mayCommitLocalLifecycle(message, chatA, chatB,
+        patch as Record<string, unknown>, deleted))
+      throw new Error("Message was deleted or changed before local history commit");
     const prev = previous?.data || { messageId: safeId };
     const now = Math.max(Date.now(), (previous?.updatedAt ?? 0) + 1);
     await dxdb.lifecycle.put({

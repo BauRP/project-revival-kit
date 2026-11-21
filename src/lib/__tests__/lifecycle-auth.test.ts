@@ -100,3 +100,28 @@ describe("local pin cannot change a different or erased conversation", () => {
     expect(mayPinChatMessage({ from, to }, from, to, { deleted: true })).toBe(false);
   });
 });
+
+import { mayCommitLocalLifecycle } from "../lifecycle-auth";
+describe("atomic local edit and pin mirror after slow encryption", () => {
+  const original = { from, to };
+  it("permits author edits and either participant's live pin", () => {
+    expect(mayCommitLocalLifecycle(original, from, to,
+      { isEdited: true, editedText: "fixed" }, undefined)).toBe(true);
+    expect(mayCommitLocalLifecycle(original, to, from,
+      { pinnedAt: 2, pinnedBy: to }, undefined)).toBe(true);
+  });
+  it("does not recreate edits/pins after deletion or in another chat", () => {
+    expect(mayCommitLocalLifecycle(original, from, to,
+      { isEdited: true, editedText: "stale" }, { data: { deleted: true } })).toBe(false);
+    expect(mayCommitLocalLifecycle(original, to, from,
+      { pinnedAt: 2, pinnedBy: to }, { data: "corrupt" })).toBe(false);
+    expect(mayCommitLocalLifecycle(original, "stranger", to,
+      { pinnedAt: 2, pinnedBy: "stranger" }, undefined)).toBe(false);
+  });
+  it("preserves global deletion by author even after own redaction", () => {
+    expect(mayCommitLocalLifecycle(original, from, to,
+      { deletedForEveryone: true, isEdited: false }, { data: { deleted: true } })).toBe(true);
+    expect(mayCommitLocalLifecycle(original, to, from,
+      { deletedForEveryone: true }, undefined)).toBe(false);
+  });
+});
