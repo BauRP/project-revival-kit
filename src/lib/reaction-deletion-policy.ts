@@ -5,6 +5,14 @@
  */
 import { isDeletedMessageRecord } from "./message-deletion-policy";
 
+/** The canonical tombstone ROW may exist even if its payload is corrupt.
+ * Never allow a deleted reaction/attachment to return through such a row.
+ */
+export function hasReactionDeletionMarker(row: unknown): boolean {
+  return row !== undefined;
+}
+
+
 type MessageParticipants = { id?: string; from?: string; to?: string } | null | undefined;
 
 export function canReactToVisibleMessage(

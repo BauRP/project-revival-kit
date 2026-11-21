@@ -66,3 +66,11 @@ describe("canonical profile avatar bytes before offline Tor sync", () => {
     }
   });
 });
+
+describe("local profile synchronization rejects corrupt legacy fields", () => {
+  it("does not queue oversized name or impossible timestamps on reconnect", () => {
+    expect(() => makeSharedProfile({ ...p, name: "a".repeat(81) })).toThrow();
+    expect(() => makeSharedProfile({ ...p, updatedAt: Number.NaN })).toThrow();
+    expect(() => makeSharedProfile({ ...p, customStatus: "x".repeat(281) })).toThrow();
+  });
+});

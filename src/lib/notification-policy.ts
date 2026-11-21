@@ -17,15 +17,18 @@ export function shouldNotifyChat(input: NotificationPolicyInput, now: number = D
     !(typeof input.mutedUntil === "number" && input.mutedUntil > now);
 }
 /** Only visible Unicode text is allowed into system notifications. */
-function visibleText(value: string, max: number, fallback: string): string {
+function visibleText(value: unknown, max: number, fallback: string): string {
+  if (typeof value !== "string") return fallback;
   const cleaned = value.replace(/[^\p{L}\p{M}\p{N}\p{P}\p{S}\p{Zs}]/gu, " ")
     .replace(/\s+/g, " ").trim().slice(0, max);
   return cleaned || fallback;
 }
 export function safeNotificationText(
-  title: string, body: string, hideContent: boolean,
+  title: unknown, body: unknown, hideContent: unknown,
 ): { title: string; body: string } {
-  return hideContent
+  // Only an explicit user preference false permits previews. Invalid or
+  // missing privacy settings must not expose a contact on the lock screen.
+  return hideContent !== false
     ? { title: "Trivo Chat", body: "Новое сообщение" }
     : {
       title: visibleText(title, 120, "Trivo Chat"),

@@ -3,7 +3,7 @@ import { dxdb, type LifecycleRecord } from "./dexie-db";
 import { onionRegisterIncomingListener, onionSendDispatch, ensureLocalIdentity } from "./onion-engine";
 import { isValidOnion } from "./onion-id";
 import { deletedMessageKey, isDeletedMessageRecord } from "./message-deletion-policy";
-import { canReactToVisibleMessage, pruneDeletedReactionMap } from "./reaction-deletion-policy";
+import { canReactToVisibleMessage, pruneDeletedReactionMap, hasReactionDeletionMarker } from "./reaction-deletion-policy";
 import { normalizeLegacyReactions, isRecoverableReactionRow } from "./reaction-policy";
 
 /** Reactions are durable Dexie records, with tombstones for removals. */
@@ -43,7 +43,7 @@ export async function getReactions(chatId: string): Promise<ReactionMap> {
     const batch = ids.slice(start, start + 256);
     const tombstones = await dxdb.lifecycle.bulkGet(batch.map(deletedMessageKey));
     for (let index = 0; index < batch.length; index++) {
-      if (isDeletedMessageRecord(tombstones[index]?.data))
+      if (hasReactionDeletionMarker(tombstones[index]))
         deleted.add(batch[index]);
     }
   }
@@ -52,7 +52,12 @@ export async function getReactions(chatId: string): Promise<ReactionMap> {
 
 /** Monotonic local/remote timestamp to preserve rapid successive reaction changes. */
 export function nextReactionUpdatedAt(previous: number, now: number): number {
-  return Math.max(now, previous + 1);
+  const validPrevious = Number.isSafeInteger(previous) && previous >= 0 ? previous : 0;
+  if (validPrevious === Number.MAX_SAFE_INTEGER)
+    throw new Error("Reaction timestamp overflow");
+  if (!Number.isSafeInteger(now) || now <= 0)
+    throw new Error("Invalid local reaction clock");
+  return Math.max(now, validPrevious + 1);
 }
 
 /** Local user action; serialize read/modify/write inside one transaction. */
@@ -69,7 +74,8 @@ export async function toggleReaction(
     // redacted placeholder or an event races the user's Delete action.
     const stored = await dxdb.messages.get(messageId);
     const erased = await dxdb.lifecycle.get(deletedMessageKey(messageId));
-    if (!canReactToVisibleMessage(stored, chatId, reactorId, erased?.data))
+    if (hasReactionDeletionMarker(erased) ||
+        !canReactToVisibleMessage(stored, chatId, reactorId, erased?.data))
       throw new Error("Cannot react to a deleted or unrelated message");
     const key = reactionRecordKey(chatId, messageId, reactorId);
     const previous = await dxdb.lifecycle.get(key);
@@ -152,7 +158,8 @@ async function persistReactionToOutbox(peer: string, messageId: string, self: st
     dxdb.messages.get(messageId),
     dxdb.lifecycle.get(deletedMessageKey(messageId)),
   ]);
-  if (!canReactToVisibleMessage(message, peer, self, erased?.data)) return false;
+  if (hasReactionDeletionMarker(erased) ||
+      !canReactToVisibleMessage(message, peer, self, erased?.data)) return false;
   const emoji = stored.data.emoji;
   if (emoji !== null && (typeof emoji !== "string" || emoji.length > 24)) return false;
   const eventId = typeof stored.data.outboundEventId === "string"

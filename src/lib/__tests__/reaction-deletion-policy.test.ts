@@ -102,3 +102,33 @@ describe("reaction recovery after an interrupted WebView", () => {
     expect(isRecoverableReactionRow({ ...original, messageId: "" }, "my-id")).toBe(false);
   });
 });
+
+import { hasReactionDeletionMarker } from "../reaction-deletion-policy";
+import { shouldApplyRemoteReaction } from "../reaction-policy";
+import { nextReactionUpdatedAt } from "../reactions";
+
+describe("reactions do not reappear after corrupt canonical tombstones", () => {
+  it("considers any existing deletion row authoritative", () => {
+    expect(hasReactionDeletionMarker(undefined)).toBe(false);
+    for (const row of [
+      { data: { deleted: true } },
+      { data: { deleted: false } },
+      { data: "damaged" },
+      { data: null },
+    ]) expect(hasReactionDeletionMarker(row)).toBe(true);
+  });
+  it("rejects signed invalid reaction timestamps on first delivery and replay", () => {
+    for (const bad of [NaN, Infinity, -1, 0, 1.5]) {
+      expect(shouldApplyRemoteReaction(undefined, bad)).toBe(false);
+    }
+    expect(shouldApplyRemoteReaction(undefined, 100)).toBe(true);
+    expect(shouldApplyRemoteReaction(100, 100)).toBe(false);
+    expect(shouldApplyRemoteReaction(100, 101)).toBe(true);
+  });
+  it("keeps local reaction clocks monotonic after backwards clock correction", () => {
+    expect(nextReactionUpdatedAt(500, 100)).toBe(501);
+    expect(nextReactionUpdatedAt(NaN, 100)).toBe(100);
+    expect(() => nextReactionUpdatedAt(20, NaN)).toThrow();
+    expect(() => nextReactionUpdatedAt(Number.MAX_SAFE_INTEGER, 100)).toThrow();
+  });
+});

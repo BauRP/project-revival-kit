@@ -32,3 +32,14 @@ describe("Tor indicator rejects aliases and unusable ports", () => {
     expect(isTorServiceReady({ ...ready, socksPort: Number.NaN })).toBe(false);
   });
 });
+
+describe("native Tor status never trusts invalid endpoint metadata", () => {
+  it("requires bootstrap progress to be exactly complete", () => {
+    expect(isTorServiceReady({ ...ready, bootstrapPercent: 101 })).toBe(false);
+    expect(isTorServiceReady({ ...ready, bootstrapPercent: Number.NaN })).toBe(false);
+  });
+  it("rejects impossible TCP ports", () => {
+    expect(isTorServiceReady({ ...ready, socksPort: 65536 })).toBe(false);
+    expect(isTorServiceReady({ ...ready, servicePort: 65536 })).toBe(false);
+  });
+});

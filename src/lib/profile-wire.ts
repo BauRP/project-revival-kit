@@ -55,7 +55,7 @@ export function validateSharedProfile(raw: unknown, authenticatedSender: string,
 
 export function makeSharedProfile(profile: SharedProfile): SharedProfile {
   // Do not forward HTTP(S) avatar URLs or unbounded camera images to peers.
-  return {
+  const shared: SharedProfile = {
     userId: profile.userId,
     name: profile.name,
     avatar: isSafeAvatar(profile.avatar) ? profile.avatar : null,
@@ -63,4 +63,9 @@ export function makeSharedProfile(profile: SharedProfile): SharedProfile {
     customStatus: profile.customStatus,
     updatedAt: profile.updatedAt,
   };
+  // A legacy local profile may be corrupt even when no edit is performed.
+  // Fail before it can be sealed into a durable Tor profile_update.
+  if (!validateSharedProfile(shared, shared.userId))
+    throw new Error("Invalid local profile cannot be synchronized");
+  return shared;
 }

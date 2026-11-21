@@ -2,6 +2,9 @@
  * must not roll the visible state back or trigger another UI notification.
  */
 export function shouldApplyRemoteReaction(previousAt: unknown, incomingAt: number): boolean {
+  // Even with no previous row, a signed frame with NaN/negative/fractional
+  // timestamp cannot become the authority for subsequent replay ordering.
+  if (!Number.isSafeInteger(incomingAt) || incomingAt <= 0) return false;
   return typeof previousAt !== "number" ||
     (Number.isSafeInteger(previousAt) && incomingAt > previousAt);
 }

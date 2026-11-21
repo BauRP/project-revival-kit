@@ -80,3 +80,18 @@ describe("damaged per-chat notification controls", () => {
     expect(shouldNotifyChat({ enabled: true, blocked: false, silent: false, mutedUntil: 0 }, 100)).toBe(true);
   });
 });
+
+describe("notification previews fail closed on malformed runtime values", () => {
+  it("never exposes a private contact with corrupt privacy preference", () => {
+    for (const privacy of [undefined, null, "false", 0, 1]) {
+      expect(safeNotificationText("Secret name", "Private text", privacy)).toEqual({
+        title: "Trivo Chat", body: "Новое сообщение",
+      });
+    }
+  });
+  it("handles invalid sender/body without crashing the notification dispatcher", () => {
+    expect(safeNotificationText({ name: "hostile" }, ["secret"], false)).toEqual({
+      title: "Trivo Chat", body: "Новое сообщение",
+    });
+  });
+});

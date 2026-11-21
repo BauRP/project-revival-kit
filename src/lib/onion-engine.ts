@@ -61,7 +61,7 @@ import { MediaSendGate } from "./media-send-gate";
 import { matchesPublishedOnion } from "./onion-publication-policy";
 import { mayQueueOriginalText } from "./outbox-delivery-policy";
 import { shouldApplyRemoteReaction, isCurrentReactionEnqueue } from "./reaction-policy";
-import { canReactToVisibleMessage, queuedReactionEventIds } from "./reaction-deletion-policy";
+import { canReactToVisibleMessage, queuedReactionEventIds, hasReactionDeletionMarker } from "./reaction-deletion-policy";
 import { validateIncomingFriendRequest, shouldApplyIncomingFriendRequest } from "./friend-request-policy";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, messageMediaFileId, redactLocalMessage, matchesIncomingChunkManifest, mayPersistIncomingChunkFromRows, hasAuthorizedAttachmentParent, mayShareOutgoingAttachment } from "./message-deletion-policy";
 import { duplicateMessageMatches, deletedRetryMatchesKnownParticipants } from "./inbound-identity";
@@ -902,9 +902,10 @@ async function commitDispatch(rawId: string, payload: Record<string, unknown>): 
       const original = await dxdb.messages.get(mid);
       const erased = mid ? await dxdb.lifecycle.get(deletedMessageKey(mid)) : undefined;
       const emoji = payload.emoji;
-      if (!canReactToVisibleMessage(
-          original, String(payload.from), String(payload.to), erased?.data,
-        ) ||
+      if (hasReactionDeletionMarker(erased) ||
+          !canReactToVisibleMessage(
+            original, String(payload.from), String(payload.to), erased?.data,
+          ) ||
           (emoji !== null && (typeof emoji !== "string" || emoji.length > 24)) ||
           mid.length > 128) {
         rejected = true;
