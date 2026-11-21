@@ -42,3 +42,26 @@ describe("persistent one-time media replay prevention", () => {
     expect(isProtectedByConsumedTombstone("f_b", revoked)).toBe(false);
   });
 });
+
+import { isCanonicalConsumedMediaRow, hasStoredConsumedMediaMarker } from "../one-time-policy";
+describe("consumed-media recovery after a malformed persisted marker", () => {
+  it("denies access for any existing row read by its canonical key", () => {
+    expect(hasStoredConsumedMediaMarker(undefined)).toBe(false);
+    expect(hasStoredConsumedMediaMarker({ data: { consumed: false } })).toBe(true);
+    expect(hasStoredConsumedMediaMarker({ data: "damaged" })).toBe(true);
+    expect(hasStoredConsumedMediaMarker({ data: { consumed: true } })).toBe(true);
+  });
+  it("recognizes canonical local revocations without trusting damaged payloads", () => {
+    expect(isCanonicalConsumedMediaRow({
+      chatKey: "consumed-media", key: "consumed-media::f1",
+      messageId: "f1", data: { consumed: false },
+    })).toBe(true);
+    expect(isCanonicalConsumedMediaRow({
+      chatKey: "consumed-media", key: "consumed-media::f1",
+      messageId: "other", data: { consumed: true },
+    })).toBe(false);
+    expect(isCanonicalConsumedMediaRow({
+      chatKey: "random", key: "consumed-media::f1", messageId: "f1",
+    })).toBe(false);
+  });
+});

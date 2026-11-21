@@ -7,7 +7,7 @@
 import { dxdb, getBlob, putBlob, discardUnreferencedUpload } from "./dexie-db";
 import { onionRequestBlob } from "./onion-engine";
 import { stripExifMetadata, inspectAttachmentBlob } from "./security-scan";
-import { consumedMediaKey, isConsumedMediaRecord } from "./one-time-policy";
+import { consumedMediaKey, hasStoredConsumedMediaMarker } from "./one-time-policy";
 
 export const TRIVO_MAX_UPLOAD_BYTES = 1024 * 1024 * 1024; // 1 GB ceiling
 
@@ -112,7 +112,7 @@ export function uploadFileToTrivo(
  * being downloaded again, even after a WebView restart. */
 async function assertNotConsumed(fileId: string): Promise<void> {
   const record = await dxdb.lifecycle.get(consumedMediaKey(fileId));
-  if (isConsumedMediaRecord(record?.data)) throw new Error("One-time attachment already viewed");
+  if (hasStoredConsumedMediaMarker(record)) throw new Error("One-time attachment already viewed");
 }
 
 const blobUrlCache = new Map<string, string>();
@@ -275,7 +275,7 @@ export async function consumeOneTimeMediaForViewing(
       const media = message?.media as { fileId?: string } | undefined;
       if (!message?.oneTimeView || message.oneTimeConsumed || media?.fileId !== fileId)
         throw new Error("One-time attachment was already opened or changed");
-      if (isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data))
+      if (hasStoredConsumedMediaMarker(await dxdb.lifecycle.get(consumedMediaKey(fileId)))
         throw new Error("One-time attachment already viewed");
       const now = Date.now();
       await dxdb.lifecycle.put({

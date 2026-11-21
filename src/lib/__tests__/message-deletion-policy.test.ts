@@ -256,3 +256,22 @@ describe("late signed media after irreversible removal", () => {
     expect(mayPersistIncomingChunkFromRows(undefined, { data: "damaged" })).toBe(false);
   });
 });
+
+import { hasStoredDeletedMessageMarker, isCanonicalDeletedMarkerRow } from "../message-deletion-policy";
+describe("corrupted stored deletion markers fail closed during legacy restore", () => {
+  it("never turns a present row with deleted:false into permission to resend", () => {
+    expect(hasStoredDeletedMessageMarker(undefined)).toBe(false);
+    expect(hasStoredDeletedMessageMarker({ data: { deleted: false } })).toBe(true);
+    expect(hasStoredDeletedMessageMarker({ data: null })).toBe(true);
+  });
+  it("matches canonical local marker keys without trusting a damaged payload", () => {
+    expect(isCanonicalDeletedMarkerRow({
+      key: deletedMessageKey("m1"), chatKey: "deleted-message-local",
+      messageId: "m1", data: { deleted: false },
+    })).toBe(true);
+    expect(isCanonicalDeletedMarkerRow({
+      key: deletedMessageKey("m1"), chatKey: "deleted-message-local",
+      messageId: "m2", data: { deleted: true },
+    })).toBe(false);
+  });
+});

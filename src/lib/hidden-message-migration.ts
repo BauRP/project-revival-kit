@@ -7,8 +7,8 @@
 import { dxdb } from "./dexie-db";
 import { dbGetStrict, dbPutStrict } from "./storage";
 import {
-  deletedMessageKey, findUnreferencedMedia, LOCAL_DELETED_CHAT_KEY,
-  redactLocalMessage,
+  deletedMessageKey, LOCAL_DELETED_CHAT_KEY, messageMediaFileId,
+  redactLocalMessage, unreferencedFileIds, boundedRecordBatches,
 } from "./message-deletion-policy";
 
 const MIGRATION_FLAG = "trivo-private-deletion-v2";
@@ -36,17 +36,32 @@ export async function scrubLegacyHiddenMessageBodies(selfId: string): Promise<nu
     ).toArray();
     if (!flags.length) return { count: 0, orphaned: [] as string[] };
 
-    const ids = new Set(flags.map((entry) => entry.messageId));
-    const all = await dxdb.messages.toArray();
-    const targets = all.filter((message) => ids.has(message.id));
-    const retained = all.filter((message) => !ids.has(message.id));
-    const orphaned = findUnreferencedMedia(
-      targets.map((message) => ({ media: message.media })),
-      retained.map((message) => ({ media: message.media })),
-    );
+    const ids = [...new Set(flags.map((entry) => entry.messageId))];
+    const candidates = new Set<string>();
+    let redactedCount = 0;
     const now = Date.now();
-    for (const message of targets)
-      await dxdb.messages.put(redactLocalMessage(message));
+    // Do not load every private message, transcript or attachment metadata
+    // into WebView RAM at startup. Redact bounded batches in ONE durable
+    // write transaction so interruption cannot leave a half-migrated chat.
+    for (const batch of boundedRecordBatches(ids)) {
+      const rows = await dxdb.messages.bulkGet(batch);
+      const redacted = rows.filter((row): row is NonNullable<typeof row> => !!row)
+        .map((row) => {
+          const fileId = messageMediaFileId(row);
+          if (fileId) candidates.add(fileId);
+          redactedCount++;
+          return redactLocalMessage(row);
+        });
+      if (redacted.length) await dxdb.messages.bulkPut(redacted);
+    }
+    // Only after redacting, scan remaining live references with a cursor.
+    // Shared files survive; orphaned plaintext files and partial chunks go.
+    const retained = new Set<string>();
+    if (candidates.size) await dxdb.messages.each((row) => {
+      const fileId = messageMediaFileId(row);
+      if (fileId && candidates.has(fileId)) retained.add(fileId);
+    });
+    const orphaned = unreferencedFileIds([...candidates], retained);
     for (const entry of flags) {
       // Only the fields required to display a tombstone may survive; old
       // lifecycle edits sometimes contain a second plaintext editedText.
@@ -72,12 +87,13 @@ export async function scrubLegacyHiddenMessageBodies(selfId: string): Promise<nu
         data: { deleted: true, deletedAt: now }, updatedAt: now,
       });
     }
-    await dxdb.outbox.bulkDelete([...ids]);
-    if (orphaned.length) {
-      await dxdb.blobs.bulkDelete(orphaned);
-      await dxdb.partial_chunks.where("fileId").anyOf(orphaned).delete();
+    for (const batch of boundedRecordBatches(ids))
+      await dxdb.outbox.bulkDelete(batch);
+    for (const batch of boundedRecordBatches(orphaned)) {
+      await dxdb.blobs.bulkDelete(batch);
+      await dxdb.partial_chunks.where("fileId").anyOf(batch).delete();
     }
-    return { count: targets.length, orphaned };
+    return { count: redactedCount, orphaned };
   });
   // The flag is written AFTER the entire Dexie transaction commits. If this
   // write fails, rerunning the migration is safe and will not reveal data.

@@ -8,8 +8,8 @@ import { dbGetStrict, dbGetAllStrict, dbPutStrict, dbClearStrict } from "./stora
 import { saveStoredChatMeta, readStoredChatMeta, readAllStoredChatMetas, mutateStoredChatMeta } from "./protected-chat-meta";
 import { mergeIncomingChatSummary, mergeOutgoingChatSummary, type IncomingChatSummary, type OutgoingChatSummary } from "./chat-meta-policy";
 import { duplicateMessageMatches } from "./inbound-identity";
-import { sanitizeRestoredOneTimeMessage } from "./one-time-policy";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, messageMediaFileId, unreferencedFileIds, boundedRecordBatches, redactLocalMessage, deletedLifecycleShell } from "./message-deletion-policy";
+import { sanitizeRestoredOneTimeMessage, isCanonicalConsumedMediaRow } from "./one-time-policy";
+import { deletedMessageKey, isDeletedMessageRecord, hasStoredDeletedMessageMarker, LOCAL_DELETED_CHAT_KEY, messageMediaFileId, unreferencedFileIds, boundedRecordBatches, redactLocalMessage, deletedLifecycleShell } from "./message-deletion-policy";
 import { hasExpiredMessage } from "./message-retention";
 import { dxdb, upsertContact, type StoredMessage } from "./dexie-db";
 import { advanceDeliveryStatus } from "./delivery-status-policy";
@@ -108,7 +108,7 @@ export async function sendP2PMessage(toOnion: string, message: P2PMessage): Prom
   // one-time attachment. Recheck inside the transaction for consistency.
   let alreadyDelivered = false;
   await dxdb.transaction("rw", [dxdb.messages, dxdb.lifecycle], async () => {
-    if (isDeletedMessageRecord((await dxdb.lifecycle.get(deletedMessageKey(stored.id)))?.data))
+    if (hasStoredDeletedMessageMarker(await dxdb.lifecycle.get(deletedMessageKey(stored.id))))
       throw new Error("This message was deleted locally and cannot be resent");
     const previous = await dxdb.messages.get(stored.id);
     if (!previous) {
@@ -137,7 +137,7 @@ export async function saveLocalMessage(msg: P2PMessage): Promise<void> {
   // authenticated Tor ingress. A delayed save cannot resurrect erased data.
   await dxdb.transaction("rw", [dxdb.messages, dxdb.lifecycle], async () => {
     const erased = await dxdb.lifecycle.get(deletedMessageKey(msg.id));
-    if (isDeletedMessageRecord(erased?.data))
+    if (hasStoredDeletedMessageMarker(erased))
       throw new Error("Cannot save a locally deleted message");
     const previous = await dxdb.messages.get(msg.id);
     // A legacy or local-only writer must never overwrite another author's
@@ -317,11 +317,11 @@ export async function migrateLegacyMessages(): Promise<void> {
     // message or its read/consumed state with an obsolete legacy copy.
     if (legacy.length) await dxdb.transaction("rw", [dxdb.messages, dxdb.lifecycle], async () => {
       const tombstones = await dxdb.lifecycle.where("chatKey").equals("consumed-media").toArray();
-      const revoked = new Set(tombstones.filter((r) => r.data.consumed === true).map((r) => r.key));
+      const revoked = new Set(tombstones.filter(isCanonicalConsumedMediaRow).map((r) => r.key));
       for (const msg of legacy) {
         if (typeof msg?.id !== "string" || !msg.id || msg.id.length > 128) continue;
         if (!(await dxdb.messages.get(msg.id)) &&
-            !isDeletedMessageRecord((await dxdb.lifecycle.get(deletedMessageKey(msg.id)))?.data)) {
+            !hasStoredDeletedMessageMarker(await dxdb.lifecycle.get(deletedMessageKey(msg.id))) {
           await dxdb.messages.add(sanitizeRestoredOneTimeMessage(msg, revoked) as unknown as StoredMessage);
         }
       }

@@ -3,6 +3,22 @@ export function consumedMediaKey(fileId: string): string {
   if (!fileId || fileId.length > 256) throw new Error("Invalid one-time media ID");
   return `consumed-media::${fileId}`;
 }
+/** Canonical persisted key wins even when the marker payload is corrupt.
+ * Only use this for ROWS read from the consumed-media index, never for
+ * untrusted stand-alone objects supplied by a network peer.
+ */
+export function isCanonicalConsumedMediaRow(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return row.chatKey === "consumed-media" &&
+    typeof row.messageId === "string" && row.messageId.length > 0 &&
+    row.messageId.length <= 256 &&
+    row.key === `consumed-media::${row.messageId}`;
+}
+export function hasStoredConsumedMediaMarker(value: unknown): boolean {
+  return value !== undefined;
+}
+
 export function isConsumedMediaRecord(data: unknown): boolean {
   return !!data && typeof data === "object" &&
     (data as { consumed?: unknown }).consumed === true;

@@ -9,6 +9,23 @@ export function deletedMessageKey(messageId: string): string {
     throw new Error("Invalid deleted message ID");
   return JSON.stringify(["deleted-message", messageId]);
 }
+/** A canonical legacy deletion key must be honored even if its stored
+ * payload was damaged by an interrupted import. This expects the actual
+ * indexed lifecycle ROW, not arbitrary network metadata.
+ */
+export function isCanonicalDeletedMarkerRow(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const row = value as Record<string, unknown>;
+  return row.chatKey === LOCAL_DELETED_CHAT_KEY &&
+    typeof row.messageId === "string" && row.messageId.length > 0 &&
+    row.messageId.length <= 128 &&
+    !/[\u0000-\u001f\u007f]/.test(row.messageId) &&
+    row.key === deletedMessageKey(row.messageId);
+}
+export function hasStoredDeletedMessageMarker(value: unknown): boolean {
+  return value !== undefined;
+}
+
 export function isDeletedMessageRecord(value: unknown): boolean {
   return !!value && typeof value === "object" && !Array.isArray(value) &&
     (value as { deleted?: unknown }).deleted === true;

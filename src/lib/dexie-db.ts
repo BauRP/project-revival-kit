@@ -8,7 +8,7 @@
 //   - lifecycle : per-chat edit/delete/pin mirror
 
 import Dexie, { type Table } from "dexie";
-import { consumedMediaKey, consumedMediaFileIds, hasConsumedMediaReference, isConsumedMediaRecord, isProtectedByConsumedTombstone, sanitizeRestoredOneTimeMessage } from "./one-time-policy";
+import { consumedMediaKey, consumedMediaFileIds, hasConsumedMediaReference, isConsumedMediaRecord, isProtectedByConsumedTombstone, sanitizeRestoredOneTimeMessage, hasStoredConsumedMediaMarker, isCanonicalConsumedMediaRow } from "./one-time-policy";
 import { validateBackupStructure } from "./backup-validation";
 import { stripSessionMediaUrl } from "./backup-media-policy";
 import { lifecycleRowsForRestore, lifecycleRowsToPurgeForDeletedMessages, isIrreversiblePrivacyMarker } from "./backup-merge-policy";
@@ -17,7 +17,7 @@ import { assertPortableBackupFits } from "./backup-budget";
 import { assertExportSnapshotSafe } from "./backup-snapshot-policy";
 import { sanitizePortableExportPrivacy } from "./backup-export-privacy";
 import { encodePortableMedia, decodePortableMedia } from "./backup-media-codec";
-import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, unusedBackupMedia, matchesReceivedAttachmentMetadata } from "./message-deletion-policy";
+import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, findUnreferencedMedia, unusedBackupMedia, matchesReceivedAttachmentMetadata, hasStoredDeletedMessageMarker, isCanonicalDeletedMarkerRow } from "./message-deletion-policy";
 import { canEvictUnreferencedMedia, isMatchingReceivedCache } from "./media-cache-policy";
 import { platform } from "./platform";
 import { sealDexieContact, openDexieContact, hasProtectedDexieContactName, sameStoredContact, type StoredContactRecord } from "./dexie-contact-protection";
@@ -306,7 +306,7 @@ export async function putBlob(
   // Serialize with the one-time purge so an in-flight download cannot
   // recreate revoked media after the viewer has consumed it.
   await dxdb.transaction("rw", [dxdb.lifecycle, dxdb.blobs], async () => {
-    if (isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data))
+    if (hasStoredConsumedMediaMarker(await dxdb.lifecycle.get(consumedMediaKey(fileId))))
       throw new Error("One-time attachment already viewed");
     await dxdb.blobs.put({
       fileId,
@@ -334,7 +334,7 @@ export async function putReceivedBlob(
 ): Promise<boolean> {
   const saved = await dxdb.transaction("rw",
     [dxdb.messages, dxdb.lifecycle, dxdb.blobs], async () => {
-      if (isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data))
+      if (hasStoredConsumedMediaMarker(await dxdb.lifecycle.get(consumedMediaKey(fileId))))
         return false;
       // Stop at the first metadata-matching signed parent message rather
       // than materializing an entire peer's chat (including long text and
@@ -347,7 +347,7 @@ export async function putReceivedBlob(
       // locally deleted reference must not prevent the live reference from
       // accepting its signed media. Only matching parents are materialized.
       for (const parent of parents) {
-        if (isDeletedMessageRecord((await dxdb.lifecycle.get(deletedMessageKey(parent.id)))?.data))
+        if (hasStoredDeletedMessageMarker(await dxdb.lifecycle.get(deletedMessageKey(parent.id)))
           continue;
         const incomingMeta = {
           name: name || `file-${fileId}`,
@@ -377,7 +377,7 @@ export async function getBlob(fileId: string): Promise<BlobRecord | undefined> {
   // Read the revocation marker and file from one database snapshot. Older
   // cached attachments must not be served after a one-time view.
   return dxdb.transaction("r", [dxdb.lifecycle, dxdb.blobs], async () => {
-    if (isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data))
+    if (hasStoredConsumedMediaMarker(await dxdb.lifecycle.get(consumedMediaKey(fileId))))
       return undefined;
     return dxdb.blobs.get(fileId);
   });
@@ -385,7 +385,7 @@ export async function getBlob(fileId: string): Promise<BlobRecord | undefined> {
 
 export async function hasBlob(fileId: string): Promise<boolean> {
   return dxdb.transaction("r", [dxdb.lifecycle, dxdb.blobs], async () => {
-    if (isConsumedMediaRecord((await dxdb.lifecycle.get(consumedMediaKey(fileId)))?.data))
+    if (hasStoredConsumedMediaMarker(await dxdb.lifecycle.get(consumedMediaKey(fileId))))
       return false;
     return (await dxdb.blobs.where("fileId").equals(fileId).count()) > 0;
   });
@@ -688,7 +688,7 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
         row?.chatKey === "consumed-media" && isConsumedMediaRecord(row.data) &&
         row.key === consumedMediaKey(row.messageId));
       const revoked = new Set([
-        ...currentTombstones.filter(isIrreversiblePrivacyMarker).map((row) => row.key),
+        ...currentTombstones.filter(isCanonicalConsumedMediaRow).map((row) => row.key),
         ...restoredTombstones.map((row) => row.key),
       ]);
       // Preserve local removal decisions; a restored older archive must not
@@ -733,7 +733,7 @@ export async function importDexieDump(dump: DexieDump): Promise<void> {
         row?.chatKey === LOCAL_DELETED_CHAT_KEY && isDeletedMessageRecord(row.data) &&
         row.key === deletedMessageKey(row.messageId));
       const deletedIds = new Set([
-        ...currentDeleted.filter(isIrreversiblePrivacyMarker).map((r) => r.messageId),
+        ...currentDeleted.filter(isCanonicalDeletedMarkerRow).map((r) => r.messageId),
         ...restoredDeleted.map((r) => r.messageId),
       ]);
       await dxdb.messages.bulkPut((dump.messages || []).filter((m) =>
