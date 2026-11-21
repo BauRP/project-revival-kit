@@ -275,7 +275,7 @@ export async function consumeOneTimeMediaForViewing(
       const media = message?.media as { fileId?: string } | undefined;
       if (!message?.oneTimeView || message.oneTimeConsumed || media?.fileId !== fileId)
         throw new Error("One-time attachment was already opened or changed");
-      if (hasStoredConsumedMediaMarker(await dxdb.lifecycle.get(consumedMediaKey(fileId)))
+      if (hasStoredConsumedMediaMarker(await dxdb.lifecycle.get(consumedMediaKey(fileId))))
         throw new Error("One-time attachment already viewed");
       const now = Date.now();
       await dxdb.lifecycle.put({
