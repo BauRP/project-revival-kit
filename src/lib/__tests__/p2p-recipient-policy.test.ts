@@ -21,3 +21,25 @@ describe("P2P destination identity", () => {
     expect(canAddressP2PRecipient("OTHER_MOCK_PEER")).toBe(false);
   });
 });
+
+import { validateLegacyMigrationMessage } from "../p2p";
+describe("bounded legacy migration never discards unreadable old chat records", () => {
+  const msg = { id: "old", from: "me", to: "friend", text: "my history", timestamp: 1 };
+  it("accepts historical message identity without demanding new network fields", () => {
+    expect(validateLegacyMigrationMessage(msg, "old")).toBe(true);
+    expect(validateLegacyMigrationMessage({ ...msg, status: undefined }, "old")).toBe(true);
+  });
+  it("fails closed on key conflict, missing owner, damaged data and forged ID", () => {
+    for (const [record, key] of [
+      [{ ...msg, id: "other" }, "old"],
+      [{ ...msg, id: "" }, ""],
+      [{ ...msg, id: "bad\nkey" }, "bad\nkey"],
+      [{ ...msg, from: "" }, "old"],
+      [{ ...msg, text: null }, "old"],
+      [{ ...msg, timestamp: NaN }, "old"],
+      [null, "old"],
+    ] as Array<[unknown, string]>) {
+      expect(validateLegacyMigrationMessage(record, key)).toBe(false);
+    }
+  });
+});

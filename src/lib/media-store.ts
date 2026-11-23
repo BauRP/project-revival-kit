@@ -224,8 +224,14 @@ export async function ensureMediaUrl<T extends { fileId?: string; url?: string }
   if (!media.fileId) return media;
   try {
     const url = await downloadFromTrivo(media.fileId, peer);
+    // A user may consume the attachment in another task while Tor is
+    // resolving its URL. Recheck before exposing the returned reference.
+    await assertNotConsumed(media.fileId);
     (media as { url?: string }).url = url;
   } catch (e) {
+    // On failed or revoked media lookup, do not leave a stale preview URL
+    // from an earlier WebView session attached to the UI message object.
+    (media as { url?: string }).url = undefined;
     console.warn("[trivo] ensureMediaUrl failed", e);
   }
   return media;

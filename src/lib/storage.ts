@@ -212,6 +212,46 @@ export async function dbGetAllStrict<T>(store: string): Promise<T[]> {
   });
 }
 
+/** Read legacy IndexedDB in bounded keyset pages. Each readonly transaction
+ * commits before the caller awaits another database; unlike getAll(), this
+ * never clones an entire old private chat into the WebView's JS heap.
+ */
+export async function dbReadBatchStrict<T>(
+  store: string, afterKey?: IDBValidKey, limit = 128,
+): Promise<Array<{ key: IDBValidKey; value: T }>> {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 256)
+    throw new Error("Invalid migration batch size");
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const rows: Array<{ key: IDBValidKey; value: T }> = [];
+    try {
+      const txn = db.transaction(store, "readonly");
+      const target = txn.objectStore(store);
+      const range = afterKey === undefined
+        ? undefined : IDBKeyRange.lowerBound(afterKey, true);
+      const req = target.openCursor(range);
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) return;
+        rows.push({ key: cursor.primaryKey, value: cursor.value as T });
+        if (rows.length < limit) cursor.continue();
+      };
+      txn.oncomplete = () => { db.close(); resolve(rows); };
+      txn.onerror = () => {
+        db.close();
+        reject(txn.error ?? new Error("Migration batch read failed"));
+      };
+      txn.onabort = () => {
+        db.close();
+        reject(txn.error ?? new Error("Migration batch read aborted"));
+      };
+    } catch (error) {
+      db.close();
+      reject(error);
+    }
+  });
+}
+
 export async function dbGetAll<T>(store: string): Promise<T[]> {
   return dbGetAllStrict<T>(store);
 }
