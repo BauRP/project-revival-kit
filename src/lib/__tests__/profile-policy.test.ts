@@ -38,3 +38,19 @@ describe("canonical persisted avatar and safe profile clocks", () => {
     expect(nextProfileTimestamp(100, 100)).toBe(101);
   });
 });
+
+
+describe("local profile text rejects spoofed display identities", () => {
+  it("shares the same Unicode safety rules as signed remote profiles", () => {
+    for (const change of [
+      {name: "User\u2067admin"}, {name: "User\u200f"},
+      {customStatus: "Hello\u202e!"},
+      {customStatus: "Hi\u061c"},
+    ]) {
+      expect(() => validateEditableProfile({...profile(), ...change})).toThrow();
+    }
+    expect(() => validateEditableProfile({
+      ...profile(), name: "Әлия", customStatus: "Привет\nسلام",
+    })).not.toThrow();
+  });
+});
