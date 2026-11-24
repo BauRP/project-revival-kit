@@ -139,3 +139,36 @@ describe("durable retry never writes invalid timestamps", () => {
     });
   });
 });
+
+import { retainDueScheduled } from "../scheduled-policy";
+
+describe("bounded due-message dispatch after wake", () => {
+  it("retains only the earliest 64 due rows from a large encrypted queue", () => {
+    const now = 10_000;
+    const due: Array<{id:string;scheduledAt:number}> = [];
+    for (let i = 200; i >= 0; i--) {
+      retainDueScheduled(due, { id: "m"+String(i).padStart(3,"0"), scheduledAt: i+1 }, now);
+    }
+    expect(due).toHaveLength(64);
+    expect(due[0].id).toBe("m000");
+    expect(due[63].id).toBe("m063");
+    retainDueScheduled(due, {id:"tomorrow",scheduledAt:now+100}, now);
+    expect(due).toHaveLength(64);
+  });
+  it("respects retry backoff, overdue resumption, and deterministic order", () => {
+    const now = 1_800_000_000_000;
+    const due: Array<{id:string;scheduledAt:number;attempts?:number;nextAttemptAt?:number}> = [];
+    retainDueScheduled(due, {id:"later",scheduledAt:now-500,
+      attempts:1,nextAttemptAt:now+10_000}, now);
+    retainDueScheduled(due, {id:"b",scheduledAt:now-100}, now);
+    retainDueScheduled(due, {id:"a",scheduledAt:now-100}, now);
+    retainDueScheduled(due, {id:"overdue",scheduledAt:now-1000,
+      attempts:2,nextAttemptAt:now+86_400_000}, now);
+    expect(due.map(x => x.id)).toEqual(["overdue","a","b"]);
+  });
+  it("refuses invalid batch bounds instead of an infinite queue", () => {
+    for (const limit of [0,-1,1.5,257,Infinity]) {
+      expect(() => retainDueScheduled([], {id:"m",scheduledAt:1},100,limit)).toThrow();
+    }
+  });
+});
