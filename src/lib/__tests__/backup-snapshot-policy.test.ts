@@ -75,6 +75,10 @@ describe("archive metadata checked before expensive Blob encoding", () => {
       { fileId: "bad\nkey" }, { name: "" },
       { name: "x".repeat(256) }, { mimeType: "" },
       { storedAt: NaN }, { storedAt: -1 },
+      { fileId: "../escape" },
+      { name: "../outside.png" },
+      { name: "photo\u202egpj.exe" },
+      { mimeType: "image/png\n" },
     ]) {
       expect(() => assertExportSnapshotSafe({
         ...empty(), blobs: [{ ...smallBlob(32), ...invalid }],
