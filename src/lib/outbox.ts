@@ -266,6 +266,50 @@ export async function listOutbox(): Promise<ScheduledItem[]> {
   return all.sort((a, b) => scheduledWakeAt(a) - scheduledWakeAt(b));
 }
 
+/** Read only a bounded number of due schedules for delivery.
+ * The user-facing listOutbox() still returns the complete queue, but each
+ * background wake keeps at most 64 potentially large ciphertext rows in RAM.
+ * We scan every row so retry timestamps (not just the scheduledAt index)
+ * determine which entries are actually due.
+ */
+async function dueScheduledBatch(now: number, limit = 64): Promise<ScheduledItem[]> {
+  const db = await openDB();
+  return new Promise<ScheduledItem[]>((resolve, reject) => {
+    const due: ScheduledItem[] = [];
+    let failure: unknown;
+    const transaction = db.transaction(STORE, "readonly");
+    const request = transaction.objectStore(STORE).openCursor();
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) return;
+      try {
+        const item = cursor.value as ScheduledItem;
+        validateStoredScheduledItem(item, isSealedScheduledText(item.text));
+        const wake = scheduledWakeAt(item, now);
+        if (wake <= now) {
+          const earlier = (a: ScheduledItem, b: ScheduledItem): number =>
+            scheduledWakeAt(a, now) - scheduledWakeAt(b, now) ||
+            a.id.localeCompare(b.id);
+          const insertion = due.findIndex((current) => earlier(item, current) < 0);
+          if (insertion === -1) due.push(item);
+          else due.splice(insertion, 0, item);
+          if (due.length > limit) due.pop();
+        }
+        cursor.continue();
+      } catch (error) {
+        failure = error;
+        transaction.abort();
+      }
+    };
+    request.onerror = () => { failure = request.error; };
+    transaction.oncomplete = () => resolve(due);
+    transaction.onerror = () => reject(failure ?? transaction.error ??
+      new Error("Cannot read due scheduled messages"));
+    transaction.onabort = () => reject(failure ?? transaction.error ??
+      new Error("Due scheduled scan aborted"));
+  });
+}
+
 export async function enqueue(
   item: Omit<ScheduledItem, "id" | "createdAt"> & { id?: string },
 ): Promise<ScheduledItem> {
@@ -316,7 +360,7 @@ async function fireDue() {
   timer = null;
   try {
   const now = Date.now();
-  const items = await listOutbox();
+  const items = await dueScheduledBatch(now);
   for (const item of items) {
     if (closed) break;
     if (scheduledWakeAt(item) > now) break;
