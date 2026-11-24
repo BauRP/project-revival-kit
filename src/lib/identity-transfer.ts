@@ -22,7 +22,8 @@ export function assertEmptyTransferTarget(counts: TransferTargetCounts): void {
 async function assertPristineDevice(): Promise<void> {
   const [contacts, messages, outbox, inbox, lifecycle, blobs, partialChunks, legacy,
     legacyContacts, schedules] = await Promise.all([
-      dxdb.contacts.count(), dxdb.messages.toArray(), dxdb.outbox.count(),
+      dxdb.contacts.count(), dxdb.messages.filter((message) =>
+        !isBuiltInWelcomeMessage(message)).count(), dxdb.outbox.count(),
       dxdb.inbox_raw.count(), dxdb.lifecycle.count(), dxdb.blobs.count(),
       dxdb.partial_chunks.count(), dbGetAllStrict("messages"),
       dbGetAllStrict("contacts"), listOutbox(),
@@ -36,7 +37,7 @@ async function assertPristineDevice(): Promise<void> {
   // still makes the target nonempty and forbids identity replacement.
   assertEmptyTransferTarget({
     contacts,
-    messages: messages.filter((m) => !isBuiltInWelcomeMessage(m)).length,
+    messages,
     outbox, inbox, lifecycle, blobs,
     partialChunks,
     legacyMessages: legacy.filter((m) => !isBuiltInWelcomeMessage(m)).length,
