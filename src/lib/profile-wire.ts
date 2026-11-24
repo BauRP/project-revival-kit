@@ -11,6 +11,20 @@ export interface SharedProfile {
   updatedAt: number;
 }
 
+/** Shared policy for locally edited and signed remotely received profile text.
+ * Bidi controls can make a display name impersonate a different contact.
+ * Custom statuses retain line breaks but not invisible formatting controls.
+ */
+export function safeProfileDisplayName(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 80 &&
+    !/[\u0000-\u001f\u007f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(value);
+}
+
+export function safeProfileCustomStatus(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 280 &&
+    !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(value);
+}
+
 /** The same canonical Base64 rule applies BEFORE local persistence and Tor sync. */
 export function isSafeProfileAvatar(avatar: unknown): avatar is string | null {
   if (avatar === null) return true;
@@ -37,8 +51,7 @@ export function validateSharedProfile(raw: unknown, authenticatedSender: string,
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const p = raw as Record<string, unknown>;
   if (p.userId !== authenticatedSender ||
-      typeof p.name !== "string" || p.name.length > 80 ||
-      typeof p.customStatus !== "string" || p.customStatus.length > 280 ||
+      !safeProfileDisplayName(p.name) || !safeProfileCustomStatus(p.customStatus) ||
       typeof p.status !== "string" ||
       !["online", "away", "dnd", "offline", "custom"].includes(p.status) ||
       !isSafeProfileAvatar(p.avatar) ||
