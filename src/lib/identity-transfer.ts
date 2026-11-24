@@ -1,6 +1,6 @@
 import { dxdb, importDexieDump, type DexieDump } from "./dexie-db";
 import { dbReadBatchStrict } from "./storage";
-import { listOutbox } from "./outbox";
+import { countScheduledOutbox } from "./outbox";
 import { getOrCreateIdentity, installRecoveredIdentity, type IdentityKeys } from "./crypto";
 import { onionStopForAccountDeletion } from "./onion-engine";
 import { TorTransport, isTorNativeAvailable } from "./tor-native";
@@ -43,7 +43,7 @@ async function assertPristineDevice(): Promise<void> {
         !isBuiltInWelcomeMessage(message)).count(), dxdb.outbox.count(),
       dxdb.inbox_raw.count(), dxdb.lifecycle.count(), dxdb.blobs.count(),
       dxdb.partial_chunks.count(), hasNonFixtureLegacyRecords("messages", isBuiltInWelcomeMessage),
-      hasNonFixtureLegacyRecords("contacts", isBuiltInSupportContact), listOutbox(),
+      hasNonFixtureLegacyRecords("contacts", isBuiltInSupportContact), countScheduledOutbox(),
     ]);
   // Native count includes damaged frames which cannot be decoded by
   // pendingInbound(); do not let such frames survive a key replacement.
@@ -59,7 +59,7 @@ async function assertPristineDevice(): Promise<void> {
     partialChunks,
     legacyMessages: legacy ? 1 : 0,
     legacyContacts: legacyContacts ? 1 : 0,
-    scheduledMessages: schedules.length,
+    scheduledMessages: schedules,
     nativeFrames,
   });
 }
