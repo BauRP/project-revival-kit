@@ -250,6 +250,14 @@ async function assertAllScheduledTextsProtected(): Promise<void> {
   });
 }
 
+/** Identity bootstrap/recovery needs only occupancy, not private text.
+ * A single native IndexedDB count avoids materializing the whole queue.
+ * Read errors propagate: failure is never mistaken for an empty queue.
+ */
+export async function countScheduledOutbox(): Promise<number> {
+  return tx<number>("readonly", (store) => store.count());
+}
+
 export async function listOutbox(): Promise<ScheduledItem[]> {
   // A failed read is not an empty queue. Propagate the error to prevent
   // falsely reporting that scheduled messages were delivered or deleted.
