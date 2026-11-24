@@ -74,3 +74,24 @@ describe("local profile synchronization rejects corrupt legacy fields", () => {
     expect(() => makeSharedProfile({ ...p, customStatus: "x".repeat(281) })).toThrow();
   });
 });
+
+
+describe("signed profile text anti-impersonation", () => {
+  it("rejects Unicode direction control characters in remote profiles", () => {
+    for (const altered of [
+      {name: "Alice\u202eadmin"},
+      {name: "Alice\u2066admin"},
+      {name: "Alice\u200fname"},
+      {customStatus: "OK\u2069visitor"},
+      {customStatus: "Ready\u061c"},
+      {customStatus: "Hello\u0000"},
+    ]) {
+      expect(validateSharedProfile({...p, ...altered}, id, 2000)).toBeNull();
+      expect(() => makeSharedProfile({...p, ...altered})).toThrow();
+    }
+  });
+  it("preserves multilingual visible text and line breaks in status", () => {
+    const candidate = {...p, name: "Қазақша имя", customStatus: "Сәлем!\nمرحبا"};
+    expect(validateSharedProfile(candidate, id, 2000)).toEqual(candidate);
+  });
+});
