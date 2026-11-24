@@ -1,4 +1,4 @@
-import { isSafeProfileAvatar } from "./profile-wire";
+import { isSafeProfileAvatar, safeProfileDisplayName, safeProfileCustomStatus } from "./profile-wire";
 
 /** Validate locally edited profile fields before persisting or sharing them. */
 export interface EditableProfileFields {
@@ -10,12 +10,9 @@ export interface EditableProfileFields {
 const STATUS = new Set(["online", "away", "dnd", "offline", "custom"]);
 const LOCAL_AVATAR_MAX = 65_536;
 export function validateEditableProfile(profile: EditableProfileFields): void {
-  if (typeof profile.name !== "string" || profile.name.length > 80 ||
-      /[\u0000-\u001f\u007f\u202a-\u202e]/.test(profile.name))
+  if (!safeProfileDisplayName(profile.name))
     throw new Error("Profile display name is unsafe or too long");
-  if (typeof profile.customStatus !== "string" ||
-      profile.customStatus.length > 280 ||
-      /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(profile.customStatus))
+  if (!safeProfileCustomStatus(profile.customStatus))
     throw new Error("Profile status text is invalid or too long");
   if (!STATUS.has(profile.status))
     throw new Error("Unsupported profile status");
