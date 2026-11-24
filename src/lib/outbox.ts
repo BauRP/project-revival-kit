@@ -1,4 +1,4 @@
-import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem, validateStoredScheduledItem, sameScheduledState, canScheduleRecipient } from "./scheduled-policy";
+import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem, validateStoredScheduledItem, sameScheduledState, canScheduleRecipient, retainDueScheduled } from "./scheduled-policy";
 import { protectScheduledText, revealScheduledText, isSealedScheduledText } from "./scheduled-encryption";
 import { isNative } from "./platform";
 // Local outbox for Scheduled Send (Turn 2).
@@ -285,16 +285,7 @@ async function dueScheduledBatch(now: number, limit = 64): Promise<ScheduledItem
       try {
         const item = cursor.value as ScheduledItem;
         validateStoredScheduledItem(item, isSealedScheduledText(item.text));
-        const wake = scheduledWakeAt(item, now);
-        if (wake <= now) {
-          const earlier = (a: ScheduledItem, b: ScheduledItem): number =>
-            scheduledWakeAt(a, now) - scheduledWakeAt(b, now) ||
-            a.id.localeCompare(b.id);
-          const insertion = due.findIndex((current) => earlier(item, current) < 0);
-          if (insertion === -1) due.push(item);
-          else due.splice(insertion, 0, item);
-          if (due.length > limit) due.pop();
-        }
+        retainDueScheduled(due, item, now, limit);
         cursor.continue();
       } catch (error) {
         failure = error;
