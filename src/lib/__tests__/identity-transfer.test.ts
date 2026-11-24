@@ -10,6 +10,14 @@ describe("fresh device identity migration safeguards", () => {
   it("permits a truly unused identity", () => {
     expect(() => assertEmptyTransferTarget(empty())).not.toThrow();
   });
+  it("fails closed when a database count is invalid or unreadable", () => {
+    for (const count of [-1, Number.NaN, Number.POSITIVE_INFINITY, 0.5, Number.MAX_SAFE_INTEGER + 1]) {
+      expect(() => assertEmptyTransferTarget({ ...empty(), scheduledMessages: count }))
+        .toThrow(/fresh installation/);
+      expect(() => assertEmptyTransferTarget({ ...empty(), messages: count }))
+        .toThrow(/fresh installation/);
+    }
+  });
   it("rejects every local data store that could be orphaned", () => {
     for (const name of Object.keys(empty()) as Array<keyof ReturnType<typeof empty>>) {
       expect(() => assertEmptyTransferTarget({ ...empty(), [name]: 1 })).toThrow(/fresh installation/);
