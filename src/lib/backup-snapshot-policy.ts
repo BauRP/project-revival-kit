@@ -6,6 +6,7 @@
  */
 import { assertPortableBackupFits } from "./backup-budget";
 import { looksLikeProtectedHistoryRow } from "./protected-history-record";
+import { validBlobFileId } from "./blob-request-policy";
 
 export interface BackupSnapshotRows {
   contacts: readonly unknown[];
@@ -62,10 +63,11 @@ export function assertExportSnapshotSafe(snapshot: BackupSnapshotRows): void {
       throw new Error("Backup attachment size differs from committed media");
     // Validate file metadata BEFORE copying the Blob to a Base64 archive.
     // A corrupt legacy record must not cause work on an unusable backup.
-    if (typeof row.fileId !== "string" || !row.fileId ||
-        row.fileId.length > 128 || /[\u0000-\u001f\u007f]/.test(row.fileId) ||
+    if (!validBlobFileId(row.fileId) ||
         typeof row.name !== "string" || !row.name || row.name.length > 255 ||
+        /[\\/\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/.test(row.name) ||
         typeof row.mimeType !== "string" || !row.mimeType || row.mimeType.length > 128 ||
+        /[\u0000-\u001f\u007f]/.test(row.mimeType) ||
         !Number.isSafeInteger(row.storedAt) || row.storedAt < 0)
       throw new Error("Invalid backup attachment metadata");
     mediaBytes += row.data.size;
