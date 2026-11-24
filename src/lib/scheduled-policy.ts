@@ -22,6 +22,28 @@ export function scheduledWakeAt(
     return Math.max(item.scheduledAt, now);
   return Math.max(item.scheduledAt, retry);
 }
+/** Keep only the earliest due schedules while scanning IndexedDB.
+ * A large pending queue must not load every encrypted text into JS memory.
+ * The caller validates persisted rows before passing them here.
+ */
+export function retainDueScheduled<T extends ScheduledRetryState & { id: string }>(
+  due: T[], item: T, now: number, limit = 64,
+): void {
+  if (!Number.isSafeInteger(now) || now < 0 ||
+      !Number.isSafeInteger(limit) || limit < 1 || limit > 256)
+    throw new Error("Invalid due schedule batch");
+  const wake = scheduledWakeAt(item, now);
+  if (wake > now) return;
+  const before = (other: T): boolean => {
+    const otherWake = scheduledWakeAt(other, now);
+    return wake < otherWake || (wake === otherWake && item.id < other.id);
+  };
+  const at = due.findIndex(before);
+  if (at === -1) due.push(item);
+  else due.splice(at, 0, item);
+  if (due.length > limit) due.pop();
+}
+
 export function nextScheduledRetry<T extends ScheduledRetryState>(
   item: T, now: number,
 ): T {
