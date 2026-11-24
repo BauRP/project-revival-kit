@@ -1,5 +1,5 @@
 import { dxdb, importDexieDump, type DexieDump } from "./dexie-db";
-import { dbGetAllStrict } from "./storage";
+import { dbReadBatchStrict } from "./storage";
 import { listOutbox } from "./outbox";
 import { getOrCreateIdentity, installRecoveredIdentity, type IdentityKeys } from "./crypto";
 import { onionStopForAccountDeletion } from "./onion-engine";
@@ -19,14 +19,31 @@ export function assertEmptyTransferTarget(counts: TransferTargetCounts): void {
     throw new Error("Identity transfer requires a fresh installation with no existing conversations or contacts");
 }
 
+/** For identity safety we only need to know whether ANY non-fixture
+ * legacy record exists. Avoid cloning the full plaintext history in RAM.
+ * Fail closed on cursor errors or unsupported legacy record shapes.
+ */
+async function hasNonFixtureLegacyRecords(
+  store: "messages" | "contacts",
+  isFixture: (value: unknown) => boolean,
+): Promise<boolean> {
+  let lastKey: IDBValidKey | undefined;
+  for (;;) {
+    const rows = await dbReadBatchStrict<unknown>(store, lastKey, 128);
+    if (rows.some(({ value }) => !isFixture(value))) return true;
+    if (rows.length < 128) return false;
+    lastKey = rows[rows.length - 1].key;
+  }
+}
+
 async function assertPristineDevice(): Promise<void> {
   const [contacts, messages, outbox, inbox, lifecycle, blobs, partialChunks, legacy,
     legacyContacts, schedules] = await Promise.all([
       dxdb.contacts.count(), dxdb.messages.filter((message) =>
         !isBuiltInWelcomeMessage(message)).count(), dxdb.outbox.count(),
       dxdb.inbox_raw.count(), dxdb.lifecycle.count(), dxdb.blobs.count(),
-      dxdb.partial_chunks.count(), dbGetAllStrict("messages"),
-      dbGetAllStrict("contacts"), listOutbox(),
+      dxdb.partial_chunks.count(), hasNonFixtureLegacyRecords("messages", isBuiltInWelcomeMessage),
+      hasNonFixtureLegacyRecords("contacts", isBuiltInSupportContact), listOutbox(),
     ]);
   // Native count includes damaged frames which cannot be decoded by
   // pendingInbound(); do not let such frames survive a key replacement.
@@ -40,8 +57,8 @@ async function assertPristineDevice(): Promise<void> {
     messages,
     outbox, inbox, lifecycle, blobs,
     partialChunks,
-    legacyMessages: legacy.filter((m) => !isBuiltInWelcomeMessage(m)).length,
-    legacyContacts: legacyContacts.filter((c) => !isBuiltInSupportContact(c)).length,
+    legacyMessages: legacy ? 1 : 0,
+    legacyContacts: legacyContacts ? 1 : 0,
     scheduledMessages: schedules.length,
     nativeFrames,
   });
