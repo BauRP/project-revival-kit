@@ -200,3 +200,16 @@ describe("strict irreversible privacy namespaces in portable archives", () => {
     })).not.toThrow();
   });
 });
+
+
+describe("restored signed profile identity text", () => {
+  it("rejects a profile with spoofed direction marks before database restore", () => {
+    const owner = "a".repeat(56) + ".onion";
+    const profile = {userId: owner, name:"Friend\u202eadmin", avatar:null,
+      status:"online", customStatus:"OK", updatedAt:1777777777};
+    const row = {key:"profile::"+owner, chatKey:"remote-profile",
+      messageId:owner, updatedAt:profile.updatedAt, data:profile};
+    expect(() => validateBackupStructure({...dump(), lifecycle:[row]}))
+      .toThrow("Invalid portable remote profile");
+  });
+});
