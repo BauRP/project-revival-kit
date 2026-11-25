@@ -4,9 +4,11 @@
  * different device. Older V1/V2/V3 backups without this field still restore.
  */
 import {
-  getChatPreferences, updateChatPreferences, validateChatPreferenceState,
-  type ChatPreferenceState,
+  getChatPreferences, validateChatPreferenceState,
+  type ChatPreferenceState, type DisappearingDuration,
 } from "./chat-preferences";
+import { platform } from "./platform";
+import { dbUpdateStrict } from "./storage";
 import { dbListKeysByPrefixStrict } from "./storage";
 
 const PREFIX = "chat-preferences-";
@@ -97,15 +99,36 @@ export async function exportPortableChatPreferences(): Promise<PortableChatPrefe
  * archive must not silently unblock a peer or lower the one-time default.
  * Other fields from the backup fill only previously unset local settings.
  */
+/** During restore the stricter disappearing interval always wins.
+ * Users may explicitly relax it later, outside the restore operation.
+ */
+function stricterDuration(
+  current?: DisappearingDuration, incoming?: DisappearingDuration,
+): DisappearingDuration | undefined {
+  const strength: Record<DisappearingDuration, number> = {
+    "1h": 1, "6h": 6, "12h": 12, "24h": 24, off: Infinity,
+  };
+  if (current === undefined) return incoming;
+  if (incoming === undefined) return current;
+  return strength[current] <= strength[incoming] ? current : incoming;
+}
+
 export function mergePortableChatPreferenceState(
   previous: ChatPreferenceState, incoming: ChatPreferenceState,
 ): ChatPreferenceState {
   const current = normalizedState(previous);
   const restored = normalizedState(incoming);
+  const mutedUntil = current.mutedUntil === undefined ? restored.mutedUntil :
+    restored.mutedUntil === undefined ? current.mutedUntil :
+    Math.max(current.mutedUntil ?? 0, restored.mutedUntil ?? 0) || null;
   return {
     ...restored, ...current,
     blocked: current.blocked === true || restored.blocked === true,
     oneTimeDefault: current.oneTimeDefault === true || restored.oneTimeDefault === true,
+    silentDefault: current.silentDefault === true || restored.silentDefault === true,
+    disappearingDuration: stricterDuration(
+      current.disappearingDuration, restored.disappearingDuration),
+    mutedUntil,
   };
 }
 
@@ -114,11 +137,17 @@ export async function restorePortableChatPreferences(
 ): Promise<number> {
   const rows = validatePortableChatPreferences(items);
   for (const { chatId, state } of rows) {
-    // updateChatPreferences on Android commits via encrypted CAS under this
-    // device's Keystore; never store archive plaintext as a settings value.
-    const current = await getChatPreferences(chatId);
-    const merged = mergePortableChatPreferenceState(current, state);
-    await updateChatPreferences(chatId, merged);
+    // Every retry merges the incoming privacy state against the LATEST
+    // committed value, not an old snapshot from another open WebView.
+    if (platform() === "android") {
+      const { updateProtectedChatPreferences } = await import("./protected-chat-preferences");
+      await updateProtectedChatPreferences(chatId, (current) =>
+        mergePortableChatPreferenceState(current, state));
+    } else {
+      await dbUpdateStrict("settings", PREFIX + chatId, (current) =>
+        mergePortableChatPreferenceState(
+          validateChatPreferenceState(current), state));
+    }
   }
   return rows.length;
 }
