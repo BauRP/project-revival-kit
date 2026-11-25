@@ -379,7 +379,9 @@ export async function getBlob(fileId: string): Promise<BlobRecord | undefined> {
   return dxdb.transaction("r", [dxdb.lifecycle, dxdb.blobs], async () => {
     if (hasStoredConsumedMediaMarker(await dxdb.lifecycle.get(consumedMediaKey(fileId))))
       return undefined;
-    return dxdb.blobs.get(fileId);
+    const stored = await dxdb.blobs.get(fileId);
+    if (stored) verifiedBlobSize(stored);
+    return stored;
   });
 }
 
