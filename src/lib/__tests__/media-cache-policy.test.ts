@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   canEvictUnreferencedMedia, MEDIA_ORPHAN_GRACE_MS, verifiedBlobSize,
+  canRepairReceivedCache, needsReceivedCacheRepair,
 } from "../media-cache-policy";
 
 describe("media cache eviction must preserve active or recent uploads", () => {
@@ -60,7 +61,7 @@ describe("signed media does not overwrite an existing fileId", () => {
     expect(isMatchingReceivedCache(incoming, incoming)).toBe(false);
   });
   it("accepts an exact retransmission of an already validated received blob", () => {
-    expect(isMatchingReceivedCache({...incoming,origin:"received"},incoming)).toBe(true);
+    expect(isMatchingReceivedCache({...incoming,origin:"received",data:new Blob([new Uint8Array(123)])},incoming)).toBe(true);
   });
   it("does not acknowledge a corrupted cached received attachment", () => {
     const incoming = { name: "photo.jpg", mimeType: "image/jpeg", size: 3 };
@@ -92,5 +93,38 @@ describe("committed binary sizes control cache budget and safe eviction", () => 
     expect(() => verifiedBlobSize({
       size:3,data:undefined as unknown as Blob,
     })).toThrow(/size/);
+  });
+});
+
+describe("received-media repair is restricted to authenticated metadata matches", () => {
+  const metadata = { name: "photo.jpg", mimeType: "image/jpeg", size: 3 };
+  const correct = new Blob(["abc"]);
+  const damaged = { ...metadata, origin: "received", data: new Blob(["bad bytes"]) };
+
+  it("refetches only a corrupt received-cache record", () => {
+    expect(needsReceivedCacheRepair(damaged)).toBe(true);
+    expect(needsReceivedCacheRepair({ ...metadata, origin: "received", data: correct })).toBe(false);
+    expect(needsReceivedCacheRepair({ ...damaged, origin: "local" })).toBe(false);
+    expect(needsReceivedCacheRepair({ ...damaged, origin: undefined })).toBe(false);
+    expect(needsReceivedCacheRepair({ ...metadata, origin: "received" })).toBe(true);
+  });
+  it("repairs a corrupt received blob with matching signed parent metadata", () => {
+    expect(canRepairReceivedCache(damaged, metadata, correct)).toBe(true);
+    expect(isMatchingReceivedCache(damaged, metadata)).toBe(false);
+  });
+  it("never overwrites a healthy record, local upload or unclassified legacy blob", () => {
+    expect(canRepairReceivedCache({ ...damaged, data: correct }, metadata, correct)).toBe(false);
+    expect(canRepairReceivedCache({ ...damaged, origin: "local" }, metadata, correct)).toBe(false);
+    expect(canRepairReceivedCache({ ...damaged, origin: undefined }, metadata, correct)).toBe(false);
+  });
+  it("refuses mismatched signed name, type, length or retransmitted binary size", () => {
+    expect(canRepairReceivedCache(damaged, { ...metadata, name: "other" }, correct)).toBe(false);
+    expect(canRepairReceivedCache(damaged, { ...metadata, mimeType: "application/octet-stream" }, correct)).toBe(false);
+    expect(canRepairReceivedCache(damaged, { ...metadata, size: 4 }, correct)).toBe(false);
+    expect(canRepairReceivedCache(damaged, metadata, new Blob(["wrong bytes"]))).toBe(false);
+  });
+  it("refuses damaged size metadata rather than guessing binary ownership", () => {
+    expect(canRepairReceivedCache({ ...damaged, size: NaN }, metadata, correct)).toBe(false);
+    expect(canRepairReceivedCache({ ...damaged, size: -1 }, metadata, correct)).toBe(false);
   });
 });
