@@ -42,6 +42,7 @@ import {
 } from "./dexie-db";
 import { updateLegacySetting } from "./legacy-setting-cas";
 import { removedContactKey, hasStoredContactRevocation } from "./contact-removal-policy";
+import { shouldPauseBlockedUserDispatch } from "./chat-preferences";
 import { isLegacyFriendEvent, isPermanentlyInvalidInboundFrame, canReuseInboundRawId } from "./inbound-durability";
 import { InboundFrameSingleFlight } from "./inbound-frame-single-flight";
 import { KeyedSerialQueue } from "./keyed-serial-queue";
@@ -542,6 +543,10 @@ async function sendOutboxOnce(id: string): Promise<boolean> {
     return queued;
   });
   if (!rec) return false;
+  // The contact might have been blocked AFTER this frame was sealed. Never
+  // ship queued user text/profile/reactions against the latest block choice.
+  // Keep ciphertext durable and retryable; control events remain eligible.
+  if (await shouldPauseBlockedUserDispatch(rec.peer, rec.kind)) return false;
   const ok = await ship(rec.peer, rec.frame, rec.id);
   // The record can be deleted or replaced with a different sealed event
   // while network I/O is in progress. Never apply an old result to a new
@@ -581,6 +586,10 @@ async function drainOutboxFor(peer: string): Promise<void> {
   });
   queue.sort((a, b) => a.createdAt - b.createdAt);
   for (const item of queue) {
+    const current = await dxdb.outbox.get(item.id);
+    if (!current || current.peer !== peer) continue;
+    // A blocked user frame must not starve later deletion/control events.
+    if (await shouldPauseBlockedUserDispatch(peer, current.kind)) continue;
     if (!(await attemptOutbox(item.id))) return;
   }
 }
@@ -600,6 +609,7 @@ export async function drainOutbox(): Promise<void> {
     if (failedPeers.has(item.peer)) continue;
     const record = await dxdb.outbox.get(item.id);
     if (!record || record.peer !== item.peer) continue;
+    if (await shouldPauseBlockedUserDispatch(item.peer, record.kind)) continue;
     if (!(await attemptOutbox(item.id))) failedPeers.add(item.peer);
   }
 }
