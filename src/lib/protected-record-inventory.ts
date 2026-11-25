@@ -3,7 +3,7 @@
  * Existing encrypted chunks AND the sealed local profile must be checked
  * before bootstrap: a lost key wrapper must NEVER cause a new data key.
  */
-import { dbGetStrict, dbGetAllStrict, dbHasKeyPrefixStrict } from "./storage";
+import { dbGetStrict, dbSomeStrict, dbHasKeyPrefixStrict } from "./storage";
 import { dxdb } from "./dexie-db";
 import { acquirePersistedLocalRecordKey } from "./local-record-key-store";
 import { hasProtectedDexieContactName } from "./dexie-contact-protection";
@@ -34,7 +34,9 @@ export async function protectedStorageHasNoCiphertext(): Promise<boolean> {
     dbGetStrict<unknown>("settings", LOCAL_PROFILE_ENCRYPTED_ID),
     dxdb.partial_chunks.filter((row) =>
       row.encrypted === 1 || row.data.type === ENCRYPTED_CHUNK_MIME).count(),
-    dbGetAllStrict<unknown>("contacts"),
+    dbSomeStrict<unknown>("contacts", (row) =>
+      !!row && typeof row === "object" && !Array.isArray(row) &&
+      ("sealed" in row || "kind" in row)),
     // Also detect damaged/unsupported encrypted names before key bootstrap.
     dxdb.contacts.filter(hasProtectedDexieContactName).count(),
     dxdb.lifecycle.filter(hasEncryptedRemoteProfileRow).count(),
@@ -48,7 +50,7 @@ export async function protectedStorageHasNoCiphertext(): Promise<boolean> {
   // Even a corrupt/unknown envelope at this key means a key may be needed.
   // The profile must never be silently reinitialized if its key is lost.
   return profile === undefined && chunks === 0 &&
-    !protectedContactsContainCiphertext(chatSummaries) &&
+    !chatSummaries &&
     sealedDexieContacts === 0 && sealedRemoteProfiles === 0 &&
     sealedMessages === 0 && sealedLifecycle === 0 && !sealedChatPreferences;
 }
