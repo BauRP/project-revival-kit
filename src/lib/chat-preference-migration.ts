@@ -15,6 +15,7 @@ const PAGE_SIZE = 32;
 let stopRequested = false;
 let running: Promise<number> | null = null;
 let stopped = false;
+let finished = false;
 
 function yieldToUI(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
@@ -63,12 +64,15 @@ export async function migrateChatPreferencePages(
  * or next app restart; an invalid record is NOT skipped or silently erased.
  */
 export function startChatPreferenceMigration(): Promise<number> {
-  if (stopped || stopRequested) return Promise.resolve(0);
+  if (stopped || stopRequested || finished) return Promise.resolve(0);
   if (running) return running;
   const task = migrateChatPreferencePages(() => stopRequested);
   running = task;
-  void task.finally(() => { if (running === task) running = null; })
-    .catch(() => undefined);
+  void task.then(() => {
+    if (!stopRequested) finished = true;
+  }).finally(() => {
+    if (running === task) running = null;
+  }).catch(() => undefined);
   return task;
 }
 
