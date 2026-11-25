@@ -164,7 +164,8 @@ describe("bounded due-message dispatch after wake", () => {
     retainDueScheduled(due, {id:"a",scheduledAt:now-100}, now);
     retainDueScheduled(due, {id:"overdue",scheduledAt:now-1000,
       attempts:2,nextAttemptAt:now+86_400_000}, now);
-    expect(due.map(x => x.id)).toEqual(["overdue","a","b"]);
+    // An obsolete future retry wakes at 'now', after earlier due messages.
+    expect(due.map(x => x.id)).toEqual(["a","b","overdue"]);
   });
   it("refuses invalid batch bounds instead of an infinite queue", () => {
     for (const limit of [0,-1,1.5,257,Infinity]) {
