@@ -175,6 +175,45 @@ export async function dbCountStrict(store: string): Promise<number> {
   });
 }
 
+/** Scan legacy records in a cursor, not a giant getAll() array. This
+ * preserves lost-key protection for large contact lists without freezing
+ * the WebView by cloning the whole database on startup.
+ */
+export async function dbSomeStrict<T>(
+  store: string, predicate: (value: T) => boolean,
+): Promise<boolean> {
+  const db = await openDB();
+  return new Promise<boolean>((resolve, reject) => {
+    let found = false;
+    let failure: unknown;
+    try {
+      const tx = db.transaction(store, "readonly");
+      const req = tx.objectStore(store).openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) return;
+        try {
+          if (predicate(cursor.value as T)) found = true;
+          else cursor.continue();
+        } catch (error) {
+          failure = error;
+          tx.abort();
+        }
+      };
+      req.onerror = () => { failure = req.error; };
+      tx.oncomplete = () => { db.close(); resolve(found); };
+      tx.onerror = () => {
+        db.close();
+        reject(failure ?? tx.error ?? new Error("Protected storage scan failed"));
+      };
+      tx.onabort = () => {
+        db.close();
+        reject(failure ?? tx.error ?? new Error("Protected storage scan aborted"));
+      };
+    } catch (error) { db.close(); reject(error); }
+  });
+}
+
 /** Detect protected settings by key without cloning their values into memory.
  * A lost Keystore wrapper must never bootstrap a replacement while even one
  * previously encrypted chat setting survives in the legacy settings DB.
