@@ -35,6 +35,57 @@ export function safeScrubCanvasSize(width: number, height: number): { width: num
   };
 }
 
+/** A stalled Android decoder must not leave an upload pending indefinitely.
+ * A failure never falls back to uploading the image with EXIF intact.
+ */
+export function decodePrivateImage(
+  image: HTMLImageElement, src: string, timeoutMs = 20_000,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let done = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const settle = (error?: Error) => {
+      if (done) return;
+      done = true;
+      if (timer !== undefined) clearTimeout(timer);
+      image.onload = null;
+      image.onerror = null;
+      if (error) {
+        try { image.src = ""; } catch { /* the original decoder error wins */ }
+        reject(error);
+      } else resolve();
+    };
+    image.onload = () => settle();
+    image.onerror = () => settle(new Error("Unable to decode image for metadata removal"));
+    timer = setTimeout(() => settle(new Error("Image metadata removal decode timed out")), timeoutMs);
+    try { image.src = src; }
+    catch { settle(new Error("Unable to start private image decoding")); }
+  });
+}
+
+/** Android's canvas encoder may never invoke toBlob during a renderer stall.
+ * Never return the original private file when this step fails.
+ */
+export function encodePrivateCanvas(
+  canvas: HTMLCanvasElement, mime: string, timeoutMs = 20_000,
+): Promise<Blob> {
+  return new Promise<Blob>((resolve, reject) => {
+    let done = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const settle = (blob: Blob | null, error?: Error) => {
+      if (done) return;
+      done = true;
+      if (timer !== undefined) clearTimeout(timer);
+      if (error || !blob || blob.size === 0 || blob.type !== mime)
+        reject(error ?? new Error("Unable to verify metadata-free image output"));
+      else resolve(blob);
+    };
+    timer = setTimeout(() => settle(null, new Error("Image metadata removal encode timed out")), timeoutMs);
+    try { canvas.toBlob((blob) => settle(blob), mime, 0.92); }
+    catch { settle(null, new Error("Secure image encoding failed")); }
+  });
+}
+
 export async function stripExifMetadata(file: File): Promise<File> {
   if (!file.type.startsWith("image/")) return file;
   if (!canScrubImageType(file.type))
@@ -43,31 +94,26 @@ export async function stripExifMetadata(file: File): Promise<File> {
   const url = URL.createObjectURL(file);
   try {
     const img = new Image();
-    await new Promise<void>((resolve, reject) => {
-      img.onload = () => resolve();
-      img.onerror = () => reject(new Error("Unable to decode image for metadata removal"));
-      img.src = url;
-    });
+    await decodePrivateImage(img, url);
     const bounds = safeScrubCanvasSize(img.naturalWidth, img.naturalHeight);
     const canvas = document.createElement("canvas");
     canvas.width = bounds.width;
     canvas.height = bounds.height;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Secure image re-encoding is unavailable");
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-    // Canvas normally does not encode BMP; use JPEG and update the filename.
-    const outputType = file.type === "image/bmp" ? "image/jpeg" : file.type;
-    const encoded = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((blob) => {
-        if (!blob || blob.size === 0 || blob.type !== outputType)
-          reject(new Error("Unable to verify metadata-free image output"));
-        else resolve(blob);
-      }, outputType, 0.92);
-    });
-    const filename = file.type === "image/bmp"
-      ? file.name.replace(/\.bmp$/i, "") + ".jpg" : file.name;
-    return new File([encoded], filename, { type: outputType, lastModified: Date.now() });
+    try {
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      // Canvas normally does not encode BMP; use JPEG and update the filename.
+      const outputType = file.type === "image/bmp" ? "image/jpeg" : file.type;
+      const encoded = await encodePrivateCanvas(canvas, outputType);
+      const filename = file.type === "image/bmp"
+        ? file.name.replace(/\\.bmp$/i, "") + ".jpg" : file.name;
+      return new File([encoded], filename, { type: outputType, lastModified: Date.now() });
+    } finally {
+      // Release the potentially large decoded pixel buffer after encode or timeout.
+      canvas.width = 0;
+      canvas.height = 0;
+    }
   } finally {
     URL.revokeObjectURL(url);
   }
