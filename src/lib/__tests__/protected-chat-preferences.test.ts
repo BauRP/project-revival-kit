@@ -5,14 +5,22 @@ const mock = vi.hoisted(() => {
   const data = new Map<string, unknown>();
   let failWrite = false;
   let failDelete = false;
+  const Conflict = class ConcurrentProtectedWriteError extends Error {};
+  let concurrentValue: unknown;
   return {
-    data,
+    data, Conflict,
     fail: (write: boolean, erase: boolean) => { failWrite = write; failDelete = erase; },
+    raceOnce: (value: unknown) => { concurrentValue = value; },
     get: vi.fn(async (_store: string, key: string) => data.get(key)),
     putIf: vi.fn(async (_store: string, key: string, expected: unknown, value: unknown) => {
       if (failWrite) throw new Error("disk full");
+      if (concurrentValue !== undefined) {
+        data.set(key, concurrentValue);
+        concurrentValue = undefined;
+        throw new Conflict();
+      }
       if (JSON.stringify(data.get(key)) !== JSON.stringify(expected))
-        throw new Error("CAS conflict");
+        throw new Conflict();
       data.set(key, value);
     }),
     deleteIf: vi.fn(async (_store: string, key: string, expected: unknown) => {
@@ -26,7 +34,7 @@ const mock = vi.hoisted(() => {
 vi.mock("../storage", () => ({
   dbGetStrict: mock.get, dbPutIfUnchangedStrict: mock.putIf,
   dbDeleteIfUnchangedStrict: mock.deleteIf,
-  ConcurrentProtectedWriteError: class ConcurrentProtectedWriteError extends Error {},
+  ConcurrentProtectedWriteError: mock.Conflict,
 }));
 vi.mock("../protected-record-inventory", () => ({
   acquireLocalDataKey: () => importLocalRecordKey(new Uint8Array(32).fill(43)),
@@ -101,6 +109,20 @@ describe("Android Keystore chat settings migration and real persistence", () => 
       blocked: true, favorite: true, archived: true, silentDefault: true,
     });
     expect(await readProtectedChatPreferences("alice")).toEqual(next);
+  });
+
+  it("retries a competing setting change without clobbering either edit", async () => {
+    await saveProtectedChatPreferences("peer", { blocked: true });
+    // Simulate a competing tab committing a new authenticated row before CAS.
+    await saveProtectedChatPreferences("other", { blocked: true, favorite: true });
+    // The encrypted payload is bound to its primary key, so it cannot be used
+    // as the winner for a different chat. Here we preserve the same row by
+    // forcing a CAS retry with the currently committed ciphertext.
+    mock.raceOnce(mock.data.get(sealed("peer")));
+    const next = await updateProtectedChatPreferences("peer",
+      (current) => ({ ...current, silentDefault: true }));
+    expect(next).toEqual({ blocked: true, silentDefault: true });
+    expect(await readProtectedChatPreferences("peer")).toEqual(next);
   });
 
   it("rejects malformed encrypted state and rejects attempts to silently unblock", async () => {
