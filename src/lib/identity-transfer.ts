@@ -1,5 +1,5 @@
 import { dxdb, importDexieDump, type DexieDump } from "./dexie-db";
-import { dbReadBatchStrict } from "./storage";
+import { dbReadBatchStrict, dbHasKeyPrefixStrict } from "./storage";
 import { countScheduledOutbox } from "./outbox";
 import { getOrCreateIdentity, installRecoveredIdentity, type IdentityKeys } from "./crypto";
 import { onionStopForAccountDeletion } from "./onion-engine";
@@ -11,6 +11,7 @@ export interface TransferTargetCounts {
   contacts: number; messages: number; outbox: number; inbox: number;
   lifecycle: number; blobs: number; partialChunks: number;
   legacyMessages: number; legacyContacts: number; scheduledMessages: number; nativeFrames: number;
+  chatPreferences: number;
 }
 
 /** A transfer must not overwrite an established identity with real user data. */
@@ -38,12 +39,15 @@ async function hasNonFixtureLegacyRecords(
 
 async function assertPristineDevice(): Promise<void> {
   const [contacts, messages, outbox, inbox, lifecycle, blobs, partialChunks, legacy,
-    legacyContacts, schedules] = await Promise.all([
+    legacyContacts, schedules, chatPreferences] = await Promise.all([
       dxdb.contacts.count(), dxdb.messages.filter((message) =>
         !isBuiltInWelcomeMessage(message)).count(), dxdb.outbox.count(),
       dxdb.inbox_raw.count(), dxdb.lifecycle.count(), dxdb.blobs.count(),
       dxdb.partial_chunks.count(), hasNonFixtureLegacyRecords("messages", isBuiltInWelcomeMessage),
       hasNonFixtureLegacyRecords("contacts", isBuiltInSupportContact), countScheduledOutbox(),
+      // An apparently unused install with stored privacy preferences is NOT
+      // safe for replacing the identity. Includes sealed Android rows.
+      dbHasKeyPrefixStrict("settings", "chat-preferences-"),
     ]);
   // Native count includes damaged frames which cannot be decoded by
   // pendingInbound(); do not let such frames survive a key replacement.
@@ -61,6 +65,7 @@ async function assertPristineDevice(): Promise<void> {
     legacyContacts: legacyContacts ? 1 : 0,
     scheduledMessages: schedules,
     nativeFrames,
+    chatPreferences: chatPreferences ? 1 : 0,
   });
 }
 
