@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chatAllowsOutbound, validateChatPreferenceState } from "../chat-preferences";
+import { chatAllowsOutbound, validateChatPreferenceState, blockedUserDispatchShouldWait } from "../chat-preferences";
 
 describe("blocked contact outbound privacy for scheduled and profile updates", () => {
   it("preserves legacy unblocked schedules and unrelated mute settings", () => {
@@ -27,5 +27,22 @@ describe("blocked contact outbound privacy for scheduled and profile updates", (
     expect(chatAllowsOutbound(state)).toBe(false);
     expect(state).toEqual({ blocked: true, archived: true, favorite: true });
     expect(validateChatPreferenceState({ blocked: false })).toEqual({ blocked: false });
+  });
+});
+
+
+describe("sealed Tor outbox respects recipient block without starving control frames", () => {
+  it("pauses user content while keeping protocol control eligible", () => {
+    const blocked = { blocked: true };
+    for (const kind of ["text_message", "profile_update", "message_reaction"]) {
+      expect(blockedUserDispatchShouldWait(kind, blocked)).toBe(true);
+      expect(blockedUserDispatchShouldWait(kind, { blocked: false })).toBe(false);
+      expect(blockedUserDispatchShouldWait(kind, undefined)).toBe(false);
+      expect(blockedUserDispatchShouldWait(kind, { blocked: "false" })).toBe(true);
+    }
+    for (const kind of ["message_lifecycle", "history_protection", "message_status",
+      "friend_request_status"]) {
+      expect(blockedUserDispatchShouldWait(kind, blocked)).toBe(false);
+    }
   });
 });
