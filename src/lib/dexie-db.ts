@@ -18,7 +18,7 @@ import { assertExportSnapshotSafe } from "./backup-snapshot-policy";
 import { sanitizePortableExportPrivacy } from "./backup-export-privacy";
 import { encodePortableMedia, decodePortableMedia } from "./backup-media-codec";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, unreferencedFileIds, messageMediaFileId, boundedRecordBatches, matchesReceivedAttachmentMetadata, hasStoredDeletedMessageMarker, isCanonicalDeletedMarkerRow } from "./message-deletion-policy";
-import { canEvictUnreferencedMedia, isMatchingReceivedCache } from "./media-cache-policy";
+import { canEvictUnreferencedMedia, isMatchingReceivedCache, verifiedBlobSize } from "./media-cache-policy";
 import { platform } from "./platform";
 import { sealDexieContact, openDexieContact, hasProtectedDexieContactName, sameStoredContact, type StoredContactRecord } from "./dexie-contact-protection";
 import { removedContactKey, isRemovedContactMarker, hasStoredContactRevocation, createRemovedContactMarker, REMOVED_CONTACT_CHAT_KEY } from "./contact-removal-policy";
@@ -435,7 +435,7 @@ export const MEDIA_CACHE_LIMIT_BYTES = 3 * 1024 * 1024 * 1024;
 export async function getTotalBlobBytes(): Promise<number> {
   let total = 0;
   await dxdb.blobs.each((row) => {
-    total += row.size || 0;
+    total += verifiedBlobSize(row);
   });
   return total;
 }
@@ -462,7 +462,7 @@ export async function enforceMediaCacheLimit(
       if (typeof media?.fileId === "string") referenced.add(media.fileId);
     });
     await dxdb.blobs.each((record) => {
-      if (Number.isFinite(record.size) && record.size > 0) total += record.size;
+      total += verifiedBlobSize(record);
     });
     if (total < limitBytes) return 0;
 
@@ -475,7 +475,7 @@ export async function enforceMediaCacheLimit(
       if (total - freed < limitBytes ||
           !canEvictUnreferencedMedia(record, referenced, now)) return;
       victims.push(record.fileId);
-      if (Number.isFinite(record.size) && record.size > 0) freed += record.size;
+      freed += verifiedBlobSize(record);
     });
     if (victims.length) await dxdb.blobs.bulkDelete(victims);
     return victims.length;
