@@ -1,4 +1,4 @@
-import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem, validateStoredScheduledItem, sameScheduledState, canScheduleRecipient, retainDueScheduled } from "./scheduled-policy";
+import { nextScheduledRetry, nextBlockedScheduledCheck, scheduledWakeAt, validateScheduledItem, validateStoredScheduledItem, sameScheduledState, canScheduleRecipient, retainDueScheduled } from "./scheduled-policy";
 import { protectScheduledText, revealScheduledText, isSealedScheduledText } from "./scheduled-encryption";
 import { isNative } from "./platform";
 import { getChatPreferences, chatAllowsOutbound } from "./chat-preferences";
@@ -382,8 +382,14 @@ async function fireDue() {
         // The recipient may have been blocked after this schedule was saved.
         // Keep the durable schedule for future unblocking; do not dispatch it
         // to either a mounted sender or the fallback P2P path.
-        if (!chatAllowsOutbound(await getChatPreferences(current.chatId)))
-          throw new Error("Scheduled recipient is blocked");
+        if (!chatAllowsOutbound(await getChatPreferences(current.chatId))) {
+          // A block is not a network failure. Preserve retry attempts and
+          // keep the durable encrypted item available after unblocking.
+          await updateScheduledIfCurrent(current, (store, latest) => {
+            store.put(nextBlockedScheduledCheck(latest, Date.now()));
+          });
+          return;
+        }
         const decrypted = await revealScheduledText(current.text);
         const dispatch: ScheduledItem = { ...current, text: decrypted };
         validateScheduledItem(dispatch);
