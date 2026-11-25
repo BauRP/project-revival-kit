@@ -66,7 +66,7 @@ export function nextScheduledRetry<T extends ScheduledRetryState>(
  */
 export function nextBlockedScheduledCheck<T extends ScheduledRetryState>(
   item: T, now: number,
-): T {
+): T & { nextAttemptAt: number } {
   if (!Number.isSafeInteger(now) || now <= 0 ||
       !Number.isSafeInteger(item.scheduledAt) || item.scheduledAt <= 0 ||
       (item.attempts !== undefined &&
