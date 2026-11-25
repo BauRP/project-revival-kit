@@ -125,6 +125,22 @@ describe("Android Keystore chat settings migration and real persistence", () => 
     expect(await readProtectedChatPreferences("peer")).toEqual(next);
   });
 
+  it("rejects malformed legacy privacy flags without deleting or encrypting them", async () => {
+    mock.data.set(legacy("alice"), { blocked: "false", oneTimeDefault: true });
+    await expect(readProtectedChatPreferences("alice")).rejects.toThrow(/Invalid chat preference/);
+    expect(mock.data.get(legacy("alice"))).toEqual({
+      blocked: "false", oneTimeDefault: true,
+    });
+    expect(mock.data.has(sealed("alice"))).toBe(false);
+  });
+
+  it("refuses invalid contact identity before changing protected storage", async () => {
+    for (const chatId of ["", "x".repeat(129), "alice\\nother"]) {
+      await expect(saveProtectedChatPreferences(chatId, { blocked: false })).rejects.toThrow();
+    }
+    expect(mock.data.size).toBe(0);
+  });
+
   it("rejects malformed encrypted state and rejects attempts to silently unblock", async () => {
     await saveProtectedChatPreferences("alice", { blocked: true });
     mock.data.set(sealed("alice"), { version: 2, sealed: {} });
