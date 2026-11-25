@@ -13,6 +13,7 @@ import { startAutomaticBackupMonitor, pauseAutomaticBackupsForWipe } from "@/lib
 import { startNetworkNoise, stopNetworkNoise } from "@/lib/stealth";
 import { isNative } from "@/lib/platform";
 import { startMessageRetentionMonitor } from "@/lib/message-retention";
+import { startChatPreferenceMigration, stopChatPreferenceMigrationForWipe } from "@/lib/chat-preference-migration";
 
 interface IdentityContextType {
   identity: IdentityKeys | null;
@@ -92,6 +93,23 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
     return startMessageRetentionMonitor();
   }, [identity]);
 
+  // Catch up untouched legacy privacy settings after first paint. This is
+  // independent from inbox recovery, and failures retain the old records.
+  useEffect(() => {
+    if (!identity || !isNative()) return;
+    const migrate = () => {
+      if (document.hidden) return;
+      void startChatPreferenceMigration().catch((error) =>
+        console.warn("[trivo] protected chat settings migration paused", error));
+    };
+    const id = window.setTimeout(migrate, 150);
+    document.addEventListener("visibilitychange", migrate);
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("visibilitychange", migrate);
+    };
+  }, [identity]);
+
   // Run only after the local identity has been initialized; never block the
   // first paint or attempt expensive snapshots when the app is backgrounded.
   useEffect(() => {
@@ -116,6 +134,7 @@ export const IdentityProvider = ({ children }: { children: ReactNode }) => {
     // On an interrupted wipe, retaining the keys is safer than orphaning
     // existing encrypted messages and making recovery impossible.
     stopNetworkNoise();
+    await stopChatPreferenceMigrationForWipe();
     await pauseAutomaticBackupsForWipe();
     await runAccountWipe({
       stopTransport: onionStopForAccountDeletion,
