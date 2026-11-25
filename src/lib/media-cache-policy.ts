@@ -36,3 +36,15 @@ export function isMatchingReceivedCache(
     existing.mimeType === incoming.mimeType &&
     existing.size === incoming.size;
 }
+
+/** Count committed binary bytes, not sender-controlled metadata. Do not use
+ * a corrupt size field to evade the local cache budget or delete unrelated
+ * user media based on a false "free space" calculation.
+ */
+export function verifiedBlobSize(row: { size: number; data: Blob }): number {
+  if (!(row.data instanceof Blob) ||
+      !Number.isSafeInteger(row.size) || row.size < 0 ||
+      row.size !== row.data.size)
+    throw new Error("Stored media size does not match committed attachment");
+  return row.data.size;
+}
