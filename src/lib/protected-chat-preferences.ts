@@ -84,7 +84,20 @@ export async function readProtectedChatPreferences(chatId: string): Promise<Chat
   }
   if (!original) throw new Error("Missing legacy chat settings");
   const encrypted = await encrypt(key, secure, original);
-  await dbPutIfUnchangedStrict(TABLE, secure, undefined, encrypted);
+  try {
+    await dbPutIfUnchangedStrict(TABLE, secure, undefined, encrypted);
+  } catch (error) {
+    if (!(error instanceof ConcurrentProtectedWriteError)) throw error;
+    // Another WebView may have finished migrating the very same record.
+    // Authenticate its committed ciphertext before deciding whether it is
+    // safe to finish the migration. A differing privacy decision must NEVER
+    // be overwritten or silently treated as equivalent.
+    const winner = await dbGetStrict<unknown>(TABLE, secure);
+    if (winner === undefined) throw error;
+    const winnerState = await decrypt(key, secure, winner);
+    if (JSON.stringify(winnerState) !== JSON.stringify(original))
+      throw new Error("Conflicting encrypted chat settings require recovery");
+  }
   const verified = await decrypt(key, secure, await dbGetStrict(TABLE, secure));
   if (JSON.stringify(verified) !== JSON.stringify(original))
     throw new Error("Encrypted chat settings verification failed");
