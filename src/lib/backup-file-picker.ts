@@ -39,6 +39,8 @@ export function pickBackupFileAsText(
           assertBackupFileSize(file.size);
           if (file.size === 0) throw new Error("Backup file is empty");
           const text = await file.text();
+          if (typeof text !== "string" || text.length > file.size)
+            throw new Error("Backup file changed or returned invalid text while reading");
           if (text.length > MAX_BACKUP_FILE_BYTES)
             throw new Error("Backup file exceeds supported size");
           finish(null, text);
