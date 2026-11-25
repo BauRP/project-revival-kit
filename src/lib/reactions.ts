@@ -2,6 +2,7 @@ import { dbGet } from "@/lib/storage";
 import { dxdb, type LifecycleRecord } from "./dexie-db";
 import { onionRegisterIncomingListener, onionSendDispatch, ensureLocalIdentity } from "./onion-engine";
 import { isValidOnion } from "./onion-id";
+import { getChatPreferences, chatAllowsOutbound } from "./chat-preferences";
 import { deletedMessageKey, isDeletedMessageRecord } from "./message-deletion-policy";
 import { canReactToVisibleMessage, pruneDeletedReactionMap, hasReactionDeletionMarker } from "./reaction-deletion-policy";
 import { normalizeLegacyReactions, isRecoverableReactionRow } from "./reaction-policy";
@@ -151,6 +152,9 @@ export function isSameReactionDispatch(
 
 async function persistReactionToOutbox(peer: string, messageId: string, self: string): Promise<boolean> {
   if (!isValidOnion(peer)) return false;
+  // Do not revive an old queued reaction on reconnect after the user blocked
+  // this contact. Keep the pending marker so a later unblock can retry.
+  if (!chatAllowsOutbound(await getChatPreferences(peer))) return false;
   const key = reactionRecordKey(peer, messageId, self);
   const stored = await dxdb.lifecycle.get(key);
   if (!stored) return false;
