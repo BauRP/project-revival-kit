@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { inspectAttachmentHeader, inspectAttachmentBlob, canScrubImageType, safeScrubCanvasSize } from "../security-scan";
+import { inspectAttachmentHeader, inspectAttachmentBlob, simulateSecurityScan, canScrubImageType, safeScrubCanvasSize } from "../security-scan";
 
 const check = (name: string, mime: string, bytes: number[]) =>
   inspectAttachmentHeader(name, mime, new Uint8Array(bytes));
@@ -130,5 +130,24 @@ describe("full-width executable suffix and direction-mark spoofing", () => {
     expect(check("image\u200f.jpg", "image/jpeg", [0xff, 0xd8, 0xff]).safe).toBe(false);
     expect(check("picture\u061c.png", "image/png",
       [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).safe).toBe(false);
+  });
+});
+
+
+describe("quick attachment scan matches protected full-header filename rules", () => {
+  it("rejects executable file types and full-width spoofing before preview", () => {
+    for (const fileName of [
+      "package.apk", "payload.jar", "module.so", "invoice.js",
+      "photo.apk.jpg", "invoice．ａｐｋ.jpg", "profile.svg",
+      "hidden\u2066.jpg", "../photo.png", "dir\\\\photo.jpg",
+    ]) {
+      expect(simulateSecurityScan(fileName).safe).toBe(false);
+    }
+    expect(simulateSecurityScan("family-photo.png").safe).toBe(true);
+    expect(simulateSecurityScan("sound-recording.m4a").safe).toBe(true);
+  });
+  it("does not claim that an extension-only check is an antivirus", () => {
+    expect(simulateSecurityScan("notes.txt").safe).toBe(true);
+    expect(simulateSecurityScan("notes.txt").threatType).toBeUndefined();
   });
 });
