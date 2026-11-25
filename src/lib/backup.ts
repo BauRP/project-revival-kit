@@ -19,6 +19,7 @@ import { makePortableBackupPackage, readPortableBackupPayload, assertMatchingBac
 import { createDatedBackupFilename, isSafeBackupFilename, newestBackupFilename, pendingBackupFilename } from "./backup-files";
 import { validateLegacyBackupEnvelope } from "./legacy-backup-policy";
 import { assertBackupFileSize, MAX_BACKUP_FILE_BYTES } from "./backup-input-policy";
+import { pickBackupFileAsText } from "./backup-file-picker";
 
 
 const MAGIC = "TRIVO-BACKUP-V1";
@@ -159,7 +160,7 @@ export async function importBackup(
     });
     json = typeof res.data === "string" ? res.data : await (res.data as Blob).text();
   } else {
-    json = await pickFileAsText();
+    json = await pickBackupFileAsText();
   }
 
   // Reject abnormally large plaintext JSON BEFORE parsing; the V2 decryptor
@@ -194,26 +195,3 @@ export async function importBackup(
   return { identityChanged: false };
 }
 
-function pickFileAsText(): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = ".tvc,application/octet-stream,application/json";
-    input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) {
-        reject(new Error("No file selected"));
-        return;
-      }
-      try {
-        // Reject oversized files BEFORE File.text() duplicates them in WebView memory.
-        assertBackupFileSize(file.size);
-        const text = await file.text();
-        resolve(text);
-      } catch (e) {
-        reject(e);
-      }
-    };
-    input.click();
-  });
-}
