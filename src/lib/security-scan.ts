@@ -179,6 +179,15 @@ export function imageFilenameMatchesMime(fileName: string, detectedMime: string)
 export function inspectAttachmentHeader(
   fileName: string, declaredMime: string, header: Uint8Array,
 ): ScanResult {
+  // A signed Tor payload may still contain malformed runtime types.
+  // Reject without calling .normalize(), .toLowerCase() or reading bytes.
+  if (typeof fileName !== "string" || typeof declaredMime !== "string" ||
+      !(header instanceof Uint8Array)) {
+    return {
+      safe: false, threatType: "malware",
+      fileName: typeof fileName === "string" ? fileName : "",
+    };
+  }
   // NFKC exposes full-width dots and letters in executable suffixes.
   // Keep the original visible name but assess its canonicalized meaning.
   const normalizedName = fileName.normalize("NFKC");
