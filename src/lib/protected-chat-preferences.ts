@@ -68,6 +68,9 @@ export async function readProtectedChatPreferences(chatId: string): Promise<Chat
   const sealed = await dbGetStrict<unknown>(TABLE, secure);
   const legacy = await dbGetStrict<unknown>(TABLE, plain);
   if (sealed === undefined && legacy === undefined) return {};
+  // A damaged plaintext privacy decision must not trigger creation of a new
+  // Keystore key during migration. Validate it before any key operation.
+  const original = sealed === undefined ? validateChatPreferenceState(legacy) : undefined;
   const key = await acquireLocalDataKey();
   if (sealed !== undefined) {
     const value = await decrypt(key, secure, sealed);
@@ -79,7 +82,7 @@ export async function readProtectedChatPreferences(chatId: string): Promise<Chat
     }
     return value;
   }
-  const original = validateChatPreferenceState(legacy);
+  if (!original) throw new Error("Missing legacy chat settings");
   const encrypted = await encrypt(key, secure, original);
   await dbPutIfUnchangedStrict(TABLE, secure, undefined, encrypted);
   const verified = await decrypt(key, secure, await dbGetStrict(TABLE, secure));
