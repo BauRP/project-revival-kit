@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { pickBackupFileAsText } from "../backup-file-picker";
 import { MAX_BACKUP_FILE_BYTES } from "../backup-input-policy";
 
@@ -16,6 +16,8 @@ class FakePicker extends EventTarget {
 }
 const usePicker = (input: FakePicker): Promise<string> =>
   pickBackupFileAsText(() => input as unknown as HTMLInputElement);
+
+afterEach(() => vi.useRealTimers());
 
 describe("browser portable archive picker", () => {
   it("reads exactly the chosen backup and preserves existing accept formats", async () => {
@@ -106,4 +108,71 @@ describe("browser portable archive picker", () => {
     }
     await expect(usePicker(new FailedPicker())).rejects.toThrow("Picker not permitted");
   });
+  it("returns a clear error when the selected file never completes reading", async () => {
+    vi.useFakeTimers();
+    const input = new FakePicker();
+    const pending = pickBackupFileAsText(
+      () => input as unknown as HTMLInputElement, 80,
+    );
+    input.choose({ size: 100, text: () => new Promise<string>(() => {}) });
+    const assertion = expect(pending).rejects.toThrow(/read timed out/);
+    await vi.advanceTimersByTimeAsync(80);
+    await assertion;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("ignores a late file response after timeout, leaving restored data unchanged", async () => {
+    vi.useFakeTimers();
+    const input = new FakePicker();
+    let finishRead!: (text: string) => void;
+    const pending = pickBackupFileAsText(
+      () => input as unknown as HTMLInputElement, 80,
+    );
+    input.choose({ size: 8, text: () => new Promise(resolve => { finishRead = resolve; }) });
+    const assertion = expect(pending).rejects.toThrow(/read timed out/);
+    await vi.advanceTimersByTimeAsync(80);
+    await assertion;
+    finishRead("private");
+    await Promise.resolve();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("clears the read deadline on success, cancellation and immediate validation errors", async () => {
+    vi.useFakeTimers();
+    const success = new FakePicker();
+    const resolved = pickBackupFileAsText(
+      () => success as unknown as HTMLInputElement, 50,
+    );
+    success.choose({ size: 3, text: async () => "abc" });
+    await expect(resolved).resolves.toBe("abc");
+    expect(vi.getTimerCount()).toBe(0);
+
+    const cancelled = new FakePicker();
+    const stopped = pickBackupFileAsText(
+      () => cancelled as unknown as HTMLInputElement, 50,
+    );
+    cancelled.choose({ size: 100, text: () => new Promise<string>(() => {}) });
+    cancelled.cancel();
+    await expect(stopped).rejects.toThrow(/cancelled/);
+    expect(vi.getTimerCount()).toBe(0);
+
+    const malformed = new FakePicker();
+    const refused = pickBackupFileAsText(
+      () => malformed as unknown as HTMLInputElement, 50,
+    );
+    malformed.choose({ size: -1, text: async () => "abc" });
+    await expect(refused).rejects.toThrow(/exceeds supported size/);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("rejects impossible timeout configuration before opening the picker", async () => {
+    for (const timeout of [0, -1, 0.5, Number.POSITIVE_INFINITY, 600_001]) {
+      const input = new FakePicker();
+      await expect(pickBackupFileAsText(
+        () => input as unknown as HTMLInputElement, timeout,
+      )).rejects.toThrow(/Invalid backup read timeout/);
+      expect(input.clicked).toBe(0);
+    }
+  });
+
 });
