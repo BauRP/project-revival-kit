@@ -74,7 +74,7 @@ describe("password-encrypted portable chat preferences", () => {
       [good,good],
       [{ chatId:"",state:{} }],
       [{ chatId:"sealed-peer",state:{} }],
-      [{ chatId:"peer\\nother",state:{} }],
+      [{ chatId:"peer\nother",state:{} }],
       [{ chatId:"peer",state:{blocked:"true"} }],
       [{ chatId:"peer",state:{disappearingDuration:"2years"} }],
       [{ chatId:"peer",state:{__protoKey:"unexpected"} }],
