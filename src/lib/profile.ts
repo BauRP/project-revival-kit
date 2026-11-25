@@ -15,6 +15,7 @@ import { mutateChatMeta } from "./p2p";
 import { getAllContacts, dxdb } from "./dexie-db";
 import { onionRegisterIncomingListener, onionSendDispatch } from "./onion-engine";
 import { isValidOnion } from "./onion-id";
+import { getChatPreferences, chatAllowsOutbound } from "./chat-preferences";
 import { makeSharedProfile, validateSharedProfile, canPublishProfileToPeer } from "./profile-wire";
 import { remoteProfileDataKey, openRemoteProfile, sealRemoteProfile,
   looksLikeSealedRemoteProfile, sameRemoteProfileRow } from "./protected-remote-profile";
@@ -292,10 +293,15 @@ async function publishProfileToContacts(profile: UserProfile): Promise<void> {
   // Limit simultaneous encryption/sealing, IndexedDB writes and Tor dials
   // rather than spawning thousands of outstanding promises on a large list.
   for (let i = 0; i < peers.length; i += 4) {
-    const results = await Promise.allSettled(peers.slice(i, i + 4).map((c) =>
-      onionSendDispatch(c.onion, {
+    const results = await Promise.allSettled(peers.slice(i, i + 4).map(async (c) => {
+      // A contact blocked since the last profile update must not receive
+      // name, avatar or presence changes. Storage failure also blocks
+      // publication rather than assuming a permissive default.
+      if (!chatAllowsOutbound(await getChatPreferences(c.onion))) return;
+      return onionSendDispatch(c.onion, {
         type: "profile_update", id: crypto.randomUUID(), profile: shared,
-      })));
+      });
+    }));
     for (const result of results)
       if (result.status === "rejected") errors.push(result.reason);
   }
