@@ -18,7 +18,7 @@ import { assertExportSnapshotSafe } from "./backup-snapshot-policy";
 import { sanitizePortableExportPrivacy } from "./backup-export-privacy";
 import { encodePortableMedia, decodePortableMedia } from "./backup-media-codec";
 import { deletedMessageKey, isDeletedMessageRecord, LOCAL_DELETED_CHAT_KEY, unreferencedFileIds, messageMediaFileId, boundedRecordBatches, matchesReceivedAttachmentMetadata, hasStoredDeletedMessageMarker, isCanonicalDeletedMarkerRow } from "./message-deletion-policy";
-import { canEvictUnreferencedMedia, isMatchingReceivedCache, verifiedBlobSize } from "./media-cache-policy";
+import { canEvictUnreferencedMedia, isMatchingReceivedCache, verifiedBlobSize, canRepairReceivedCache, needsReceivedCacheRepair } from "./media-cache-policy";
 import { platform } from "./platform";
 import { sealDexieContact, openDexieContact, hasProtectedDexieContactName, sameStoredContact, type StoredContactRecord } from "./dexie-contact-protection";
 import { removedContactKey, isRemovedContactMarker, hasStoredContactRevocation, createRemovedContactMarker, REMOVED_CONTACT_CHAT_KEY } from "./contact-removal-policy";
@@ -359,7 +359,15 @@ export async function putReceivedBlob(
           // Signed peer media must never overwrite the user's local upload
           // (or an older unknown-origin blob). Duplicate received frames
           // may reuse only the same previously validated metadata.
-          return isMatchingReceivedCache(existing, incomingMeta);
+          if (isMatchingReceivedCache(existing, incomingMeta)) return true;
+          if (!canRepairReceivedCache(existing, incomingMeta, data)) return false;
+          // Parent metadata and consumed/deleted tombstones were verified
+          // inside this SAME transaction. Repair only the damaged received
+          // binary, never a local upload, healthy file or unrelated identity.
+          await dxdb.blobs.put({
+            fileId, ...incomingMeta, data, storedAt: Date.now(), origin: "received",
+          });
+          return true;
         }
         await dxdb.blobs.add({
           fileId, ...incomingMeta, data, storedAt: Date.now(),
@@ -380,6 +388,7 @@ export async function getBlob(fileId: string): Promise<BlobRecord | undefined> {
     if (hasStoredConsumedMediaMarker(await dxdb.lifecycle.get(consumedMediaKey(fileId))))
       return undefined;
     const stored = await dxdb.blobs.get(fileId);
+    if (stored && needsReceivedCacheRepair(stored)) return undefined;
     if (stored) verifiedBlobSize(stored);
     return stored;
   });
@@ -389,7 +398,11 @@ export async function hasBlob(fileId: string): Promise<boolean> {
   return dxdb.transaction("r", [dxdb.lifecycle, dxdb.blobs], async () => {
     if (hasStoredConsumedMediaMarker(await dxdb.lifecycle.get(consumedMediaKey(fileId))))
       return false;
-    return (await dxdb.blobs.where("fileId").equals(fileId).count()) > 0;
+    const row = await dxdb.blobs.get(fileId);
+    if (!row) return false;
+    if (needsReceivedCacheRepair(row)) return false;
+    verifiedBlobSize(row);
+    return true;
   });
 }
 
