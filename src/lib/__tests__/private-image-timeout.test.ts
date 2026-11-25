@@ -59,8 +59,7 @@ describe("private image metadata stripping cannot hang indefinitely", () => {
 
   it("rejects synchronous canvas failure without leaking a running timeout", async () => {
     vi.useFakeTimers();
-    const canvas = ({ toBlob: () => { throw new Error("encoder crashed"); } }
-      as unknown as HTMLCanvasElement);
+    const canvas = { toBlob() { throw new Error("encoder crashed"); } } as unknown as HTMLCanvasElement;
     await expect(encodePrivateCanvas(canvas, "image/png")).rejects.toThrow(/encoding failed/);
     expect(vi.getTimerCount()).toBe(0);
   });
