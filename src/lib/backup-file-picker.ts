@@ -7,14 +7,22 @@ import { assertBackupFileSize, MAX_BACKUP_FILE_BYTES } from "./backup-input-poli
 
 export function pickBackupFileAsText(
   createInput: () => HTMLInputElement = () => document.createElement("input"),
+  readTimeoutMs = 120_000,
 ): Promise<string> {
+  if (!Number.isSafeInteger(readTimeoutMs) || readTimeoutMs < 1 || readTimeoutMs > 600_000)
+    return Promise.reject(new Error("Invalid backup read timeout"));
   return new Promise<string>((resolve, reject) => {
     const input = createInput();
     input.type = "file";
     input.accept = ".tvc,application/octet-stream,application/json";
     let settled = false;
+    let readTimer: ReturnType<typeof setTimeout> | null = null;
 
     const cleanup = () => {
+      if (readTimer !== null) {
+        clearTimeout(readTimer);
+        readTimer = null;
+      }
       input.removeEventListener("change", onChange);
       input.removeEventListener("cancel", onCancel);
     };
@@ -34,10 +42,21 @@ export function pickBackupFileAsText(
       }
       // Never begin a second expensive read after duplicate change events.
       input.removeEventListener("change", onChange);
+      // A stalled File.text() must not keep the restore screen waiting forever.
+      // This timer cannot interrupt a completely blocked JS thread, but it
+      // settles the restore when the browser still processes tasks.
+      try {
+        assertBackupFileSize(file.size);
+        if (file.size === 0) throw new Error("Backup file is empty");
+      } catch (error) {
+        finish(error);
+        return;
+      }
+      readTimer = setTimeout(() => {
+        finish(new Error("Backup file read timed out; no data was restored"));
+      }, readTimeoutMs);
       void (async () => {
         try {
-          assertBackupFileSize(file.size);
-          if (file.size === 0) throw new Error("Backup file is empty");
           const text = await file.text();
           if (typeof text !== "string" || text.length > file.size)
             throw new Error("Backup file changed or returned invalid text while reading");
