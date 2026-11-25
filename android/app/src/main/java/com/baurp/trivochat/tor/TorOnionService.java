@@ -190,7 +190,11 @@ public class TorOnionService extends Service {
                 stopSelf(startId);
                 return START_NOT_STICKY;
             }
-            bindTor();
+            if (!bindTor()) {
+                updateNotification("Tor transport unavailable");
+                stopSelf(startId);
+                return START_NOT_STICKY;
+            }
             return START_STICKY;
         } catch (Throwable startupFailure) {
             lastError = "Tor startup failed: "
@@ -436,8 +440,8 @@ public class TorOnionService extends Service {
         }
     }
 
-    private void bindTor() {
-        if (torBound) return;
+    private boolean bindTor() {
+        if (torBound) return true;
         // Deferred JNI load: never resolve TorService (whose static block calls
         // System.loadLibrary("tor")) before an explicit start request, and never
         // outside a Throwable guard.
@@ -446,11 +450,17 @@ public class TorOnionService extends Service {
             Log.e(TAG, "Refusing to bind tor: " + lastError);
             updateNotification("Tor transport unavailable");
             publishStatus();
-            return;
+            return false;
         }
         try {
             Intent intent = new Intent(this, TorService.class);
-            bindService(intent, torConnection, BIND_AUTO_CREATE);
+            if (!bindService(intent, torConnection, BIND_AUTO_CREATE)) {
+                lastError = "tor service binding was rejected by Android";
+                Log.e(TAG, lastError);
+                publishStatus();
+                return false;
+            }
+            return true;
         } catch (Throwable bindFailure) {
             lastError = "tor bind failed: "
                     + bindFailure.getClass().getSimpleName()
@@ -458,6 +468,7 @@ public class TorOnionService extends Service {
                     + String.valueOf(bindFailure.getMessage());
             Log.e(TAG, lastError, bindFailure);
             publishStatus();
+            return false;
         }
     }
 
