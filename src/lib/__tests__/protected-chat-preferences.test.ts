@@ -135,7 +135,7 @@ describe("Android Keystore chat settings migration and real persistence", () => 
   });
 
   it("refuses invalid contact identity before changing protected storage", async () => {
-    for (const chatId of ["", "x".repeat(129), "alice\\nother"]) {
+    for (const chatId of ["", "x".repeat(129), "alice\nother"]) {
       await expect(saveProtectedChatPreferences(chatId, { blocked: false })).rejects.toThrow();
     }
     expect(mock.data.size).toBe(0);
