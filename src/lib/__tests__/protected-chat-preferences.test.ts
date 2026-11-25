@@ -72,6 +72,35 @@ describe("Android Keystore chat settings migration and real persistence", () => 
     expect(mock.data.has(sealed("bob"))).toBe(false);
   });
 
+  it("accepts an identical concurrent migration after authenticating the winning ciphertext", async () => {
+    mock.data.set(legacy("peer"), { blocked: true, favorite: true });
+    // Force a competing CAS commit after the candidate was encrypted.
+    // The helper retries by decrypting the winner, then safely deletes
+    // the redundant legacy row only when the state matches exactly.
+    const { importLocalRecordKey } = await import("../local-record-crypto");
+    const { sealLocalRecord } = await import("../local-record-crypto");
+    const key = await importLocalRecordKey(new Uint8Array(32).fill(43));
+    const encrypted = await sealLocalRecord(key, "settings",
+      sealed("peer"), JSON.stringify({ blocked: true, favorite: true }));
+    mock.raceOnce({ version: 1, sealed: encrypted });
+    expect(await readProtectedChatPreferences("peer")).toEqual({
+      blocked: true, favorite: true,
+    });
+    expect(mock.data.has(legacy("peer"))).toBe(false);
+  });
+
+  it("never discards a differing concurrent privacy edit during migration", async () => {
+    mock.data.set(legacy("peer"), { blocked: true });
+    const { importLocalRecordKey, sealLocalRecord } = await import("../local-record-crypto");
+    const key = await importLocalRecordKey(new Uint8Array(32).fill(43));
+    const encrypted = await sealLocalRecord(key, "settings",
+      sealed("peer"), JSON.stringify({ blocked: false }));
+    mock.raceOnce({ version: 1, sealed: encrypted });
+    await expect(readProtectedChatPreferences("peer"))
+      .rejects.toThrow(/Conflicting encrypted chat settings/);
+    expect(mock.data.has(legacy("peer"))).toBe(true);
+  });
+
   it("resumes from authenticated ciphertext after a crash before legacy deletion", async () => {
     mock.data.set(legacy("peer"), { blocked: true, silentDefault: true });
     mock.fail(false, true);
