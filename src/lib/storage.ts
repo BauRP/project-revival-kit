@@ -175,6 +175,35 @@ export async function dbCountStrict(store: string): Promise<number> {
   });
 }
 
+/** Detect protected settings by key without cloning their values into memory.
+ * A lost Keystore wrapper must never bootstrap a replacement while even one
+ * previously encrypted chat setting survives in the legacy settings DB.
+ */
+export async function dbHasKeyPrefixStrict(store: string, prefix: string): Promise<boolean> {
+  if (!prefix || prefix.length > 128 || /[\u0000-\u001f\u007f]/.test(prefix))
+    throw new Error("Invalid protected settings prefix");
+  const db = await openDB();
+  return new Promise<boolean>((resolve, reject) => {
+    let found = false;
+    try {
+      const tx = db.transaction(store, "readonly");
+      const req = tx.objectStore(store).getKey(
+        IDBKeyRange.bound(prefix, prefix + "\uffff"),
+      );
+      req.onsuccess = () => { found = req.result !== undefined; };
+      tx.oncomplete = () => { db.close(); resolve(found); };
+      tx.onerror = () => {
+        db.close();
+        reject(tx.error ?? new Error("Protected settings inventory failed"));
+      };
+      tx.onabort = () => {
+        db.close();
+        reject(tx.error ?? new Error("Protected settings inventory aborted"));
+      };
+    } catch (error) { db.close(); reject(error); }
+  });
+}
+
 /** Remove legacy plaintext after verifying its Dexie migration committed.
  * A failed transaction must never be treated as successful erasure. */
 export async function dbClearStrict(store: string): Promise<void> {
