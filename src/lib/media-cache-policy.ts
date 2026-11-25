@@ -28,13 +28,15 @@ export function canEvictUnreferencedMedia(
  * if its signed metadata still matches the original.
  */
 export function isMatchingReceivedCache(
-  existing: { origin?: string; name: string; mimeType: string; size: number },
+  existing: { origin?: string; name: string; mimeType: string; size: number; data?: Blob },
   incoming: { name: string; mimeType: string; size: number },
 ): boolean {
   return existing.origin === "received" &&
     existing.name === incoming.name &&
     existing.mimeType === incoming.mimeType &&
-    existing.size === incoming.size;
+    existing.size === incoming.size &&
+    (existing.data === undefined ||
+      (existing.data instanceof Blob && existing.data.size === existing.size));
 }
 
 /** Count committed binary bytes, not sender-controlled metadata. Do not use
