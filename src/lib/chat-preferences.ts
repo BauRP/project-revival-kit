@@ -59,7 +59,12 @@ export function validateChatPreferenceState(value: unknown): ChatPreferenceState
  * silently authorizing a private Tor dispatch.
  */
 export function chatAllowsOutbound(preferences: unknown): boolean {
-  return validateChatPreferenceState(preferences).blocked !== true;
+  try {
+    return validateChatPreferenceState(preferences).blocked !== true;
+  } catch {
+    // Corrupt privacy choices never become permission to send.
+    return false;
+  }
 }
 
 export async function getChatPreferences(chatId: string): Promise<ChatPreferenceState> {
