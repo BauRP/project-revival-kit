@@ -140,7 +140,7 @@ describe("durable retry never writes invalid timestamps", () => {
   });
 });
 
-import { retainDueScheduled } from "../scheduled-policy";
+import { retainDueScheduled, nextBlockedScheduledCheck } from "../scheduled-policy";
 
 describe("bounded due-message dispatch after wake", () => {
   it("retains only the earliest 64 due rows from a large encrypted queue", () => {
@@ -181,5 +181,33 @@ describe("bounded due-message dispatch after wake", () => {
     for (const limit of [0,-1,1.5,257,Infinity]) {
       expect(() => retainDueScheduled([], {id:"m",scheduledAt:1},100,limit)).toThrow();
     }
+  });
+});
+
+describe("blocked scheduled messages are paused without false send failures", () => {
+  it("keeps attempt count, identity and original due time", () => {
+    const item = {
+      id: "id", scheduledAt: 1000, attempts: 3,
+      nextAttemptAt: 2100,
+    };
+    const next = nextBlockedScheduledCheck(item, 2200);
+    expect(next).toMatchObject({
+      id: "id", scheduledAt: 1000, attempts: 3, nextAttemptAt: 62200,
+    });
+    expect(item.nextAttemptAt).toBe(2100);
+  });
+
+  it("keeps a future scheduledAt and never dispatches early", () => {
+    const item = { scheduledAt: 300_000, attempts: 0 };
+    expect(nextBlockedScheduledCheck(item, 1000).nextAttemptAt).toBe(300_000);
+  });
+
+  it("rejects corrupt retry times instead of creating a busy loop", () => {
+    for (const now of [0, -1, NaN, Infinity, Number.MAX_SAFE_INTEGER]) {
+      expect(() => nextBlockedScheduledCheck({ scheduledAt: 1000 }, now)).toThrow();
+    }
+    expect(() => nextBlockedScheduledCheck({
+      scheduledAt: 1000, attempts: NaN,
+    }, 2000)).toThrow();
   });
 });
