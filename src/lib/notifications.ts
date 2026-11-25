@@ -28,10 +28,17 @@ function preference(key: string, fallback: boolean): boolean {
 export async function notifyIncomingMessage(title: string, body: string, policy: Omit<NotificationPolicyInput, "enabled"> = {}): Promise<void> {
   if (!shouldNotifyChat({ ...policy, enabled: preference("trivo-notifications", true) })) return;
   if (!isNative()) {
-    const { title: safeTitle, body: safeBody } =
-      safeNotificationText(title, body, preference("trivo-hide-content", true));
-    if ("Notification" in window && Notification.permission === "granted") {
+    // Browser notifications are best-effort UI side effects, not delivery or
+    // persistence of the message itself. An unavailable or revoked browser
+    // permission must never reject the incoming-message processing chain.
+    try {
+      if (typeof window === "undefined" || !("Notification" in window) ||
+          Notification.permission !== "granted") return;
+      const { title: safeTitle, body: safeBody } =
+        safeNotificationText(title, body, preference("trivo-hide-content", true));
       new Notification(safeTitle, { body: safeBody });
+    } catch (error) {
+      console.warn("[notifications] browser notification unavailable", error);
     }
     return;
   }
