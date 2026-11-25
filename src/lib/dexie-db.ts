@@ -332,6 +332,7 @@ export async function putReceivedBlob(
   fileId: string, data: Blob, name: string, mimeType: string,
   sender: string, recipient: string,
 ): Promise<boolean> {
+  let repaired = false;
   const saved = await dxdb.transaction("rw",
     [dxdb.messages, dxdb.lifecycle, dxdb.blobs], async () => {
       if (hasStoredConsumedMediaMarker(await dxdb.lifecycle.get(consumedMediaKey(fileId))))
@@ -367,6 +368,7 @@ export async function putReceivedBlob(
           await dxdb.blobs.put({
             fileId, ...incomingMeta, data, storedAt: Date.now(), origin: "received",
           });
+          repaired = true;
           return true;
         }
         await dxdb.blobs.add({
@@ -377,6 +379,12 @@ export async function putReceivedBlob(
       }
       return false;
     });
+  if (repaired) {
+    // A previous preview URL may still point to the damaged Blob. Invalidate
+    // it only after the replacement commits, never on rejected transfers.
+    const { revokeStoredMediaUrls } = await import("./media-store");
+    revokeStoredMediaUrls([fileId]);
+  }
   if (saved) void enforceMediaCacheLimit().catch(() => undefined);
   return saved;
 }
