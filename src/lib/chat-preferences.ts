@@ -1,4 +1,5 @@
 import { dbGet, dbPut, dbUpdateStrict } from "@/lib/storage";
+import { platform } from "@/lib/platform";
 
 export type DisappearingDuration = "1h" | "6h" | "12h" | "24h" | "off";
 
@@ -91,6 +92,11 @@ export async function shouldPauseBlockedUserDispatch(peer: string, kind: string)
 }
 
 export async function getChatPreferences(chatId: string): Promise<ChatPreferenceState> {
+  preferenceKey(chatId);
+  if (platform() === "android") {
+    const { readProtectedChatPreferences } = await import("./protected-chat-preferences");
+    return readProtectedChatPreferences(chatId);
+  }
   return validateChatPreferenceState(await dbGet<unknown>("settings", preferenceKey(chatId)));
 }
 
@@ -98,14 +104,27 @@ export async function saveChatPreferences(
   chatId: string,
   next: ChatPreferenceState,
 ): Promise<void> {
-  await dbPut("settings", preferenceKey(chatId), validateChatPreferenceState(next));
+  preferenceKey(chatId);
+  const valid = validateChatPreferenceState(next);
+  if (platform() === "android") {
+    const { saveProtectedChatPreferences } = await import("./protected-chat-preferences");
+    await saveProtectedChatPreferences(chatId, valid);
+    return;
+  }
+  await dbPut("settings", preferenceKey(chatId), valid);
 }
 
 export async function updateChatPreferences(
   chatId: string,
   patch: Partial<ChatPreferenceState>,
 ): Promise<ChatPreferenceState> {
+  preferenceKey(chatId);
   validateChatPreferenceState(patch);
+  if (platform() === "android") {
+    const { updateProtectedChatPreferences } = await import("./protected-chat-preferences");
+    return updateProtectedChatPreferences(chatId,
+      (current) => validateChatPreferenceState({ ...current, ...patch }));
+  }
   return dbUpdateStrict<ChatPreferenceState>(
     "settings", preferenceKey(chatId),
     (current) => validateChatPreferenceState({
