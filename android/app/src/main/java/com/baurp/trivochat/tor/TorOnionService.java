@@ -14,6 +14,8 @@ import android.content.ServiceConnection;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Log;
 
@@ -112,6 +114,10 @@ public class TorOnionService extends Service {
     // bindService() may succeed before onServiceConnected() runs. Track that
     // pending binding separately so shutdown can always unbind it safely.
     private volatile boolean torBindRequested = false;
+    private volatile boolean shuttingDown = false;
+    private final Handler reconnectHandler = new Handler(Looper.getMainLooper());
+    private Runnable reconnectTask = null;
+    private int reconnectAttempts = 0;
     private boolean localReceiverRegistered = false;
     private boolean systemReceiverRegistered = false;
     private TorService torServiceInstance = null;
@@ -193,6 +199,7 @@ public class TorOnionService extends Service {
                 stopSelf(startId);
                 return START_NOT_STICKY;
             }
+            shuttingDown = false;
             if (!bindTor()) {
                 updateNotification("Tor transport unavailable");
                 stopSelf(startId);
@@ -224,6 +231,10 @@ public class TorOnionService extends Service {
     }
 
     private void shutdown() {
+        shuttingDown = true;
+        reconnectHandler.removeCallbacksAndMessages(null);
+        reconnectTask = null;
+        reconnectAttempts = 0;
         running = false;
         bootstrapped = false;
         listenerLoopRunning.set(false);
@@ -344,11 +355,21 @@ public class TorOnionService extends Service {
         @Override
         public void onServiceConnected(ComponentName name, IBinder binder) {
             try {
+                if (shuttingDown) return;
+                if (!(binder instanceof TorService.LocalBinder)) {
+                    scheduleTorRecovery("Tor service returned an invalid binder");
+                    return;
+                }
+                torServiceInstance = ((TorService.LocalBinder) binder).getService();
+                if (torServiceInstance == null) {
+                    scheduleTorRecovery("Tor service returned no transport");
+                    return;
+                }
                 torBound = true;
                 running = true;
-                if (binder instanceof TorService.LocalBinder) {
-                    torServiceInstance = ((TorService.LocalBinder) binder).getService();
-                }
+                reconnectAttempts = 0;
+                cancelTorRecovery();
+                lastError = null;
                 updateNotification("Bootstrapping Tor circuits…");
                 publishStatus();
             } catch (Throwable connectionFailure) {
@@ -360,7 +381,7 @@ public class TorOnionService extends Service {
                         + ": "
                         + String.valueOf(connectionFailure.getMessage());
                 Log.e(TAG, lastError, connectionFailure);
-                publishStatus();
+                scheduleTorRecovery(lastError);
             }
         }
 
@@ -375,11 +396,58 @@ public class TorOnionService extends Service {
                 control = null;
                 closeServerSocket();
                 publishStatus();
+                scheduleTorRecovery("Tor service disconnected");
             } catch (Throwable disconnectionFailure) {
                 Log.e(TAG, "tor service disconnect handling failed", disconnectionFailure);
             }
         }
     };
+
+    /** Reconnect only the existing onion identity after a daemon crash.
+     * Android may rebind automatically after onServiceDisconnected; explicitly
+     * release the old binding before each retry. The handler serializes retries.
+     */
+    private void cancelTorRecovery() {
+        if (reconnectTask != null) {
+            reconnectHandler.removeCallbacks(reconnectTask);
+            reconnectTask = null;
+        }
+    }
+
+    private void scheduleTorRecovery(String reason) {
+        if (!TorReconnectPolicy.canRecover(requestedSecretKey, shuttingDown)) return;
+        if (reconnectTask != null) return;
+        final int nextAttempt = ++reconnectAttempts;
+        final long delay = TorReconnectPolicy.delayMs(nextAttempt);
+        lastError = reason;
+        running = false;
+        bootstrapped = false;
+        bootstrapPercent = 0;
+        onionAddress = null;
+        socksPort = 0;
+        localServicePort = 0;
+        control = null;
+        torServiceInstance = null;
+        closeServerSocket();
+        publishStatus();
+        if (torBindRequested) {
+            try { unbindService(torConnection); }
+            catch (Exception bindFailure) { Log.w(TAG, "Old Tor binding already gone", bindFailure); }
+            torBindRequested = false;
+        }
+        torBound = false;
+        if (delay < 0) {
+            Log.e(TAG, "Native Tor reconnect retries exhausted");
+            stopSelf();
+            return;
+        }
+        reconnectTask = () -> {
+            reconnectTask = null;
+            if (!TorReconnectPolicy.canRecover(requestedSecretKey, shuttingDown)) return;
+            if (!bindTor()) scheduleTorRecovery("Tor reconnect binding failed");
+        };
+        reconnectHandler.postDelayed(reconnectTask, delay);
+    }
 
     private final BroadcastReceiver torStatusReceiver = new BroadcastReceiver() {
         @Override
