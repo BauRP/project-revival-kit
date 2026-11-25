@@ -62,6 +62,16 @@ describe("signed media does not overwrite an existing fileId", () => {
   it("accepts an exact retransmission of an already validated received blob", () => {
     expect(isMatchingReceivedCache({...incoming,origin:"received"},incoming)).toBe(true);
   });
+  it("does not acknowledge a corrupted cached received attachment", () => {
+    const incoming = { name: "photo.jpg", mimeType: "image/jpeg", size: 3 };
+    expect(isMatchingReceivedCache({
+      ...incoming, origin: "received", data: new Blob(["abc"]),
+    }, incoming)).toBe(true);
+    expect(isMatchingReceivedCache({
+      ...incoming, origin: "received", data: new Blob(["wrong bytes"]),
+    }, incoming)).toBe(false);
+  });
+
   it("rejects changed sender name, content type and length", () => {
     const previous={...incoming,origin:"received"};
     expect(isMatchingReceivedCache(previous,{...incoming,name:"other.jpg"})).toBe(false);
