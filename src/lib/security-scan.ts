@@ -133,11 +133,17 @@ export function simulateSecurityScan(
     return { safe: true, fileName };
   }
 
-  // Extension-only policy. This does not establish whether a file is malware.
-  const suspicious = fileName.toLowerCase().match(/\.(exe|bat|cmd|scr|pif|vbs|js|mjs|cjs|wsf|com|ps1|psm1|sh|bash|command|reg|lnk|desktop)$/);
-  if (suspicious) {
+  // This quick check is used before the full header inspection by some
+  // upload/preview routes. Keep its filename rules consistent with the full
+  // scanner so renamed executables are not shown as provisionally "safe".
+  if (typeof fileName !== "string") return { safe: false, threatType: "malware", fileName };
+  const normalized = fileName.normalize("NFKC").toLowerCase();
+  const dangerousExtension = /\.(exe|bat|cmd|scr|pif|vbs|js|mjs|cjs|wsf|com|ps1|psm1|sh|bash|command|reg|lnk|desktop|svg|svgz|html?|xhtml|hta|apk|jar|dex|so|dll|msi)$/i;
+  const dangerousMiddle = /\.(exe|bat|cmd|scr|pif|vbs|js|mjs|cjs|wsf|com|ps1|psm1|sh|bash|command|reg|lnk|desktop|hta|apk|jar|dex|so|dll|msi)\./i;
+  if (!normalized || normalized.length > 255 ||
+      /[\u0000-\u001f\u007f\\/\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/.test(normalized) ||
+      dangerousExtension.test(normalized) || dangerousMiddle.test(normalized))
     return { safe: false, threatType: "malware", fileName };
-  }
 
   return { safe: true, fileName };
 }
