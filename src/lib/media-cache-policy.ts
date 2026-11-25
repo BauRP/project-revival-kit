@@ -35,8 +35,8 @@ export function isMatchingReceivedCache(
     existing.name === incoming.name &&
     existing.mimeType === incoming.mimeType &&
     existing.size === incoming.size &&
-    (existing.data === undefined ||
-      (existing.data instanceof Blob && existing.data.size === existing.size));
+    existing.data instanceof Blob &&
+    existing.data.size === existing.size;
 }
 
 /** Count committed binary bytes, not sender-controlled metadata. Do not use
@@ -49,4 +49,35 @@ export function verifiedBlobSize(row: { size: number; data: Blob }): number {
       row.size !== row.data.size)
     throw new Error("Stored media size does not match committed attachment");
   return row.data.size;
+}
+
+/** A damaged received-cache blob can be replaced by an authenticated
+ * retransmission ONLY if the signed parent message still references exactly
+ * the same file metadata. Never replace local uploads, legacy records, or a
+ * healthy cached attachment. This is a repair, not a generic overwrite.
+ */
+export function canRepairReceivedCache(
+  existing: { origin?: string; name: string; mimeType: string; size: number; data?: Blob },
+  incoming: { name: string; mimeType: string; size: number },
+  binary: Blob,
+): boolean {
+  return existing.origin === "received" &&
+    existing.name === incoming.name &&
+    existing.mimeType === incoming.mimeType &&
+    Number.isSafeInteger(existing.size) && existing.size >= 0 &&
+    existing.size === incoming.size &&
+    binary instanceof Blob && binary.size === incoming.size &&
+    (!(existing.data instanceof Blob) || existing.data.size !== existing.size);
+}
+
+/** Allow a damaged received cache to be refetched, but never confuse a
+ * corrupt local upload with an absent file that may be silently replaced.
+ */
+export function needsReceivedCacheRepair(
+  record: { origin?: string; size: number; data?: Blob },
+): boolean {
+  return record.origin === "received" &&
+    (!(record.data instanceof Blob) ||
+      !Number.isSafeInteger(record.size) || record.size < 0 ||
+      record.data.size !== record.size);
 }
