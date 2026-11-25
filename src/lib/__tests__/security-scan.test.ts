@@ -156,8 +156,8 @@ describe("malformed inbound Tor attachment runtime types", () => {
   it("returns blocked instead of crashing on wrong signed payload fields", () => {
     const bytes = new Uint8Array([0xff, 0xd8, 0xff]);
     for (const value of [null, ["photo.jpg"], {name:"photo.jpg"}, 42]) {
-      expect(inspectAttachmentHeader(value as string, "image/jpeg", bytes).safe).toBe(false);
-      expect(inspectAttachmentHeader("photo.jpg", value as string, bytes).safe).toBe(false);
+      expect(inspectAttachmentHeader(value as unknown as string, "image/jpeg", bytes).safe).toBe(false);
+      expect(inspectAttachmentHeader("photo.jpg", value as unknown as string, bytes).safe).toBe(false);
     }
     expect(inspectAttachmentHeader("photo.jpg", "image/jpeg", null as unknown as Uint8Array).safe)
       .toBe(false);
