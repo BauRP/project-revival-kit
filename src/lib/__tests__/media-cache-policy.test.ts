@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  canEvictUnreferencedMedia, MEDIA_ORPHAN_GRACE_MS,
+  canEvictUnreferencedMedia, MEDIA_ORPHAN_GRACE_MS, verifiedBlobSize,
 } from "../media-cache-policy";
 
 describe("media cache eviction must preserve active or recent uploads", () => {
@@ -67,5 +67,20 @@ describe("signed media does not overwrite an existing fileId", () => {
     expect(isMatchingReceivedCache(previous,{...incoming,name:"other.jpg"})).toBe(false);
     expect(isMatchingReceivedCache(previous,{...incoming,mimeType:"text/html"})).toBe(false);
     expect(isMatchingReceivedCache(previous,{...incoming,size:321})).toBe(false);
+  });
+});
+
+describe("committed binary sizes control cache budget and safe eviction", () => {
+  it("accounts for real stored binary bytes", () => {
+    expect(verifiedBlobSize({size:3,data:new Blob(["abc"])})).toBe(3);
+    expect(verifiedBlobSize({size:0,data:new Blob([])})).toBe(0);
+  });
+  it("fails safely on damaged size metadata or missing binary data", () => {
+    for (const size of [0, 2, -1, NaN, Infinity, 1.5]) {
+      expect(() => verifiedBlobSize({size,data:new Blob(["abc"])})).toThrow(/size/);
+    }
+    expect(() => verifiedBlobSize({
+      size:3,data:undefined as unknown as Blob,
+    })).toThrow(/size/);
   });
 });
