@@ -367,8 +367,9 @@ public class TorOnionService extends Service {
                 }
                 torBound = true;
                 running = true;
-                reconnectAttempts = 0;
                 cancelTorRecovery();
+                // Do NOT reset retry budget merely because Android returned
+                // a binder; only successfully published onion is healthy.
                 lastError = null;
                 updateNotification("Bootstrapping Tor circuits…");
                 publishStatus();
@@ -400,6 +401,16 @@ public class TorOnionService extends Service {
             } catch (Throwable disconnectionFailure) {
                 Log.e(TAG, "tor service disconnect handling failed", disconnectionFailure);
             }
+        }
+
+        @Override
+        public void onBindingDied(ComponentName name) {
+            scheduleTorRecovery("Tor daemon binding died");
+        }
+
+        @Override
+        public void onNullBinding(ComponentName name) {
+            scheduleTorRecovery("Tor daemon returned null binding");
         }
     };
 
@@ -570,6 +581,7 @@ public class TorOnionService extends Service {
                     ? "Connected to Tor"
                     : "Online · " + shortOnion(onionAddress));
             lastError = null;
+            reconnectAttempts = 0;
             publishStatus();
             releaseWakeLock();
 
