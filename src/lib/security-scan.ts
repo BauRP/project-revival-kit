@@ -107,7 +107,7 @@ export async function stripExifMetadata(file: File): Promise<File> {
       const outputType = file.type === "image/bmp" ? "image/jpeg" : file.type;
       const encoded = await encodePrivateCanvas(canvas, outputType);
       const filename = file.type === "image/bmp"
-        ? file.name.replace(/\\.bmp$/i, "") + ".jpg" : file.name;
+        ? file.name.replace(/\.bmp$/i, "") + ".jpg" : file.name;
       return new File([encoded], filename, { type: outputType, lastModified: Date.now() });
     } finally {
       // Release the potentially large decoded pixel buffer after encode or timeout.
