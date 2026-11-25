@@ -1,6 +1,7 @@
 import { nextScheduledRetry, scheduledWakeAt, validateScheduledItem, validateStoredScheduledItem, sameScheduledState, canScheduleRecipient, retainDueScheduled } from "./scheduled-policy";
 import { protectScheduledText, revealScheduledText, isSealedScheduledText } from "./scheduled-encryption";
 import { isNative } from "./platform";
+import { getChatPreferences, chatAllowsOutbound } from "./chat-preferences";
 // Local outbox for Scheduled Send (Turn 2).
 //
 // Persists pending messages in IndexedDB so a page reload doesn't lose them.
@@ -378,6 +379,11 @@ async function fireDue() {
           void Promise.resolve().then(initializeScheduledOutbox);
           throw new Error("Scheduled message requires Android Keystore migration");
         }
+        // The recipient may have been blocked after this schedule was saved.
+        // Keep the durable schedule for future unblocking; do not dispatch it
+        // to either a mounted sender or the fallback P2P path.
+        if (!chatAllowsOutbound(await getChatPreferences(current.chatId)))
+          throw new Error("Scheduled recipient is blocked");
         const decrypted = await revealScheduledText(current.text);
         const dispatch: ScheduledItem = { ...current, text: decrypted };
         validateScheduledItem(dispatch);
