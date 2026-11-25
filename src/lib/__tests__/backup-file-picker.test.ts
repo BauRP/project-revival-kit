@@ -28,6 +28,14 @@ describe("browser portable archive picker", () => {
     await expect(result).resolves.toBe("data");
   });
 
+  it("accepts a valid UTF-8 archive text without confusing code units and bytes", async () => {
+    const input = new FakePicker();
+    const text = "Қазақша🙂";
+    const result = usePicker(input);
+    input.choose({size:new TextEncoder().encode(text).length,text:async()=>text});
+    await expect(result).resolves.toBe(text);
+  });
+
   it("settles immediately on the native cancel event or an empty selection", async () => {
     const cancelled = new FakePicker();
     const promise = usePicker(cancelled);
