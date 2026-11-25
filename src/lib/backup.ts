@@ -20,6 +20,7 @@ import { createDatedBackupFilename, isSafeBackupFilename, newestBackupFilename, 
 import { validateLegacyBackupEnvelope } from "./legacy-backup-policy";
 import { assertBackupFileSize, MAX_BACKUP_FILE_BYTES } from "./backup-input-policy";
 import { pickBackupFileAsText } from "./backup-file-picker";
+import { exportPortableChatPreferences, restorePortableChatPreferences } from "./backup-chat-preferences";
 
 
 const MAGIC = "TRIVO-BACKUP-V1";
@@ -83,7 +84,10 @@ export async function exportBackup(
   // in the password-encrypted payload. Plaintext keys are never written to disk.
   const identity = validateIdentityKeys(await getOrCreateIdentity());
   const dump = await exportDexieDump();
-  const portable = makePortableBackupPackage(identity, dump);
+  // Keystore ciphertext is not portable; decrypt validated chat preferences
+  // into the same existing password-encrypted package as the history.
+  const chatPreferences = await exportPortableChatPreferences();
+  const portable = makePortableBackupPackage(identity, dump, chatPreferences);
   const envelope = await encryptBackupV2(JSON.stringify(portable), password);
   const json = JSON.stringify(envelope);
 
@@ -171,7 +175,7 @@ export async function importBackup(
   const parsed = envelope.magic === "TRIVO-BACKUP-V2"
     ? JSON.parse(await decryptBackupV2(envelope as BackupEnvelopeV2, password)) as unknown
     : decryptDump(envelope as EncryptedEnvelope, password);
-  const { dump, identity: backedUpIdentity } = readPortableBackupPayload(parsed);
+  const { dump, identity: backedUpIdentity, chatPreferences } = readPortableBackupPayload(parsed);
   if (backedUpIdentity) {
     const validated = validateIdentityKeys(backedUpIdentity);
     const current = validateIdentityKeys(await getOrCreateIdentity());
@@ -180,6 +184,10 @@ export async function importBackup(
     } catch (error) {
       if (!options.allowEmptyDeviceIdentityTransfer) throw error;
       await restoreIdentityOnFreshDevice(validated, dump);
+      // After the identity and Dexie snapshot are committed, restore the
+      // per-chat privacy preferences under this device's new Keystore.
+      // Fail explicitly on any restore error; no silent loss of blocking.
+      await restorePortableChatPreferences(chatPreferences);
       // The fresh-device transfer must enforce the SAME disappearing-message
       // retention policy as an ordinary backup restore. Do not put this into
       // restoreIdentityOnFreshDevice's rollback catch: once Dexie commits, a
@@ -189,6 +197,7 @@ export async function importBackup(
     }
   }
   await importDexieDump(dump);
+  await restorePortableChatPreferences(chatPreferences);
   // An older archive must not make already-expired disappearing messages
   // visible again, even briefly after restore.
   await purgeExpiredLocalMessages();
