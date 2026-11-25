@@ -40,6 +40,15 @@ describe("browser portable archive picker", () => {
     await expect(noFile).rejects.toThrow(/No backup file selected/);
   });
 
+  it("rejects an empty file before attempting text decoding", async () => {
+    const input = new FakePicker();
+    let reads = 0;
+    const result = usePicker(input);
+    input.choose({size:0,text:async()=>{reads++;return "";}});
+    await expect(result).rejects.toThrow(/empty/);
+    expect(reads).toBe(0);
+  });
+
   it("rejects an oversized file before reading it", async () => {
     const input = new FakePicker();
     let read = false;
