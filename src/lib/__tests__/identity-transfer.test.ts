@@ -5,6 +5,7 @@ const empty = () => ({
   contacts: 0, messages: 0, outbox: 0, inbox: 0,
   lifecycle: 0, blobs: 0, partialChunks: 0, legacyMessages: 0,
   legacyContacts: 0, scheduledMessages: 0, nativeFrames: 0,
+  chatPreferences: 0,
 });
 describe("fresh device identity migration safeguards", () => {
   it("permits a truly unused identity", () => {
@@ -17,6 +18,11 @@ describe("fresh device identity migration safeguards", () => {
       expect(() => assertEmptyTransferTarget({ ...empty(), messages: count }))
         .toThrow(/fresh installation/);
     }
+  });
+  it("rejects account transfer when an old or sealed chat privacy record survives", () => {
+    expect(() => assertEmptyTransferTarget({
+      ...empty(), chatPreferences: 1,
+    })).toThrow(/fresh installation/);
   });
   it("rejects every local data store that could be orphaned", () => {
     for (const name of Object.keys(empty()) as Array<keyof ReturnType<typeof empty>>) {
