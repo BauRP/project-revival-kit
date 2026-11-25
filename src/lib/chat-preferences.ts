@@ -53,6 +53,15 @@ export function validateChatPreferenceState(value: unknown): ChatPreferenceState
   return value as ChatPreferenceState;
 }
 
+/** Respect an existing per-chat block even in background operations
+ * that were queued before the block was enabled. Missing legacy preferences
+ * mean unblocked; malformed persisted settings must fail closed instead of
+ * silently authorizing a private Tor dispatch.
+ */
+export function chatAllowsOutbound(preferences: unknown): boolean {
+  return validateChatPreferenceState(preferences).blocked !== true;
+}
+
 export async function getChatPreferences(chatId: string): Promise<ChatPreferenceState> {
   return validateChatPreferenceState(await dbGet<unknown>("settings", preferenceKey(chatId)));
 }
