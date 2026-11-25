@@ -19,9 +19,13 @@ export const ENCRYPTED_CHUNK_MIME = "application/x-trivo-encrypted-chunk";
  * A lost Keystore wrapper must not bootstrap a fresh master key while ANY
  * sealed chat-list row survives, including a damaged/unsupported envelope.
  */
+export function isProtectedLegacyContactRow(row: unknown): boolean {
+  return row !== null && typeof row === "object" &&
+    !Array.isArray(row) && ("sealed" in row || "kind" in row);
+}
+
 export function protectedContactsContainCiphertext(rows: readonly unknown[]): boolean {
-  return rows.some((row) => row !== null && typeof row === "object" &&
-    !Array.isArray(row) && ("sealed" in row || "kind" in row));
+  return rows.some(isProtectedLegacyContactRow);
 }
 
 let current: Promise<CryptoKey> | null = null;
@@ -34,9 +38,7 @@ export async function protectedStorageHasNoCiphertext(): Promise<boolean> {
     dbGetStrict<unknown>("settings", LOCAL_PROFILE_ENCRYPTED_ID),
     dxdb.partial_chunks.filter((row) =>
       row.encrypted === 1 || row.data.type === ENCRYPTED_CHUNK_MIME).count(),
-    dbSomeStrict<unknown>("contacts", (row) =>
-      !!row && typeof row === "object" && !Array.isArray(row) &&
-      ("sealed" in row || "kind" in row)),
+    dbSomeStrict<unknown>("contacts", isProtectedLegacyContactRow),
     // Also detect damaged/unsupported encrypted names before key bootstrap.
     dxdb.contacts.filter(hasProtectedDexieContactName).count(),
     dxdb.lifecycle.filter(hasEncryptedRemoteProfileRow).count(),
