@@ -44,6 +44,24 @@ describe("password-encrypted portable chat preferences", () => {
     });
   });
 
+  it("restoring an old archive cannot lengthen expiry or unmute an active chat", () => {
+    const merged = mergePortableChatPreferenceState({
+      disappearingDuration: "1h", mutedUntil: 5000, silentDefault: true,
+    }, {
+      disappearingDuration: "off", mutedUntil: 1000, silentDefault: false,
+    });
+    expect(merged.disappearingDuration).toBe("1h");
+    expect(merged.mutedUntil).toBe(5000);
+    expect(merged.silentDefault).toBe(true);
+    const restored = mergePortableChatPreferenceState({
+      disappearingDuration: "off", mutedUntil: null,
+    }, {
+      disappearingDuration: "6h", mutedUntil: 8000,
+    });
+    expect(restored.disappearingDuration).toBe("6h");
+    expect(restored.mutedUntil).toBe(8000);
+  });
+
   it("never silently unblocks a peer but restores blocked if local was unblocked", () => {
     expect(mergePortableChatPreferenceState({ blocked: false }, { blocked: true }).blocked)
       .toBe(true);
