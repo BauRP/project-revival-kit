@@ -226,6 +226,9 @@ public class TorOnionService extends Service {
     @Override
     public void onDestroy() {
         shutdown();
+        // A dead Android foreground service must not retain the old inbound
+        // accept workers and sockets, or spawn a second pool on restart.
+        workers.shutdownNow();
         instance = null;
         super.onDestroy();
     }
@@ -466,9 +469,14 @@ public class TorOnionService extends Service {
             String status = intent.getStringExtra(TorService.EXTRA_STATUS);
             if (status == null) return;
             if (TorService.STATUS_ON.equals(status)) {
+                if (shuttingDown) return;
                 bootstrapped = true;
                 bootstrapPercent = 100;
-                workers.execute(TorOnionService.this::onTorReady);
+                try {
+                    workers.execute(TorOnionService.this::onTorReady);
+                } catch (RejectedExecutionException stopped) {
+                    Log.w(TAG, "Ignoring late Tor status after service shutdown", stopped);
+                }
             } else if (TorService.STATUS_STARTING.equals(status)) {
                 bootstrapPercent = Math.max(bootstrapPercent, 25);
                 publishStatus();
