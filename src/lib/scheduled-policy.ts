@@ -60,6 +60,24 @@ export function nextScheduledRetry<T extends ScheduledRetryState>(
   return { ...item, attempts, nextAttemptAt };
 }
 
+/** A recipient's block is a privacy pause, NOT a failed send.
+ * Keep retry history unchanged and reconsider a due message shortly after
+ * a block is lifted; never overwrite the original scheduled timestamp.
+ */
+export function nextBlockedScheduledCheck<T extends ScheduledRetryState>(
+  item: T, now: number,
+): T {
+  if (!Number.isSafeInteger(now) || now <= 0 ||
+      !Number.isSafeInteger(item.scheduledAt) || item.scheduledAt <= 0 ||
+      (item.attempts !== undefined &&
+        (!Number.isSafeInteger(item.attempts) || item.attempts < 0 || item.attempts > 1000)))
+    throw new Error("Invalid blocked scheduled retry time");
+  const nextAttemptAt = Math.max(item.scheduledAt, now + 60_000);
+  if (!Number.isSafeInteger(nextAttemptAt))
+    throw new Error("Blocked schedule retry clock overflow");
+  return { ...item, nextAttemptAt };
+}
+
 /** A durable schedule cannot be changed while its sealed Tor frame exists. */
 export function validateScheduledItem(item: { id: string; chatId: string; text: string; scheduledAt: number; silent: boolean }): void {
   if (typeof item.id !== "string" || !item.id || item.id.length > 128 || /[\u0000-\u001f\u007f]/.test(item.id)) throw new Error("Invalid scheduled message ID");
