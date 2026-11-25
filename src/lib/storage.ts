@@ -214,6 +214,49 @@ export async function dbSomeStrict<T>(
   });
 }
 
+/** Key-only, bounded legacy settings migration scan.
+ * Pages are read in separate short IDB transactions so a large install does
+ * not monopolize Android WebView memory or block user edits.
+ */
+export async function dbListKeysByPrefixStrict(
+  store: string, prefix: string, after?: string, limit = 32,
+): Promise<string[]> {
+  if (typeof prefix !== "string" || !prefix ||
+      prefix.length > 128 || /[\u0000-\u001f\u007f]/.test(prefix) ||
+      !Number.isSafeInteger(limit) || limit < 1 || limit > 128 ||
+      (after !== undefined && (typeof after !== "string" || !after.startsWith(prefix))))
+    throw new Error("Invalid protected settings migration scan");
+  const db = await openDB();
+  return new Promise<string[]>((resolve, reject) => {
+    const keys: string[] = [];
+    try {
+      const tx = db.transaction(store, "readonly");
+      const lower = after === undefined ? prefix : after;
+      const range = IDBKeyRange.bound(lower, prefix + "\uffff", after !== undefined);
+      const req = tx.objectStore(store).openKeyCursor(range);
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) return;
+        if (typeof cursor.primaryKey !== "string" || !cursor.primaryKey.startsWith(prefix)) {
+          tx.abort();
+          return;
+        }
+        keys.push(cursor.primaryKey);
+        if (keys.length < limit) cursor.continue();
+      };
+      tx.oncomplete = () => { db.close(); resolve(keys); };
+      tx.onerror = () => {
+        db.close();
+        reject(tx.error ?? new Error("Protected settings key scan failed"));
+      };
+      tx.onabort = () => {
+        db.close();
+        reject(tx.error ?? new Error("Protected settings key scan aborted"));
+      };
+    } catch (error) { db.close(); reject(error); }
+  });
+}
+
 /** Detect protected settings by key without cloning their values into memory.
  * A lost Keystore wrapper must never bootstrap a replacement while even one
  * previously encrypted chat setting survives in the legacy settings DB.
