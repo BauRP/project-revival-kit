@@ -44,6 +44,27 @@ describe("private image metadata stripping cannot hang indefinitely", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("rejects decoder failure and clears all handlers", async () => {
+    vi.useFakeTimers();
+    const image = { src: "", onload: null, onerror: null } as unknown as HTMLImageElement;
+    const pending = decodePrivateImage(image, "blob:bad");
+    const assertion = expect(pending).rejects.toThrow(/Unable to decode/);
+    image.onerror?.(new Event("error"));
+    await assertion;
+    expect(image.src).toBe("");
+    expect(image.onload).toBeNull();
+    expect(image.onerror).toBeNull();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("rejects synchronous canvas failure without leaking a running timeout", async () => {
+    vi.useFakeTimers();
+    const canvas = { toBlob: () => { throw new Error("encoder crashed"); } }
+      as unknown as HTMLCanvasElement;
+    await expect(encodePrivateCanvas(canvas, "image/png")).rejects.toThrow(/encoding failed/);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("accepts correct encoded bytes and rejects mismatched media types", async () => {
     vi.useFakeTimers();
     const success = { toBlob: (cb: (blob: Blob | null) => void) =>
