@@ -382,8 +382,14 @@ export async function putReceivedBlob(
   if (repaired) {
     // A previous preview URL may still point to the damaged Blob. Invalidate
     // it only after the replacement commits, never on rejected transfers.
-    const { revokeStoredMediaUrls } = await import("./media-store");
-    revokeStoredMediaUrls([fileId]);
+    // A best-effort preview side-effect must not report a durable media
+    // commit as failed after the record has already been persisted.
+    try {
+      const { revokeStoredMediaUrls } = await import("./media-store");
+      revokeStoredMediaUrls([fileId]);
+    } catch (error) {
+      console.warn("[media] repaired attachment preview cleanup unavailable", error);
+    }
   }
   if (saved) void enforceMediaCacheLimit().catch(() => undefined);
   return saved;
