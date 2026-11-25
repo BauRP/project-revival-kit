@@ -58,12 +58,11 @@ describe("browser portable archive picker", () => {
     expect(read).toBe(false);
   });
 
-  it("rejects files larger than their reported size after asynchronous read", async () => {
+  it("rejects a file whose decoded text exceeds the originally selected bytes", async () => {
     const input = new FakePicker();
     const pending = usePicker(input);
-    // Simulate a file swapped during read without allocating 360 MiB in a test.
-    input.choose({size:3,text:async()=> ({length:MAX_BACKUP_FILE_BYTES+1} as unknown as string)});
-    await expect(pending).rejects.toThrow(/exceeds supported size/);
+    input.choose({size:3,text:async()=> "abcd"});
+    await expect(pending).rejects.toThrow(/changed/);
   });
 
   it("does not allow a duplicate change event to start a second read", async () => {
