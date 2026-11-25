@@ -67,6 +67,29 @@ export function chatAllowsOutbound(preferences: unknown): boolean {
   }
 }
 
+/** Blocking applies to queued user content, including frames sealed before
+ * the contact was blocked. Protocol control events (especially message
+ * deletion) must remain eligible to avoid stranding privacy tombstones.
+ */
+export function blockedUserDispatchShouldWait(kind: string, preferences: unknown): boolean {
+  if (kind !== "text_message" && kind !== "profile_update" &&
+      kind !== "message_reaction") return false;
+  return !chatAllowsOutbound(preferences);
+}
+
+/** Apply the latest persisted block decision before a Tor socket write.
+ * A storage error is NOT permission to disclose queued private content.
+ */
+export async function shouldPauseBlockedUserDispatch(peer: string, kind: string): Promise<boolean> {
+  if (kind !== "text_message" && kind !== "profile_update" &&
+      kind !== "message_reaction") return false;
+  try {
+    return blockedUserDispatchShouldWait(kind, await getChatPreferences(peer));
+  } catch {
+    return true;
+  }
+}
+
 export async function getChatPreferences(chatId: string): Promise<ChatPreferenceState> {
   return validateChatPreferenceState(await dbGet<unknown>("settings", preferenceKey(chatId)));
 }
