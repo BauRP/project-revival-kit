@@ -109,6 +109,9 @@ public class TorOnionService extends Service {
     private PowerManager.WakeLock wakeLock;
     private String requestedSecretKey = null;
     private boolean torBound = false;
+    // bindService() may succeed before onServiceConnected() runs. Track that
+    // pending binding separately so shutdown can always unbind it safely.
+    private volatile boolean torBindRequested = false;
     private boolean localReceiverRegistered = false;
     private boolean systemReceiverRegistered = false;
     private TorService torServiceInstance = null;
@@ -233,14 +236,15 @@ public class TorOnionService extends Service {
             // tor is going away anyway
         }
         control = null;
-        if (torBound) {
+        if (torBindRequested) {
             try {
                 unbindService(torConnection);
             } catch (Exception ignored) {
                 // already unbound
             }
-            torBound = false;
+            torBindRequested = false;
         }
+        torBound = false;
         try {
             stopService(new Intent(this, TorService.class));
         } catch (Exception ignored) {
@@ -441,7 +445,7 @@ public class TorOnionService extends Service {
     }
 
     private boolean bindTor() {
-        if (torBound) return true;
+        if (torBound || torBindRequested) return true;
         // Deferred JNI load: never resolve TorService (whose static block calls
         // System.loadLibrary("tor")) before an explicit start request, and never
         // outside a Throwable guard.
@@ -460,6 +464,7 @@ public class TorOnionService extends Service {
                 publishStatus();
                 return false;
             }
+            torBindRequested = true;
             return true;
         } catch (Throwable bindFailure) {
             lastError = "tor bind failed: "
