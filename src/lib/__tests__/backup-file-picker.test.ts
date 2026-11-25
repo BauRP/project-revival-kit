@@ -52,7 +52,8 @@ describe("browser portable archive picker", () => {
   it("rejects files larger than their reported size after asynchronous read", async () => {
     const input = new FakePicker();
     const pending = usePicker(input);
-    input.choose({size:3,text:async()=> "x".repeat(MAX_BACKUP_FILE_BYTES+1)});
+    // Simulate a file swapped during read without allocating 360 MiB in a test.
+    input.choose({size:3,text:async()=> ({length:MAX_BACKUP_FILE_BYTES+1} as unknown as string)});
     await expect(pending).rejects.toThrow(/exceeds supported size/);
   });
 
