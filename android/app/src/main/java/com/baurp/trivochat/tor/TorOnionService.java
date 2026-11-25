@@ -159,6 +159,7 @@ public class TorOnionService extends Service {
             }
             if (initFailed) {
                 updateNotification("Tor transport unavailable");
+                stopSelf(startId);
                 return START_NOT_STICKY;
             }
             if (requestedSecretKey == null || requestedSecretKey.isEmpty()) {
@@ -177,6 +178,18 @@ public class TorOnionService extends Service {
                     return START_NOT_STICKY;
                 }
             }
+            // An empty/invalid recovered key must never leave a sticky Tor
+            // service running with no published identity. Keystore failure
+            // is not permission to invent a replacement onion address.
+            if (requestedSecretKey == null
+                    || !requestedSecretKey.startsWith("ED25519-V3:")
+                    || requestedSecretKey.length() <= "ED25519-V3:".length()) {
+                lastError = "Verified persistent Tor identity is unavailable";
+                Log.e(TAG, lastError);
+                updateNotification("Unlock Trivo Chat to restart Tor");
+                stopSelf(startId);
+                return START_NOT_STICKY;
+            }
             bindTor();
             return START_STICKY;
         } catch (Throwable startupFailure) {
@@ -186,6 +199,7 @@ public class TorOnionService extends Service {
                     + String.valueOf(startupFailure.getMessage());
             Log.e(TAG, lastError, startupFailure);
             updateNotification("Tor transport unavailable");
+            stopSelf(startId);
             return START_NOT_STICKY;
         }
     }
