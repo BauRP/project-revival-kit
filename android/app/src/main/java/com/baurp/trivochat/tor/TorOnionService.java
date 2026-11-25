@@ -36,6 +36,8 @@ import java.net.Socket;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
@@ -103,6 +105,7 @@ public class TorOnionService extends Service {
     // Never spawn an unbounded number of blocked socket workers on hostile or
     // unreliable Tor circuits. Connections rejected here are NOT ACKed.
     private final Semaphore inboundSlots = new Semaphore(24, true);
+    private final Set<Socket> inboundClients = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean listenerLoopRunning = new AtomicBoolean(false);
     private final AtomicBoolean onionProvisioning = new AtomicBoolean(false);
 
@@ -242,6 +245,11 @@ public class TorOnionService extends Service {
         bootstrapped = false;
         listenerLoopRunning.set(false);
         closeServerSocket();
+        // Interrupt hanging inbound sockets, not only the accept loop.
+        // Otherwise up to 24 old workers can survive for 120 seconds after
+        // stopping Tor and consume memory across a new service start.
+        for (Socket client : inboundClients) Socks5Client.closeQuietly(client);
+        inboundClients.clear();
         try {
             if (control != null && onionAddress != null) {
                 control.delOnion(onionAddress.replace(".onion", ""));
@@ -697,21 +705,24 @@ public class TorOnionService extends Service {
             try {
                 final Socket client = active.accept();
                 client.setSoTimeout(120_000);
-                if (!inboundSlots.tryAcquire()) {
+                if (shuttingDown || !inboundSlots.tryAcquire()) {
                     // No durable write, therefore no delivery ACK: the
                     // sending peer must retry when capacity is available.
                     Socks5Client.closeQuietly(client);
                     continue;
                 }
+                inboundClients.add(client);
                 try {
                     workers.execute(() -> {
                         try {
                             handleInbound(client);
                         } finally {
+                            inboundClients.remove(client);
                             inboundSlots.release();
                         }
                     });
                 } catch (RejectedExecutionException rejected) {
+                    inboundClients.remove(client);
                     inboundSlots.release();
                     Socks5Client.closeQuietly(client);
                     Log.w(TAG, "Inbound worker unavailable, sender will retry", rejected);
